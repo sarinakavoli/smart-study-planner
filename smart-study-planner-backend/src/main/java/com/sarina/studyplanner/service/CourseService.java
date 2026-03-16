@@ -1,0 +1,43 @@
+package com.sarina.studyplanner.service;
+
+import java.util.List;
+
+import org.springframework.stereotype.Service;
+
+import com.sarina.studyplanner.dto.CourseRequest;
+import com.sarina.studyplanner.entity.Course;
+import com.sarina.studyplanner.entity.User;
+import com.sarina.studyplanner.repository.CourseRep;
+import com.sarina.studyplanner.repository.UserRep;
+
+@Service
+public class CourseService {
+
+    private final CourseRep courseRepository;
+    private final UserRep userRepository;
+
+    public CourseService(CourseRep courseRepository, UserRep userRepository) {
+        this.courseRepository = courseRepository;
+        this.userRepository = userRepository;
+    }
+
+    public Course createCourse(CourseRequest courseRequest) {
+        User user = userRepository.findById(courseRequest.getUserId())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        Course course = new Course();
+        course.setCourseName(courseRequest.getCourseName());
+        course.setCourseCode(courseRequest.getCourseCode());
+        course.setUser(user);
+
+        return courseRepository.save(course);
+    }
+
+    public List<Course> getAllCourses() {
+        return courseRepository.findAll();
+    }
+
+    public List<Course> getCoursesByUserId(Long userId) {
+        return courseRepository.findByUserId(userId);
+    }
+}

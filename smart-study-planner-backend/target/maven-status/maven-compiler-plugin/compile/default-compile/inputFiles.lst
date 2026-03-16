@@ -1,0 +1,17 @@
+/Users/USER/Documents/E/Project/smart-study-planner-backend/src/main/java/com/sarina/studyplanner/SmartStudyPlannerApplication.java
+/Users/USER/Documents/E/Project/smart-study-planner-backend/src/main/java/com/sarina/studyplanner/config/WebConfig.java
+/Users/USER/Documents/E/Project/smart-study-planner-backend/src/main/java/com/sarina/studyplanner/controller/CourseController.java
+/Users/USER/Documents/E/Project/smart-study-planner-backend/src/main/java/com/sarina/studyplanner/controller/HelloController.java
+/Users/USER/Documents/E/Project/smart-study-planner-backend/src/main/java/com/sarina/studyplanner/controller/TaskController.java
+/Users/USER/Documents/E/Project/smart-study-planner-backend/src/main/java/com/sarina/studyplanner/controller/UserController.java
+/Users/USER/Documents/E/Project/smart-study-planner-backend/src/main/java/com/sarina/studyplanner/dto/CourseRequest.java
+/Users/USER/Documents/E/Project/smart-study-planner-backend/src/main/java/com/sarina/studyplanner/dto/TaskRequest.java
+/Users/USER/Documents/E/Project/smart-study-planner-backend/src/main/java/com/sarina/studyplanner/entity/Course.java
+/Users/USER/Documents/E/Project/smart-study-planner-backend/src/main/java/com/sarina/studyplanner/entity/Task.java
+/Users/USER/Documents/E/Project/smart-study-planner-backend/src/main/java/com/sarina/studyplanner/entity/User.java
+/Users/USER/Documents/E/Project/smart-study-planner-backend/src/main/java/com/sarina/studyplanner/repository/CourseRep.java
+/Users/USER/Documents/E/Project/smart-study-planner-backend/src/main/java/com/sarina/studyplanner/repository/TaskRep.java
+/Users/USER/Documents/E/Project/smart-study-planner-backend/src/main/java/com/sarina/studyplanner/repository/UserRep.java
+/Users/USER/Documents/E/Project/smart-study-planner-backend/src/main/java/com/sarina/studyplanner/service/CourseService.java
+/Users/USER/Documents/E/Project/smart-study-planner-backend/src/main/java/com/sarina/studyplanner/service/TaskService.java
+/Users/USER/Documents/E/Project/smart-study-planner-backend/src/main/java/com/sarina/studyplanner/service/UserService.java
