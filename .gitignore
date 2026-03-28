@@ -1,0 +1,5 @@
+**/.DS_Store
+node_modules
+smart-study-planner-frontend/node_modules
+smart-study-planner-frontend/dist
+smart-study-planner-backend/target
