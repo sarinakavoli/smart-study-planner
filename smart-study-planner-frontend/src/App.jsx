@@ -61,7 +61,7 @@ function App() {
   const loadTasks = async () => {
     try {
       setError("");
-      const response = await fetch("http://localhost:8080/api/tasks", {
+      const response = await fetch("/api/tasks", {
         cache: "no-store",
       });
 
@@ -76,7 +76,7 @@ function App() {
 
   const loadCategories = async () => {
     try {
-      const response = await fetch("http://localhost:8080/api/categories", {
+      const response = await fetch("/api/categories", {
         cache: "no-store",
       });
 
@@ -194,7 +194,7 @@ function App() {
       ? Math.max(...customCategories.map((c) => c.displayOrder ?? 0))
       : 3;
 
-    const response = await fetch("http://localhost:8080/api/categories", {
+    const response = await fetch("/api/categories", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -238,8 +238,8 @@ function App() {
       };
 
       const url = editingTaskId
-        ? `http://localhost:8080/api/tasks/${editingTaskId}`
-        : "http://localhost:8080/api/tasks";
+        ? `/api/tasks/${editingTaskId}`
+        : "/api/tasks";
 
       const method = editingTaskId ? "PUT" : "POST";
 
@@ -314,7 +314,7 @@ function App() {
       setError("");
 
       const response = await fetch(
-        `http://localhost:8080/api/tasks/${taskId}/status`,
+        `/api/tasks/${taskId}/status`,
         {
           method: "PUT",
           headers: {
@@ -340,7 +340,7 @@ function App() {
     try {
       setError("");
 
-      const response = await fetch(`http://localhost:8080/api/tasks/${taskId}`, {
+      const response = await fetch(`/api/tasks/${taskId}`, {
         method: "DELETE",
       });
 
@@ -364,7 +364,7 @@ function App() {
     try {
       setError("");
 
-      await fetch("http://localhost:8080/api/tasks/category/move-to-other", {
+      await fetch("/api/tasks/category/move-to-other", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -375,7 +375,7 @@ function App() {
       const category = getCategoryByName(categoryName);
       if (category?.id && !String(category.id).startsWith("fixed-")) {
         const response = await fetch(
-          `http://localhost:8080/api/categories/${category.id}`,
+          `/api/categories/${category.id}`,
           {
             method: "DELETE",
           }
@@ -403,7 +403,7 @@ function App() {
       if (!category?.id || String(category.id).startsWith("fixed-")) return;
 
       const response = await fetch(
-        `http://localhost:8080/api/categories/${category.id}/color`,
+        `/api/categories/${category.id}/color`,
         {
           method: "PUT",
           headers: {
@@ -426,7 +426,7 @@ function App() {
     try {
       await Promise.all(
         orderedCustomCategories.map((category, index) =>
-          fetch(`http://localhost:8080/api/categories/${category.id}/order`, {
+          fetch(`/api/categories/${category.id}/order`, {
             method: "PUT",
             headers: {
               "Content-Type": "application/json",
