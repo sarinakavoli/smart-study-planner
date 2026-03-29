@@ -399,8 +399,30 @@ function App() {
 
   const setCategoryColor = async (categoryName, color) => {
     try {
-      const category = getCategoryByName(categoryName);
-      if (!category?.id || String(category.id).startsWith("fixed-")) return;
+      let category = getCategoryByName(categoryName);
+
+      if (!category?.id) return;
+
+      if (String(category.id).startsWith("fixed-")) {
+        const maxOrder = customCategories.length
+          ? Math.max(...customCategories.map((c) => c.displayOrder ?? 0))
+          : 3;
+
+        const createRes = await fetch("/api/categories", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: categoryName,
+            color: color || "#6f6f6f",
+            displayOrder: maxOrder + 1,
+          }),
+        });
+
+        if (!createRes.ok) throw new Error("Failed to create category in backend.");
+
+        await loadCategories();
+        return;
+      }
 
       const response = await fetch(
         `/api/categories/${category.id}/color`,
