@@ -1,10 +1,11 @@
 package com.sarina.studyplanner.service;
 
 import com.sarina.studyplanner.dto.TaskRequest;
-import com.sarina.studyplanner.entity.Course;
 import com.sarina.studyplanner.entity.Task;
+import com.sarina.studyplanner.entity.User;
 import com.sarina.studyplanner.repository.CourseRep;
 import com.sarina.studyplanner.repository.TaskRep;
+import com.sarina.studyplanner.repository.UserRep;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -15,28 +16,40 @@ public class TaskService {
 
     private final TaskRep taskRepository;
     private final CourseRep courseRepository;
+    private final UserRep userRepository;
 
-    public TaskService(TaskRep taskRepository, CourseRep courseRepository) {
+    public TaskService(TaskRep taskRepository, CourseRep courseRepository, UserRep userRepository) {
         this.taskRepository = taskRepository;
         this.courseRepository = courseRepository;
+        this.userRepository = userRepository;
     }
 
     public Task createTask(TaskRequest taskRequest) {
-        Course course = courseRepository.findById(taskRequest.getCourseId())
-                .orElseThrow(() -> new RuntimeException("Course not found"));
-
         Task task = new Task();
         task.setTitle(taskRequest.getTitle());
         task.setDescription(taskRequest.getDescription());
         task.setDueDate(taskRequest.getDueDate());
-        task.setStatus(taskRequest.getStatus());
+        task.setStatus(taskRequest.getStatus() != null ? taskRequest.getStatus() : "PENDING");
         task.setCategory(taskRequest.getCategory());
-        task.setCourse(course);
+
+        if (taskRequest.getUserId() != null) {
+            User user = userRepository.findById(taskRequest.getUserId())
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+            task.setUser(user);
+        }
+
+        if (taskRequest.getCourseId() != null) {
+            courseRepository.findById(taskRequest.getCourseId())
+                    .ifPresent(task::setCourse);
+        }
 
         return taskRepository.save(task);
     }
 
-    public List<Task> getAllTasks() {
+    public List<Task> getAllTasks(Long userId) {
+        if (userId != null) {
+            return taskRepository.findByUserId(userId);
+        }
         return taskRepository.findAll();
     }
 
@@ -44,18 +57,23 @@ public class TaskService {
         return taskRepository.findByCourseId(courseId);
     }
 
-    public List<Task> getTasksByStatus(String status) {
+    public List<Task> getTasksByStatus(Long userId, String status) {
+        if (userId != null) {
+            return taskRepository.findByUserIdAndStatus(userId, status);
+        }
         return taskRepository.findByStatus(status);
     }
 
-    public List<Task> getOverdueTasks() {
+    public List<Task> getOverdueTasks(Long userId) {
+        if (userId != null) {
+            return taskRepository.findByUserIdAndDueDateBeforeAndStatusNot(userId, LocalDate.now(), "DONE");
+        }
         return taskRepository.findByDueDateBeforeAndStatusNot(LocalDate.now(), "DONE");
     }
 
     public Task updateTaskStatus(Long taskId, String status) {
         Task task = taskRepository.findById(taskId)
                 .orElseThrow(() -> new RuntimeException("Task not found"));
-
         task.setStatus(status);
         return taskRepository.save(task);
     }
@@ -64,15 +82,16 @@ public class TaskService {
         Task task = taskRepository.findById(taskId)
                 .orElseThrow(() -> new RuntimeException("Task not found"));
 
-        Course course = courseRepository.findById(taskRequest.getCourseId())
-                .orElseThrow(() -> new RuntimeException("Course not found"));
-
         task.setTitle(taskRequest.getTitle());
         task.setDescription(taskRequest.getDescription());
         task.setDueDate(taskRequest.getDueDate());
         task.setStatus(taskRequest.getStatus());
         task.setCategory(taskRequest.getCategory());
-        task.setCourse(course);
+
+        if (taskRequest.getCourseId() != null) {
+            courseRepository.findById(taskRequest.getCourseId())
+                    .ifPresent(task::setCourse);
+        }
 
         return taskRepository.save(task);
     }
@@ -81,12 +100,14 @@ public class TaskService {
         taskRepository.deleteById(taskId);
     }
 
-    public void moveCategoryToOther(String oldCategory) {
+    public void moveCategoryToOther(String oldCategory, Long userId) {
         if (oldCategory == null || oldCategory.isBlank()) {
             throw new RuntimeException("Category is required");
         }
 
-        List<Task> tasks = taskRepository.findByCategory(oldCategory);
+        List<Task> tasks = userId != null
+                ? taskRepository.findByUserIdAndCategory(userId, oldCategory)
+                : taskRepository.findByCategory(oldCategory);
 
         for (Task task : tasks) {
             task.setCategory("OTHER");

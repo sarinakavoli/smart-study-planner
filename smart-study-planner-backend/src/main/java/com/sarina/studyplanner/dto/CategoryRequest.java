@@ -5,6 +5,7 @@ public class CategoryRequest {
     private String name;
     private String color;
     private Integer displayOrder;
+    private Long userId;
 
     public CategoryRequest() {
     }
@@ -31,5 +32,13 @@ public class CategoryRequest {
 
     public void setDisplayOrder(Integer displayOrder) {
         this.displayOrder = displayOrder;
+    }
+
+    public Long getUserId() {
+        return userId;
+    }
+
+    public void setUserId(Long userId) {
+        this.userId = userId;
     }
 }

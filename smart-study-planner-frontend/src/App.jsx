@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
 import "./App.css";
+import Login from "./Login";
 
 function App() {
   const [tasks, setTasks] = useState([]);
@@ -19,6 +20,11 @@ function App() {
   const [draggedCategory, setDraggedCategory] = useState(null);
   const [dragOverCategory, setDragOverCategory] = useState(null);
   const [theme, setTheme] = useState(localStorage.getItem("theme") || "dark");
+  const [currentUser, setCurrentUser] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("currentUser")) || null; } catch { return null; }
+  });
+  const [loading, setLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState({});
 
   const [newTask, setNewTask] = useState({
     title: "",
@@ -61,7 +67,8 @@ function App() {
   const loadTasks = async () => {
     try {
       setError("");
-      const response = await fetch("/api/tasks", {
+      const userParam = currentUser ? `?userId=${currentUser.id}` : "";
+      const response = await fetch(`/api/tasks${userParam}`, {
         cache: "no-store",
       });
 
@@ -76,7 +83,8 @@ function App() {
 
   const loadCategories = async () => {
     try {
-      const response = await fetch("/api/categories", {
+      const userParam = currentUser ? `?userId=${currentUser.id}` : "";
+      const response = await fetch(`/api/categories${userParam}`, {
         cache: "no-store",
       });
 
@@ -89,10 +97,26 @@ function App() {
     }
   };
 
+  const handleLogin = (user) => {
+    localStorage.setItem("currentUser", JSON.stringify(user));
+    setCurrentUser(user);
+    setTasks([]);
+    setCategoriesData([]);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("currentUser");
+    setCurrentUser(null);
+    setTasks([]);
+    setCategoriesData([]);
+  };
+
   useEffect(() => {
-    loadTasks();
-    loadCategories();
-  }, []);
+    if (currentUser) {
+      loadTasks();
+      loadCategories();
+    }
+  }, [currentUser]);
 
   useEffect(() => {
     const closeMenu = () => {
@@ -203,6 +227,7 @@ function App() {
         name: normalizedName,
         color: "#6f6f6f",
         displayOrder: maxOrder + 1,
+        userId: currentUser?.id ?? null,
       }),
     });
 
@@ -217,8 +242,20 @@ function App() {
   const handleSubmit = async (event) => {
     event.preventDefault();
 
+    const errors = {};
+    if (!newTask.title.trim()) errors.title = "Task title is required.";
+    if (!newTask.dueDate) errors.dueDate = "Due date is required.";
+    if (useCustomCategory && !customCategory.trim()) errors.category = "Category name is required.";
+
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      return;
+    }
+    setFieldErrors({});
+
     try {
       setError("");
+      setLoading(true);
 
       let finalCategory = useCustomCategory
         ? customCategory.trim().toUpperCase()
@@ -231,10 +268,12 @@ function App() {
       }
 
       const payload = {
-        ...newTask,
+        title: newTask.title.trim(),
+        dueDate: newTask.dueDate,
+        status: newTask.status,
         description: "",
         category: finalCategory,
-        courseId: 1,
+        userId: currentUser?.id ?? null,
       };
 
       const url = editingTaskId
@@ -264,6 +303,8 @@ function App() {
     } catch (err) {
       console.error(err);
       setError(editingTaskId ? "Could not update task." : "Could not create task.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -369,7 +410,7 @@ function App() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ oldCategory: categoryName }),
+        body: JSON.stringify({ oldCategory: categoryName, userId: currentUser?.id ?? null }),
       });
 
       const category = getCategoryByName(categoryName);
@@ -415,6 +456,7 @@ function App() {
             name: categoryName,
             color: color || "#6f6f6f",
             displayOrder: maxOrder + 1,
+            userId: currentUser?.id ?? null,
           }),
         });
 
@@ -693,10 +735,22 @@ function App() {
     </div>
   );
 
+  if (!currentUser) {
+    return (
+      <div className={`app-shell ${theme}`}>
+        <Login onLogin={handleLogin} />
+      </div>
+    );
+  }
+
   return (
     <div className={`app-shell ${theme}`}>
       <div className="sidebar">
         <h1 className="sidebar-title">Inbox</h1>
+        <div className="user-bar">
+          <span className="user-name">{currentUser.name}</span>
+          <button className="logout-btn" onClick={handleLogout}>Sign out</button>
+        </div>
 
         <div className="theme-switch">
           <button
@@ -930,24 +984,28 @@ function App() {
 
             <form onSubmit={handleSubmit}>
               <div className="form-row">
-                <input
-                  type="text"
-                  name="title"
-                  placeholder="Task title"
-                  value={newTask.title}
-                  onChange={handleChange}
-                  required
-                  className="input-control wide-input"
-                />
+                <div className="field-wrap">
+                  <input
+                    type="text"
+                    name="title"
+                    placeholder="Task title"
+                    value={newTask.title}
+                    onChange={(e) => { handleChange(e); setFieldErrors((fe) => ({ ...fe, title: null })); }}
+                    className={`input-control wide-input ${fieldErrors.title ? "input-error" : ""}`}
+                  />
+                  {fieldErrors.title && <span className="field-error">{fieldErrors.title}</span>}
+                </div>
 
-                <input
-                  type="date"
-                  name="dueDate"
-                  value={newTask.dueDate}
-                  onChange={handleChange}
-                  required
-                  className="input-control"
-                />
+                <div className="field-wrap">
+                  <input
+                    type="date"
+                    name="dueDate"
+                    value={newTask.dueDate}
+                    onChange={(e) => { handleChange(e); setFieldErrors((fe) => ({ ...fe, dueDate: null })); }}
+                    className={`input-control ${fieldErrors.dueDate ? "input-error" : ""}`}
+                  />
+                  {fieldErrors.dueDate && <span className="field-error">{fieldErrors.dueDate}</span>}
+                </div>
 
                 <select
                   name="status"
@@ -959,46 +1017,51 @@ function App() {
                   <option value="DONE">DONE</option>
                 </select>
 
-                {!useCustomCategory ? (
-                  <select
-                    name="category"
-                    value={newTask.category}
-                    onChange={handleChange}
-                    className="input-control"
-                  >
-                    {categories.map((category) => (
-                      <option
-                        key={category.id ?? category.name}
-                        value={category.name}
-                      >
-                        {category.name}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    type="text"
-                    placeholder="New category"
-                    value={customCategory}
-                    onChange={(e) => setCustomCategory(e.target.value)}
-                    className="input-control"
-                    required
-                  />
-                )}
+                <div className="field-wrap">
+                  {!useCustomCategory ? (
+                    <select
+                      name="category"
+                      value={newTask.category}
+                      onChange={handleChange}
+                      className="input-control"
+                    >
+                      {categories.map((category) => (
+                        <option
+                          key={category.id ?? category.name}
+                          value={category.name}
+                        >
+                          {category.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <>
+                      <input
+                        type="text"
+                        placeholder="New category"
+                        value={customCategory}
+                        onChange={(e) => { setCustomCategory(e.target.value); setFieldErrors((fe) => ({ ...fe, category: null })); }}
+                        className={`input-control ${fieldErrors.category ? "input-error" : ""}`}
+                      />
+                      {fieldErrors.category && <span className="field-error">{fieldErrors.category}</span>}
+                    </>
+                  )}
+                </div>
 
                 <button
                   type="button"
                   onClick={() => {
                     setUseCustomCategory(!useCustomCategory);
                     setCustomCategory("");
+                    setFieldErrors((fe) => ({ ...fe, category: null }));
                   }}
                   className="main-btn"
                 >
                   {useCustomCategory ? "Use Existing Category" : "New Category"}
                 </button>
 
-                <button type="submit" className="main-btn">
-                  {editingTaskId ? "Update" : "Save"}
+                <button type="submit" className="main-btn" disabled={loading}>
+                  {loading ? "Saving..." : editingTaskId ? "Update" : "Save"}
                 </button>
 
                 {editingTaskId && (

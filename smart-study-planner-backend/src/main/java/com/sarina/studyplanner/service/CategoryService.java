@@ -6,29 +6,47 @@ import org.springframework.stereotype.Service;
 
 import com.sarina.studyplanner.dto.CategoryRequest;
 import com.sarina.studyplanner.entity.Category;
+import com.sarina.studyplanner.entity.User;
 import com.sarina.studyplanner.repository.CategoryRep;
+import com.sarina.studyplanner.repository.UserRep;
 
 @Service
 public class CategoryService {
 
     private final CategoryRep categoryRep;
+    private final UserRep userRep;
 
-    public CategoryService(CategoryRep categoryRep) {
+    public CategoryService(CategoryRep categoryRep, UserRep userRep) {
         this.categoryRep = categoryRep;
+        this.userRep = userRep;
     }
 
-    public List<Category> getAllCategories() {
+    public List<Category> getAllCategories(Long userId) {
+        if (userId != null) {
+            return categoryRep.findByUserIdOrderByDisplayOrderAscIdAsc(userId);
+        }
         return categoryRep.findAllByOrderByDisplayOrderAscIdAsc();
     }
 
     public Category createCategory(CategoryRequest request) {
         String normalizedName = request.getName().trim().toUpperCase();
+        Long userId = request.getUserId();
 
-        if (categoryRep.existsByName(normalizedName)) {
-            throw new RuntimeException("Category already exists.");
+        if (userId != null) {
+            if (categoryRep.existsByNameAndUserId(normalizedName, userId)) {
+                throw new RuntimeException("Category already exists.");
+            }
+        } else {
+            if (categoryRep.existsByName(normalizedName)) {
+                throw new RuntimeException("Category already exists.");
+            }
         }
 
-        Integer nextOrder = categoryRep.findAll().stream()
+        List<Category> existing = userId != null
+                ? categoryRep.findByUserIdOrderByDisplayOrderAscIdAsc(userId)
+                : categoryRep.findAllByOrderByDisplayOrderAscIdAsc();
+
+        Integer nextOrder = existing.stream()
                 .map(Category::getDisplayOrder)
                 .filter(v -> v != null)
                 .max(Integer::compareTo)
@@ -40,6 +58,12 @@ public class CategoryService {
         category.setDisplayOrder(
                 request.getDisplayOrder() != null ? request.getDisplayOrder() : nextOrder
         );
+
+        if (userId != null) {
+            User user = userRep.findById(userId)
+                    .orElseThrow(() -> new RuntimeException("User not found."));
+            category.setUser(user);
+        }
 
         return categoryRep.save(category);
     }

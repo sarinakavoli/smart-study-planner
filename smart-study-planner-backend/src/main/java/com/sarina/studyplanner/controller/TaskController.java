@@ -24,8 +24,8 @@ public class TaskController {
     }
 
     @GetMapping("/tasks")
-    public List<Task> getAllTasks() {
-        return taskService.getAllTasks();
+    public List<Task> getAllTasks(@RequestParam(required = false) Long userId) {
+        return taskService.getAllTasks(userId);
     }
 
     @GetMapping("/courses/{courseId}/tasks")
@@ -34,13 +34,15 @@ public class TaskController {
     }
 
     @GetMapping("/tasks/status/{status}")
-    public List<Task> getTasksByStatus(@PathVariable String status) {
-        return taskService.getTasksByStatus(status);
+    public List<Task> getTasksByStatus(
+            @PathVariable String status,
+            @RequestParam(required = false) Long userId) {
+        return taskService.getTasksByStatus(userId, status);
     }
 
     @GetMapping("/tasks/overdue")
-    public List<Task> getOverdueTasks() {
-        return taskService.getOverdueTasks();
+    public List<Task> getOverdueTasks(@RequestParam(required = false) Long userId) {
+        return taskService.getOverdueTasks(userId);
     }
 
     @PutMapping("/tasks/{taskId}/status")
@@ -54,8 +56,10 @@ public class TaskController {
     }
 
     @PutMapping("/tasks/category/move-to-other")
-    public String moveCategoryToOther(@RequestBody Map<String, String> body) {
-        taskService.moveCategoryToOther(body.get("oldCategory"));
+    public String moveCategoryToOther(@RequestBody Map<String, Object> body) {
+        String oldCategory = (String) body.get("oldCategory");
+        Long userId = body.get("userId") != null ? Long.valueOf(body.get("userId").toString()) : null;
+        taskService.moveCategoryToOther(oldCategory, userId);
         return "Category moved to OTHER successfully";
     }
 

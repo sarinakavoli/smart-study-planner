@@ -27,9 +27,14 @@ public class Task {
     private String category;
 
     @ManyToOne
-    @JoinColumn(name = "course_id")
+    @JoinColumn(name = "course_id", nullable = true)
     @JsonIgnoreProperties({"tasks", "user"})
     private Course course;
+
+    @ManyToOne
+    @JoinColumn(name = "user_id", nullable = true)
+    @JsonIgnoreProperties({"courses", "password"})
+    private User user;
 
     public Task() {
     }
@@ -62,6 +67,14 @@ public class Task {
         return course;
     }
 
+    public User getUser() {
+        return user;
+    }
+
+    public Long getUserId() {
+        return user != null ? user.getId() : null;
+    }
+
     public void setTitle(String title) {
         this.title = title;
     }
@@ -84,5 +97,9 @@ public class Task {
 
     public void setCourse(Course course) {
         this.course = course;
+    }
+
+    public void setUser(User user) {
+        this.user = user;
     }
 }

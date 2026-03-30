@@ -10,6 +10,7 @@ public class TaskRequest {
     private String status;
     private String category;
     private Long courseId;
+    private Long userId;
 
     public TaskRequest() {
     }
@@ -38,6 +39,10 @@ public class TaskRequest {
         return courseId;
     }
 
+    public Long getUserId() {
+        return userId;
+    }
+
     public void setTitle(String title) {
         this.title = title;
     }
@@ -60,5 +65,9 @@ public class TaskRequest {
 
     public void setCourseId(Long courseId) {
         this.courseId = courseId;
+    }
+
+    public void setUserId(Long userId) {
+        this.userId = userId;
     }
 }

@@ -13,5 +13,9 @@ public interface CategoryRep extends JpaRepository<Category, Long> {
 
     boolean existsByName(String name);
 
+    boolean existsByNameAndUserId(String name, Long userId);
+
     List<Category> findAllByOrderByDisplayOrderAscIdAsc();
+
+    List<Category> findByUserIdOrderByDisplayOrderAscIdAsc(Long userId);
 }

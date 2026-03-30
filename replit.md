@@ -22,6 +22,29 @@ The Vite dev server proxies all `/api` requests to `http://localhost:8080`.
 - `smart-study-planner-backend/src/main/resources/application.properties` – DB config using env vars
 - `smart-study-planner-backend/src/main/java/.../config/WebConfig.java` – CORS config (allows all origins)
 
+## Authentication
+
+- `POST /api/auth/login` – Takes `{username, password}`, auto-registers new users, returns `{id, name}`
+- Frontend stores user in `localStorage` as `currentUser`
+- All task and category API calls include `?userId=` query param for per-user data isolation
+- `Login.jsx` – Login/register screen shown when no user is in localStorage
+
+## Per-User Data
+
+- Tasks and categories both have a `user_id` FK to the `users` table
+- All read/write operations are scoped by userId
+- The `categories.name` unique constraint was removed (handled at service level per user)
+
+## Features
+
+- Login/register (one-step, auto-registers new users)
+- Per-user tasks and categories (data isolation)
+- Input validation with field-level error messages
+- Loading states on form submission
+- Category colors for built-in and custom categories
+- Calendar view, overdue task tracking, search
+- Drag-to-reorder custom categories
+
 ## Frontend API Calls
 
 All API URLs use relative paths (`/api/...`) which Vite proxies to the backend.
