@@ -34,10 +34,33 @@ public class AuthController {
         }
 
         try {
-            User user = userService.loginOrRegister(name.trim(), password);
+            User user = userService.login(name.trim(), password);
             return ResponseEntity.ok(Map.of("id", user.getId(), "name", user.getName()));
         } catch (RuntimeException e) {
             return ResponseEntity.status(401).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/register")
+    public ResponseEntity<?> register(@RequestBody Map<String, String> body) {
+        String name = body.get("username");
+        String password = body.get("password");
+
+        if (name == null || name.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Username is required."));
+        }
+        if (password == null || password.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Password is required."));
+        }
+        if (password.length() < 4) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Password must be at least 4 characters."));
+        }
+
+        try {
+            User user = userService.register(name.trim(), password);
+            return ResponseEntity.ok(Map.of("id", user.getId(), "name", user.getName()));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(409).body(Map.of("error", e.getMessage()));
         }
     }
 }

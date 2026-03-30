@@ -17,17 +17,22 @@ public class UserService {
         this.userRepository = userRepository;
     }
 
-    public User loginOrRegister(String name, String password) {
+    public User login(String name, String password) {
         Optional<User> existing = userRepository.findByName(name);
-
-        if (existing.isPresent()) {
-            User user = existing.get();
-            if (!password.equals(user.getPassword())) {
-                throw new RuntimeException("Incorrect password.");
-            }
-            return user;
+        if (existing.isEmpty()) {
+            throw new RuntimeException("No account found with that username.");
         }
+        User user = existing.get();
+        if (!password.equals(user.getPassword())) {
+            throw new RuntimeException("Incorrect password.");
+        }
+        return user;
+    }
 
+    public User register(String name, String password) {
+        if (userRepository.findByName(name).isPresent()) {
+            throw new RuntimeException("That username is already taken.");
+        }
         User newUser = new User();
         newUser.setName(name);
         newUser.setPassword(password);

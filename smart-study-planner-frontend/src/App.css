@@ -333,6 +333,37 @@ body {
   margin: 0 0 28px;
 }
 
+.login-tabs {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  margin: 0 0 24px;
+}
+
+.login-tab {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-soft);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.login-tab.active {
+  background: #3b82f6;
+  color: #fff;
+  font-weight: 600;
+}
+
+.login-tab:not(.active):hover {
+  background: var(--bg-soft);
+  color: var(--text-main);
+}
+
 .login-form {
   display: flex;
   flex-direction: column;

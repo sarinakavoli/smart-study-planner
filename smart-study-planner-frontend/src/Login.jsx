@@ -1,10 +1,20 @@
 import { useState } from "react";
 
 export default function Login({ onLogin }) {
+  const [mode, setMode] = useState("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const isLogin = mode === "login";
+
+  const switchMode = (newMode) => {
+    setMode(newMode);
+    setError("");
+    setUsername("");
+    setPassword("");
+  };
 
   const validate = () => {
     if (!username.trim()) return "Username is required.";
@@ -25,8 +35,9 @@ export default function Login({ onLogin }) {
     }
 
     setLoading(true);
+    const endpoint = isLogin ? "/api/auth/login" : "/api/auth/register";
     try {
-      const res = await fetch("/api/auth/login", {
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: username.trim(), password }),
@@ -35,7 +46,7 @@ export default function Login({ onLogin }) {
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data.error || "Login failed. Please try again.");
+        setError(data.error || (isLogin ? "Login failed." : "Registration failed."));
         return;
       }
 
@@ -51,7 +62,23 @@ export default function Login({ onLogin }) {
     <div className="login-screen">
       <div className="login-card">
         <h1 className="login-title">Smart Study Planner</h1>
-        <p className="login-subtitle">Sign in or create an account to get started</p>
+
+        <div className="login-tabs">
+          <button
+            type="button"
+            className={`login-tab ${isLogin ? "active" : ""}`}
+            onClick={() => switchMode("login")}
+          >
+            Sign In
+          </button>
+          <button
+            type="button"
+            className={`login-tab ${!isLogin ? "active" : ""}`}
+            onClick={() => switchMode("register")}
+          >
+            Create Account
+          </button>
+        </div>
 
         <form onSubmit={handleSubmit} className="login-form" noValidate>
           <div className="login-field">
@@ -74,26 +101,26 @@ export default function Login({ onLogin }) {
               id="password"
               type="password"
               className={`input-control login-input ${error && !password ? "input-error" : ""}`}
-              placeholder="Enter your password"
+              placeholder={isLogin ? "Enter your password" : "Choose a password (min. 4 characters)"}
               value={password}
               onChange={(e) => { setPassword(e.target.value); setError(""); }}
-              autoComplete="current-password"
+              autoComplete={isLogin ? "current-password" : "new-password"}
             />
           </div>
 
           {error && <div className="login-error">{error}</div>}
 
-          <button
-            type="submit"
-            className="login-btn"
-            disabled={loading}
-          >
-            {loading ? "Signing in..." : "Sign In / Register"}
+          <button type="submit" className="login-btn" disabled={loading}>
+            {loading
+              ? (isLogin ? "Signing in..." : "Creating account...")
+              : (isLogin ? "Sign In" : "Create Account")}
           </button>
         </form>
 
         <p className="login-hint">
-          New user? Just enter a username and password to register automatically.
+          {isLogin
+            ? "Don't have an account? Click \"Create Account\" above."
+            : "Already have an account? Click \"Sign In\" above."}
         </p>
       </div>
     </div>
