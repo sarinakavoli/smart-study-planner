@@ -23,7 +23,7 @@ public class CategoryService {
 
     public List<Category> getAllCategories(Long userId) {
         if (userId != null) {
-            return categoryRep.findByUserIdOrderByDisplayOrderAscIdAsc(userId);
+            return categoryRep.findByUser_IdOrderByDisplayOrderAscIdAsc(userId);
         }
         return categoryRep.findAllByOrderByDisplayOrderAscIdAsc();
     }
@@ -33,7 +33,7 @@ public class CategoryService {
         Long userId = request.getUserId();
 
         if (userId != null) {
-            if (categoryRep.existsByNameAndUserId(normalizedName, userId)) {
+            if (categoryRep.existsByNameAndUser_Id(normalizedName, userId)) {
                 throw new RuntimeException("Category already exists.");
             }
         } else {
@@ -43,7 +43,7 @@ public class CategoryService {
         }
 
         List<Category> existing = userId != null
-                ? categoryRep.findByUserIdOrderByDisplayOrderAscIdAsc(userId)
+                ? categoryRep.findByUser_IdOrderByDisplayOrderAscIdAsc(userId)
                 : categoryRep.findAllByOrderByDisplayOrderAscIdAsc();
 
         Integer nextOrder = existing.stream()

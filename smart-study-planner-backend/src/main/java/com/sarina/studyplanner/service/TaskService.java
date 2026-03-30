@@ -48,7 +48,7 @@ public class TaskService {
 
     public List<Task> getAllTasks(Long userId) {
         if (userId != null) {
-            return taskRepository.findByUserId(userId);
+            return taskRepository.findByUser_Id(userId);
         }
         return taskRepository.findAll();
     }
@@ -59,14 +59,14 @@ public class TaskService {
 
     public List<Task> getTasksByStatus(Long userId, String status) {
         if (userId != null) {
-            return taskRepository.findByUserIdAndStatus(userId, status);
+            return taskRepository.findByUser_IdAndStatus(userId, status);
         }
         return taskRepository.findByStatus(status);
     }
 
     public List<Task> getOverdueTasks(Long userId) {
         if (userId != null) {
-            return taskRepository.findByUserIdAndDueDateBeforeAndStatusNot(userId, LocalDate.now(), "DONE");
+            return taskRepository.findByUser_IdAndDueDateBeforeAndStatusNot(userId, LocalDate.now(), "DONE");
         }
         return taskRepository.findByDueDateBeforeAndStatusNot(LocalDate.now(), "DONE");
     }
@@ -106,7 +106,7 @@ public class TaskService {
         }
 
         List<Task> tasks = userId != null
-                ? taskRepository.findByUserIdAndCategory(userId, oldCategory)
+                ? taskRepository.findByUser_IdAndCategory(userId, oldCategory)
                 : taskRepository.findByCategory(oldCategory);
 
         for (Task task : tasks) {
