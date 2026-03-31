@@ -56,4 +56,4 @@ externalPort = 8080
 [deployment]
 deploymentTarget = "vm"
 run = ["java", "-jar", "smart-study-planner-backend/target/smart-study-planner-0.0.1-SNAPSHOT.jar", "--server.port=5000"]
-build = ["bash", "-c", "cd smart-study-planner-frontend && npm install && npm run build && cd .. && rm -rf smart-study-planner-backend/src/main/resources/static/* && cp -r smart-study-planner-frontend/dist/* smart-study-planner-backend/src/main/resources/static/ && cd smart-study-planner-backend && ./mvnw clean package -DskipTests"]
+build = ["bash", "build.sh"]
