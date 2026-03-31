@@ -1,0 +1,5 @@
+{
+  "name": "smart-study-planner",
+  "private": true,
+  "description": "Root package.json to satisfy deployment environment Node.js detection. Actual build is handled by Maven."
+}
