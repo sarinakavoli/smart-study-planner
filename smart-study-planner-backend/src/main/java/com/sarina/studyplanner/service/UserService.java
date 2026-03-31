@@ -18,7 +18,8 @@ public class UserService {
     }
 
     public User login(String name, String password) {
-        Optional<User> existing = userRepository.findByName(name);
+        String normalized = name.toLowerCase();
+        Optional<User> existing = userRepository.findByName(normalized);
         if (existing.isEmpty()) {
             throw new RuntimeException("No account found with that username.");
         }
@@ -30,11 +31,12 @@ public class UserService {
     }
 
     public User register(String name, String password) {
-        if (userRepository.findByName(name).isPresent()) {
+        String normalized = name.toLowerCase();
+        if (userRepository.findByName(normalized).isPresent()) {
             throw new RuntimeException("That username is already taken.");
         }
         User newUser = new User();
-        newUser.setName(name);
+        newUser.setName(normalized);
         newUser.setPassword(password);
         newUser.setEmail("");
         return userRepository.save(newUser);
