@@ -22,16 +22,16 @@ body {
 }
 
 .app-shell.light {
-  --bg-main: #f8fafc;
-  --bg-sidebar: #eef2f7;
-  --bg-card: #ffffff;
-  --bg-soft: #d1d5db;
-  --bg-soft-2: #bfc7d4;
+  --bg-main: #fdf8ec;
+  --bg-sidebar: #f3ebce;
+  --bg-card: #fffdf0;
+  --bg-soft: #cfc3a0;
+  --bg-soft-2: #bdb099;
   --text-main: #111827;
   --text-soft: #475569;
   --border: rgba(15, 23, 42, 0.12);
-  --input-bg: #ffffff;
-  --popup-bg: #ffffff;
+  --input-bg: #fffdf0;
+  --popup-bg: #fffdf0;
 }
 
 .app-shell {

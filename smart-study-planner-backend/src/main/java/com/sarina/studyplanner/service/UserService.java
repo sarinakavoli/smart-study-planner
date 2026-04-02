@@ -32,6 +32,9 @@ public class UserService {
 
     public User register(String name, String password) {
         String normalized = name.toLowerCase();
+        if (password == null || password.length() < 8) {
+            throw new RuntimeException("Password must be at least 8 characters.");
+        }
         if (userRepository.findByName(normalized).isPresent()) {
             throw new RuntimeException("That username is already taken.");
         }

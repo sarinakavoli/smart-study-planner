@@ -20,7 +20,7 @@ export default function Login({ onLogin }) {
     if (!username.trim()) return "Username is required.";
     if (username.trim().length < 2) return "Username must be at least 2 characters.";
     if (!password) return "Password is required.";
-    if (password.length < 4) return "Password must be at least 4 characters.";
+    if (password.length < 8) return "Password must be at least 8 characters.";
     return null;
   };
 
@@ -101,7 +101,7 @@ export default function Login({ onLogin }) {
               id="password"
               type="password"
               className={`input-control login-input ${error && !password ? "input-error" : ""}`}
-              placeholder={isLogin ? "Enter your password" : "Choose a password (min. 4 characters)"}
+              placeholder={isLogin ? "Enter your password" : "Choose a password (min. 8 characters)"}
               value={password}
               onChange={(e) => { setPassword(e.target.value); setError(""); }}
               autoComplete={isLogin ? "current-password" : "new-password"}
