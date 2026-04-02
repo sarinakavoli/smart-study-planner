@@ -22,16 +22,16 @@ body {
 }
 
 .app-shell.light {
-  --bg-main: #fde8d8;
-  --bg-sidebar: #f9c7a1;
-  --bg-card: #fef4ee;
-  --bg-soft: #e8a87c;
-  --bg-soft-2: #d9946a;
-  --text-main: #111827;
-  --text-soft: #475569;
-  --border: rgba(15, 23, 42, 0.12);
-  --input-bg: #fef4ee;
-  --popup-bg: #fef4ee;
+  --bg-main: #fcf7f2;
+  --bg-sidebar: #f4c7a1;
+  --bg-card: #fff7f0;
+  --bg-soft: #e4a779;
+  --bg-soft-2: #b7a79a;
+  --text-main: #3a332e;
+  --text-soft: #6b5f56;
+  --border: rgba(58, 51, 46, 0.15);
+  --input-bg: #fff7f0;
+  --popup-bg: #fff7f0;
 }
 
 .app-shell {
