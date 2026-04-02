@@ -40,24 +40,24 @@ function App() {
   const lockedColorCategories = ["OTHER"];
 
   const categoryColorOptions = [
-    "#f8b4c6",
-    "#f5c2e7",
-    "#f9a8d4",
-    "#fecaca",
-    "#f0abfc",
+    "#edc3a6",
+    "#e4a779",
+    "#b29d8e",
     "#f9c7a1",
-    "#fdba74",
+    "#f8b4c6",
     "#fde68a",
-    "#fde047",
-    "#c7f0bd",
+    "#fdba74",
     "#86efac",
-    "#b8f2e6",
-    "#99f6e4",
-    "#bfdbfe",
+    "#6ee7b7",
     "#93c5fd",
-    "#c7d2fe",
-    "#a5b4fc",
     "#c4b5fd",
+    "#f0abfc",
+    "#fca5a5",
+    "#fcd34d",
+    "#1a2b4a",
+    "#243355",
+    "#3b5a8a",
+    "#a3e635",
   ];
 
   useEffect(() => {
@@ -143,7 +143,7 @@ function App() {
         byName.set(name, {
           id: `fixed-${name}`,
           name,
-          color: "#6f6f6f",
+          color: "",
           displayOrder: index + 1,
         });
       }
@@ -154,7 +154,7 @@ function App() {
         byName.set(name, {
           id: `fixed-${name}`,
           name,
-          color: "#6f6f6f",
+          color: "",
           displayOrder: 999,
         });
       }
@@ -225,7 +225,7 @@ function App() {
       },
       body: JSON.stringify({
         name: normalizedName,
-        color: "#6f6f6f",
+        color: "",
         displayOrder: maxOrder + 1,
         userId: currentUser?.id ?? null,
       }),
@@ -454,7 +454,7 @@ function App() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             name: categoryName,
-            color: color || "#6f6f6f",
+            color: color || "",
             displayOrder: maxOrder + 1,
             userId: currentUser?.id ?? null,
           }),
@@ -473,7 +473,7 @@ function App() {
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ color: color || "#6f6f6f" }),
+          body: JSON.stringify({ color: color || "" }),
         }
       );
 
@@ -649,7 +649,7 @@ function App() {
     textAlign: "left",
     padding: "10px 12px",
     marginBottom: 0,
-    backgroundColor: category.color || (isActive ? "var(--bg-soft-2)" : "var(--bg-soft)"),
+    backgroundColor: (category.color && category.color !== "#6f6f6f") ? category.color : (isActive ? "var(--bg-soft-2)" : "var(--bg-soft)"),
     color: "var(--text-main)",
     border: "1px solid var(--border)",
     borderRadius: "8px",
