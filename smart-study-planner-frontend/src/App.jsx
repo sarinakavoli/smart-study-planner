@@ -650,7 +650,7 @@ function App() {
     padding: "10px 12px",
     marginBottom: 0,
     backgroundColor: (category.color && category.color !== "#6f6f6f") ? category.color : (isActive ? "var(--bg-soft-2)" : "var(--bg-soft)"),
-    color: "var(--text-main)",
+    color: "var(--text-category)",
     border: "1px solid var(--border)",
     borderRadius: "8px",
     cursor: fixedCategories.includes(category.name) ? "pointer" : "grab",
@@ -702,7 +702,7 @@ function App() {
           <strong
             style={{
               textDecoration: task.status === "DONE" ? "line-through" : "none",
-              opacity: task.status === "DONE" ? 0.7 : 1,
+              opacity: task.status === "DONE" ? 0.45 : 1,
             }}
           >
             {task.title}
@@ -712,7 +712,7 @@ function App() {
           className="task-meta"
           style={{
             textDecoration: task.status === "DONE" ? "line-through" : "none",
-            opacity: task.status === "DONE" ? 0.7 : 1,
+            opacity: task.status === "DONE" ? 0.45 : 1,
           }}
         >
           {(task.category || "OTHER")} • {task.status} • Due: {task.dueDate}

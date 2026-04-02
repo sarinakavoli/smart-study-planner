@@ -16,6 +16,7 @@ body {
   --bg-soft-2: #243355;
   --text-main: #f8fafc;
   --text-soft: #cbd5e1;
+  --text-category: #f8fafc;
   --border: rgba(255, 255, 255, 0.08);
   --input-bg: #10203d;
   --popup-bg: #0d1b34;
@@ -29,6 +30,7 @@ body {
   --bg-soft-2: #b29d8e;
   --text-main: #3a332e;
   --text-soft: #6b5f56;
+  --text-category: #1a1411;
   --border: rgba(58, 51, 46, 0.15);
   --input-bg: #fff7f0;
   --popup-bg: #fff7f0;
@@ -93,7 +95,11 @@ body {
 .panel-card {
   max-width: 720px;
   margin: 0 auto;
-  background: transparent;
+  background: var(--bg-card);
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  padding: 24px 28px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
 }
 
 .panel-card h2,
