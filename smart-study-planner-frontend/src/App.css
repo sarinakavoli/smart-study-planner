@@ -324,6 +324,13 @@ body {
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
 }
 
+.login-app-icon {
+  display: block;
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 16px;
+}
+
 .login-title {
   font-size: 24px;
   font-weight: 700;

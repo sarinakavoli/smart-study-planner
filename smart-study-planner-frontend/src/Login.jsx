@@ -61,6 +61,7 @@ export default function Login({ onLogin }) {
   return (
     <div className="login-screen">
       <div className="login-card">
+        <img src="/app-icon.png" alt="App Icon" className="login-app-icon" />
         <h1 className="login-title">Smart Study Planner</h1>
 
         <div className="login-tabs">
