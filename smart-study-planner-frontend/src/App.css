@@ -329,6 +329,10 @@ body {
   width: 64px;
   height: 64px;
   margin: 0 auto 16px;
+  background-color: white;
+  border-radius: 12px;
+  padding: 8px;
+  box-sizing: content-box;
 }
 
 .login-title {
