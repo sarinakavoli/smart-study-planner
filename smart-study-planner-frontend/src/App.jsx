@@ -13,7 +13,8 @@ import {
   query,
   where,
 } from "firebase/firestore";
-import { db } from "./firebase";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import { db, auth } from "./firebase";
 
 function App() {
   const [tasks, setTasks] = useState([]);
@@ -31,13 +32,8 @@ function App() {
   const [draggedCategory, setDraggedCategory] = useState(null);
   const [dragOverCategory, setDragOverCategory] = useState(null);
   const [theme, setTheme] = useState(localStorage.getItem("theme") || "dark");
-  const [currentUser, setCurrentUser] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem("currentUser")) || null;
-    } catch {
-      return null;
-    }
-  });
+  const [currentUser, setCurrentUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [loading, setLoading] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
 
@@ -78,6 +74,14 @@ function App() {
   useEffect(() => {
     localStorage.setItem("theme", theme);
   }, [theme]);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      setCurrentUser(firebaseUser ?? null);
+      setAuthLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const loadTasks = async () => {
     try {
@@ -129,16 +133,17 @@ function App() {
     }
   };
 
-  const handleLogin = (user) => {
-    localStorage.setItem("currentUser", JSON.stringify(user));
-    setCurrentUser(user);
+  const handleLogin = () => {
     setTasks([]);
     setCategoriesData([]);
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("currentUser");
-    setCurrentUser(null);
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (err) {
+      console.error(err);
+    }
     setTasks([]);
     setCategoriesData([]);
   };
@@ -702,6 +707,10 @@ function App() {
       </div>
     </div>
   );
+
+  if (authLoading) {
+    return <div className={`app-shell ${theme}`} />;
+  }
 
   if (!currentUser) {
     return (
