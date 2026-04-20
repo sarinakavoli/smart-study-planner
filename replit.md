@@ -51,4 +51,11 @@ All API URLs use relative paths (`/api/...`) which Vite proxies to the backend.
 
 ## Database
 
-The Replit built-in PostgreSQL database is used. Spring Boot's `ddl-auto=update` auto-creates/updates the schema on startup.
+The Replit built-in PostgreSQL database is used. Schema is managed by **Flyway** (v11.14.1).
+
+- Migrations live in `smart-study-planner-backend/src/main/resources/db/migration/`
+- `spring.jpa.hibernate.ddl-auto=validate` — Hibernate validates the schema but never modifies it
+- Flyway runs before JPA initializes (ensured by `FlywayConfig` + `EntityManagerFactoryDependsOnPostProcessor`)
+- `baselineOnMigrate=true` / `baselineVersion=0` allows the first run on an existing DB
+- V1: initial schema (users, courses, tasks)
+- V2: dropped the orphaned `categories` table
