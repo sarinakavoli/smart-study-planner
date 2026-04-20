@@ -65,3 +65,7 @@ externalPort = 8080
 deploymentTarget = "vm"
 run = ["java", "-jar", "smart-study-planner-backend/target/smart-study-planner-0.0.1-SNAPSHOT.jar", "--server.port=5000"]
 build = ["sh", "smart-study-planner-backend/mvnw", "-f", "smart-study-planner-backend/pom.xml", "clean", "package", "-DskipTests"]
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 120000
