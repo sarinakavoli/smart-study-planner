@@ -1,8 +1,13 @@
 import { useState } from "react";
+import {
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+} from "firebase/auth";
+import { auth } from "./firebase";
 
 export default function Login({ onLogin }) {
   const [mode, setMode] = useState("login");
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -12,13 +17,13 @@ export default function Login({ onLogin }) {
   const switchMode = (newMode) => {
     setMode(newMode);
     setError("");
-    setUsername("");
+    setEmail("");
     setPassword("");
   };
 
   const validate = () => {
-    if (!username.trim()) return "Username is required.";
-    if (username.trim().length < 2) return "Username must be at least 2 characters.";
+    if (!email.trim()) return "Email is required.";
+    if (!email.includes("@")) return "Please enter a valid email.";
     if (!password) return "Password is required.";
     if (password.length < 8) return "Password must be at least 8 characters.";
     return null;
@@ -35,24 +40,37 @@ export default function Login({ onLogin }) {
     }
 
     setLoading(true);
-    const endpoint = isLogin ? "/api/auth/login" : "/api/auth/register";
+
     try {
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: username.trim(), password }),
-      });
+      let userCredential;
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.error || (isLogin ? "Login failed." : "Registration failed."));
-        return;
+      if (isLogin) {
+        userCredential = await signInWithEmailAndPassword(
+          auth,
+          email.trim(),
+          password,
+        );
+      } else {
+        userCredential = await createUserWithEmailAndPassword(
+          auth,
+          email.trim(),
+          password,
+        );
       }
 
-      onLogin(data);
-    } catch {
-      setError("Could not connect to server. Please try again.");
+      onLogin(userCredential.user);
+    } catch (error) {
+      if (error.code === "auth/invalid-credential") {
+        setError("Invalid email or password.");
+      } else if (error.code === "auth/email-already-in-use") {
+        setError("This email is already in use.");
+      } else if (error.code === "auth/weak-password") {
+        setError("Password should be at least 6 characters.");
+      } else if (error.code === "auth/invalid-email") {
+        setError("Please enter a valid email.");
+      } else {
+        setError(isLogin ? "Login failed." : "Registration failed.");
+      }
     } finally {
       setLoading(false);
     }
@@ -83,28 +101,42 @@ export default function Login({ onLogin }) {
 
         <form onSubmit={handleSubmit} className="login-form" noValidate>
           <div className="login-field">
-            <label htmlFor="username" className="login-label">Username</label>
+            <label htmlFor="email" className="login-label">
+              Email
+            </label>
             <input
-              id="username"
-              type="text"
-              className={`input-control login-input ${error && !username.trim() ? "input-error" : ""}`}
-              placeholder="Enter your username"
-              value={username}
-              onChange={(e) => { setUsername(e.target.value); setError(""); }}
+              id="email"
+              type="email"
+              className={`input-control login-input ${error && !email.trim() ? "input-error" : ""}`}
+              placeholder="Enter your email"
+              value={email}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                setError("");
+              }}
               autoFocus
-              autoComplete="username"
+              autoComplete="email"
             />
           </div>
 
           <div className="login-field">
-            <label htmlFor="password" className="login-label">Password</label>
+            <label htmlFor="password" className="login-label">
+              Password
+            </label>
             <input
               id="password"
               type="password"
               className={`input-control login-input ${error && !password ? "input-error" : ""}`}
-              placeholder={isLogin ? "Enter your password" : "Choose a password (min. 8 characters)"}
+              placeholder={
+                isLogin
+                  ? "Enter your password"
+                  : "Choose a password (min. 8 characters)"
+              }
               value={password}
-              onChange={(e) => { setPassword(e.target.value); setError(""); }}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                setError("");
+              }}
               autoComplete={isLogin ? "current-password" : "new-password"}
             />
           </div>
@@ -113,15 +145,19 @@ export default function Login({ onLogin }) {
 
           <button type="submit" className="login-btn" disabled={loading}>
             {loading
-              ? (isLogin ? "Signing in..." : "Creating account...")
-              : (isLogin ? "Sign In" : "Create Account")}
+              ? isLogin
+                ? "Signing in..."
+                : "Creating account..."
+              : isLogin
+                ? "Sign In"
+                : "Create Account"}
           </button>
         </form>
 
         <p className="login-hint">
           {isLogin
-            ? "Don't have an account? Click \"Create Account\" above."
-            : "Already have an account? Click \"Sign In\" above."}
+            ? 'Don\'t have an account? Click "Create Account" above.'
+            : 'Already have an account? Click "Sign In" above.'}
         </p>
       </div>
     </div>

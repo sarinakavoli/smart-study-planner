@@ -3,6 +3,17 @@ import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
 import "./App.css";
 import Login from "./Login";
+import {
+  collection,
+  getDocs,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  doc,
+  query,
+  where,
+} from "firebase/firestore";
+import { db } from "./firebase";
 
 function App() {
   const [tasks, setTasks] = useState([]);
@@ -21,7 +32,11 @@ function App() {
   const [dragOverCategory, setDragOverCategory] = useState(null);
   const [theme, setTheme] = useState(localStorage.getItem("theme") || "dark");
   const [currentUser, setCurrentUser] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("currentUser")) || null; } catch { return null; }
+    try {
+      return JSON.parse(localStorage.getItem("currentUser")) || null;
+    } catch {
+      return null;
+    }
   });
   const [loading, setLoading] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
@@ -67,29 +82,46 @@ function App() {
   const loadTasks = async () => {
     try {
       setError("");
-      const userParam = currentUser ? `?userId=${currentUser.id}` : "";
-      const response = await fetch(`/api/tasks${userParam}`, {
-        cache: "no-store",
-      });
 
-      if (!response.ok) throw new Error("Failed to fetch tasks");
-      const data = await response.json();
+      if (!currentUser?.uid) {
+        setTasks([]);
+        return;
+      }
+
+      const q = query(
+        collection(db, "tasks"),
+        where("userId", "==", currentUser.uid)
+      );
+
+      const snapshot = await getDocs(q);
+
+      const data = snapshot.docs.map((docSnap) => ({
+        id: docSnap.id,
+        ...docSnap.data(),
+      }));
+
       setTasks(data);
     } catch (err) {
       console.error(err);
-      setError("Could not connect to backend.");
+      setError("Could not load tasks.");
     }
   };
 
   const loadCategories = async () => {
     try {
-      const userParam = currentUser ? `?userId=${currentUser.id}` : "";
-      const response = await fetch(`/api/categories${userParam}`, {
-        cache: "no-store",
-      });
-
-      if (!response.ok) throw new Error("Failed to fetch categories");
-      const data = await response.json();
+      if (!currentUser?.uid) {
+        setCategoriesData([]);
+        return;
+      }
+      const q = query(
+        collection(db, "categories"),
+        where("userId", "==", currentUser.uid)
+      );
+      const snapshot = await getDocs(q);
+      const data = snapshot.docs.map((docSnap) => ({
+        id: docSnap.id,
+        ...docSnap.data(),
+      }));
       setCategoriesData(data);
     } catch (err) {
       console.error(err);
@@ -218,22 +250,12 @@ function App() {
       ? Math.max(...customCategories.map((c) => c.displayOrder ?? 0))
       : 3;
 
-    const response = await fetch("/api/categories", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        name: normalizedName,
-        color: "",
-        displayOrder: maxOrder + 1,
-        userId: currentUser?.id ?? null,
-      }),
+    await addDoc(collection(db, "categories"), {
+      name: normalizedName,
+      color: "",
+      displayOrder: maxOrder + 1,
+      userId: currentUser?.uid ?? null,
     });
-
-    if (!response.ok) {
-      throw new Error("Failed to create category");
-    }
 
     await loadCategories();
     return normalizedName;
@@ -267,33 +289,23 @@ function App() {
         finalCategory = await createCategoryInBackend(finalCategory);
       }
 
+      if (!currentUser?.uid) {
+        throw new Error("User not logged in");
+      }
+
       const payload = {
         title: newTask.title.trim(),
         dueDate: newTask.dueDate,
         status: newTask.status,
         description: "",
         category: finalCategory,
-        userId: currentUser?.id ?? null,
+        userId: currentUser.uid,
       };
 
-      const url = editingTaskId
-        ? `/api/tasks/${editingTaskId}`
-        : "/api/tasks";
-
-      const method = editingTaskId ? "PUT" : "POST";
-
-      const response = await fetch(url, {
-        method,
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        throw new Error(
-          editingTaskId ? "Failed to update task" : "Failed to create task"
-        );
+      if (editingTaskId) {
+        await updateDoc(doc(db, "tasks", editingTaskId), payload);
+      } else {
+        await addDoc(collection(db, "tasks"), payload);
       }
 
       resetForm();
@@ -353,20 +365,7 @@ function App() {
   const markAsDone = async (taskId) => {
     try {
       setError("");
-
-      const response = await fetch(
-        `/api/tasks/${taskId}/status`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ status: "DONE" }),
-        }
-      );
-
-      if (!response.ok) throw new Error("Failed to update task.");
-
+      await updateDoc(doc(db, "tasks", taskId), { status: "DONE" });
       loadTasks();
     } catch (err) {
       console.error(err);
@@ -380,13 +379,7 @@ function App() {
 
     try {
       setError("");
-
-      const response = await fetch(`/api/tasks/${taskId}`, {
-        method: "DELETE",
-      });
-
-      if (!response.ok) throw new Error("Failed to delete task.");
-
+      await deleteDoc(doc(db, "tasks", taskId));
       loadTasks();
     } catch (err) {
       console.error(err);
@@ -405,24 +398,21 @@ function App() {
     try {
       setError("");
 
-      await fetch("/api/tasks/category/move-to-other", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ oldCategory: categoryName, userId: currentUser?.id ?? null }),
-      });
+      const tasksQ = query(
+        collection(db, "tasks"),
+        where("category", "==", categoryName),
+        where("userId", "==", currentUser?.uid ?? null)
+      );
+      const tasksSnapshot = await getDocs(tasksQ);
+      await Promise.all(
+        tasksSnapshot.docs.map((taskDoc) =>
+          updateDoc(doc(db, "tasks", taskDoc.id), { category: "OTHER" })
+        )
+      );
 
       const category = getCategoryByName(categoryName);
       if (category?.id && !String(category.id).startsWith("fixed-")) {
-        const response = await fetch(
-          `/api/categories/${category.id}`,
-          {
-            method: "DELETE",
-          }
-        );
-
-        if (!response.ok) throw new Error("Failed to delete category.");
+        await deleteDoc(doc(db, "categories", category.id));
       }
 
       if (activeCategory === categoryName) {
@@ -449,36 +439,18 @@ function App() {
           ? Math.max(...customCategories.map((c) => c.displayOrder ?? 0))
           : 3;
 
-        const createRes = await fetch("/api/categories", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: categoryName,
-            color: color || "",
-            displayOrder: maxOrder + 1,
-            userId: currentUser?.id ?? null,
-          }),
+        await addDoc(collection(db, "categories"), {
+          name: categoryName,
+          color: color || "",
+          displayOrder: maxOrder + 1,
+          userId: currentUser?.uid ?? null,
         });
-
-        if (!createRes.ok) throw new Error("Failed to create category in backend.");
 
         await loadCategories();
         return;
       }
 
-      const response = await fetch(
-        `/api/categories/${category.id}/color`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ color: color || "" }),
-        }
-      );
-
-      if (!response.ok) throw new Error("Failed to update color.");
-
+      await updateDoc(doc(db, "categories", category.id), { color: color || "" });
       await loadCategories();
     } catch (err) {
       console.error(err);
@@ -490,12 +462,8 @@ function App() {
     try {
       await Promise.all(
         orderedCustomCategories.map((category, index) =>
-          fetch(`/api/categories/${category.id}/order`, {
-            method: "PUT",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ displayOrder: index + 4 }),
+          updateDoc(doc(db, "categories", category.id), {
+            displayOrder: index + 4,
           })
         )
       );
@@ -748,7 +716,7 @@ function App() {
       <div className="sidebar">
         <h1 className="sidebar-title">Inbox</h1>
         <div className="user-bar">
-          <span className="user-name">{currentUser.name}</span>
+          <span className="user-name">{currentUser.email}</span>
           <button className="logout-btn" onClick={handleLogout}>Sign out</button>
         </div>
 
