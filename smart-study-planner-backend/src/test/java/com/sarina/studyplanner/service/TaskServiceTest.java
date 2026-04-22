@@ -284,23 +284,23 @@ class TaskServiceTest {
     }
 
     @Test
-    void deleteTask_whenTaskExists_callsDeleteById() {
-        when(taskRepository.existsById(5L)).thenReturn(true);
+    void deleteTask_whenTaskExists_deletesEntity() {
+        when(taskRepository.findById(5L)).thenReturn(Optional.of(task));
 
         taskService.deleteTask(5L);
 
-        verify(taskRepository).deleteById(5L);
+        verify(taskRepository).delete(task);
     }
 
     @Test
     void deleteTask_whenTaskDoesNotExist_throwsTaskNotFoundException() {
-        when(taskRepository.existsById(99L)).thenReturn(false);
+        when(taskRepository.findById(99L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> taskService.deleteTask(99L))
                 .isInstanceOf(TaskNotFoundException.class)
                 .hasMessageContaining("Task not found");
 
-        verify(taskRepository, never()).deleteById(any());
+        verify(taskRepository, never()).delete(any());
     }
 
     @Test

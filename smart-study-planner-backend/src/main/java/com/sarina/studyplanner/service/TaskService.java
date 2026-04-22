@@ -106,10 +106,9 @@ public class TaskService {
     }
 
     public void deleteTask(Long taskId) {
-        if (!taskRepository.existsById(taskId)) {
-            throw new TaskNotFoundException(taskId);
-        }
-        taskRepository.deleteById(taskId);
+        Task task = taskRepository.findById(taskId)
+                .orElseThrow(() -> new TaskNotFoundException(taskId));
+        taskRepository.delete(task);
     }
 
     public void moveCategoryToOther(String oldCategory, Long userId) {
