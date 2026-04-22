@@ -44,7 +44,8 @@ public class GenerativeController {
         if (!generativeService.isConfigured()) {
             return ResponseEntity.status(503)
                     .body(Map.of("error",
-                            "AI features are not enabled. GEMINI_API_KEY is not configured."));
+                            "AI features are not enabled. " +
+                            "GCP_PROJECT_ID and GCP_SERVICE_ACCOUNT_JSON must be configured."));
         }
 
         try {

@@ -1,6 +1,5 @@
 package com.sarina.studyplanner.service;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -13,9 +12,12 @@ import java.time.Duration;
 /**
  * Sends prompts to the Google Gemini API on the server side.
  *
- * The API key is injected from the GEMINI_API_KEY environment variable (a Replit
- * Secret) via application.properties.  It never leaves this class and is never
- * serialised into any HTTP response returned to the browser.
+ * The Gemini API key is fetched from Google Cloud Secret Manager via
+ * SecretManagerService — it is never read from an environment variable,
+ * never hardcoded, and never included in any HTTP response to the browser.
+ *
+ * The key is cached in memory after the first successful fetch so that
+ * Secret Manager is not called on every request.
  */
 @Service
 public class GenerativeService {
@@ -23,22 +25,42 @@ public class GenerativeService {
     private static final String GEMINI_API_URL =
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
 
-    private final String apiKey;
+    private static final String GEMINI_SECRET_NAME = "GEMINI_API_KEY";
+
+    private final SecretManagerService secretManagerService;
     private final HttpClient httpClient;
 
-    public GenerativeService(@Value("${gemini.api.key:}") String apiKey) {
-        this.apiKey = apiKey;
+    /**
+     * Cached copy of the API key.  Marked volatile so that if two threads
+     * call generate() simultaneously before the key is loaded, each sees the
+     * most recently written value without synchronisation overhead.
+     */
+    private volatile String cachedApiKey;
+
+    public GenerativeService(SecretManagerService secretManagerService) {
+        this.secretManagerService = secretManagerService;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
     }
 
     /**
-     * Returns true if the Gemini API key has been configured.
-     * Use this to give callers a clear error before attempting a request.
+     * Returns true when Secret Manager credentials and the GCP project ID
+     * are both present in the environment.
      */
     public boolean isConfigured() {
-        return apiKey != null && !apiKey.isBlank();
+        return secretManagerService.isConfigured();
+    }
+
+    /**
+     * Returns the cached API key, fetching it from Secret Manager on the
+     * first call.
+     */
+    private String resolveApiKey() throws IOException {
+        if (cachedApiKey == null || cachedApiKey.isBlank()) {
+            cachedApiKey = secretManagerService.getSecret(GEMINI_SECRET_NAME);
+        }
+        return cachedApiKey;
     }
 
     /**
@@ -46,15 +68,17 @@ public class GenerativeService {
      *
      * @param prompt the user's prompt — validated and sanitised by the caller
      * @return the generated text from Gemini
-     * @throws IllegalStateException if the API key is not configured
-     * @throws IOException           if the HTTP request fails
-     * @throws InterruptedException  if the request is interrupted
+     * @throws IllegalStateException if Secret Manager is not configured
+     * @throws IOException           if the Secret Manager or Gemini API call fails
+     * @throws InterruptedException  if the HTTP request is interrupted
      */
     public String generate(String prompt) throws IOException, InterruptedException {
         if (!isConfigured()) {
             throw new IllegalStateException(
-                    "GEMINI_API_KEY is not set. Add it as a Replit Secret.");
+                    "Google Cloud Secret Manager is not configured.");
         }
+
+        String apiKey = resolveApiKey();
 
         String requestBody = buildRequestBody(prompt);
 
