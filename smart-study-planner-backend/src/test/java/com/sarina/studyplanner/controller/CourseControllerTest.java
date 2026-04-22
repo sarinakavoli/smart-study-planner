@@ -3,6 +3,7 @@ package com.sarina.studyplanner.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sarina.studyplanner.dto.CourseRequest;
 import com.sarina.studyplanner.entity.Course;
+import com.sarina.studyplanner.exception.CourseNotFoundException;
 import com.sarina.studyplanner.exception.UserNotFoundException;
 import com.sarina.studyplanner.service.CourseService;
 import org.junit.jupiter.api.BeforeEach;
@@ -19,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -135,5 +137,15 @@ class CourseControllerTest {
                         .content(objectMapper.writeValueAsString(body)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error").value("User not found with id: 99"));
+    }
+
+    @Test
+    void getCourseByUserIdAndCourseId_whenCourseNotFound_returns404WithErrorMessage() throws Exception {
+        when(courseService.getCourseByUserIdAndCourseId(eq(1L), eq(99L)))
+                .thenThrow(new CourseNotFoundException(99L));
+
+        mockMvc.perform(get("/api/users/1/courses/99"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("Course not found with id: 99"));
     }
 }

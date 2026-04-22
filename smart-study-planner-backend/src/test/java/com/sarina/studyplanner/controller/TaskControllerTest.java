@@ -2,6 +2,7 @@ package com.sarina.studyplanner.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sarina.studyplanner.entity.Task;
+import com.sarina.studyplanner.exception.CourseNotFoundException;
 import com.sarina.studyplanner.exception.TaskNotFoundException;
 import com.sarina.studyplanner.exception.UserNotFoundException;
 import com.sarina.studyplanner.service.TaskService;
@@ -289,5 +290,33 @@ class TaskControllerTest {
                         .content(objectMapper.writeValueAsString(body)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("Title is required"));
+    }
+
+    @Test
+    void createTask_whenCourseNotFound_returns404WithErrorBody() throws Exception {
+        when(taskService.createTask(any()))
+                .thenThrow(new CourseNotFoundException(42L));
+
+        Map<String, Object> body = Map.of("title", "Task", "courseId", 42);
+
+        mockMvc.perform(post("/api/tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("Course not found with id: 42"));
+    }
+
+    @Test
+    void updateTask_whenCourseNotFound_returns404WithErrorBody() throws Exception {
+        when(taskService.updateTask(eq(1L), any()))
+                .thenThrow(new CourseNotFoundException(42L));
+
+        Map<String, Object> body = Map.of("title", "Updated title", "courseId", 42);
+
+        mockMvc.perform(put("/api/tasks/1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("Course not found with id: 42"));
     }
 }
