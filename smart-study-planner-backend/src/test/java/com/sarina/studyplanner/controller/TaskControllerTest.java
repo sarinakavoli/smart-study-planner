@@ -185,6 +185,34 @@ class TaskControllerTest {
     }
 
     @Test
+    void moveCategoryToOther_withBlankCategory_returns400WithErrorBody() throws Exception {
+        doThrow(new IllegalArgumentException("Category is required"))
+                .when(taskService).moveCategoryToOther(eq("   "), isNull());
+
+        Map<String, Object> body = Map.of("oldCategory", "   ");
+
+        mockMvc.perform(put("/api/tasks/category/move-to-other")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("Category is required"));
+    }
+
+    @Test
+    void moveCategoryToOther_withMissingCategory_returns400WithErrorBody() throws Exception {
+        doThrow(new IllegalArgumentException("Category is required"))
+                .when(taskService).moveCategoryToOther(isNull(), isNull());
+
+        Map<String, Object> body = Map.of();
+
+        mockMvc.perform(put("/api/tasks/category/move-to-other")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("Category is required"));
+    }
+
+    @Test
     void updateTaskStatus_whenTaskNotFound_returns404WithErrorBody() throws Exception {
         when(taskService.updateTaskStatus(eq(99L), any()))
                 .thenThrow(new TaskNotFoundException(99L));
