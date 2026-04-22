@@ -118,6 +118,9 @@
                                 <configuration>
                                         <groups>${groups}</groups>
                                         <excludedGroups>${excludedGroups}</excludedGroups>
+                                        <!-- Kill the forked JVM after 10 min; the @Timeout on each
+                                             test method fires at 5 min, so this is a safety net. -->
+                                        <forkedProcessTimeoutInSeconds>600</forkedProcessTimeoutInSeconds>
                                 </configuration>
                         </plugin>
                         <plugin>
