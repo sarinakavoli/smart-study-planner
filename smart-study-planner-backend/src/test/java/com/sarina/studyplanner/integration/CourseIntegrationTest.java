@@ -15,8 +15,10 @@ import org.springframework.web.context.WebApplicationContext;
 
 import java.util.Map;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest
@@ -129,5 +131,76 @@ class CourseIntegrationTest {
         mockMvc.perform(get("/api/users/" + userId + "/courses/999999"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error").value("Course not found with id: 999999"));
+    }
+
+    @Test
+    void updateCourseForNonexistentUser_returns404WithErrorMessage() throws Exception {
+        Map<String, Object> updateBody = Map.of(
+                "courseName", "Updated Name",
+                "courseCode", "UPD101"
+        );
+
+        mockMvc.perform(put("/api/users/999999/courses/1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateBody)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("User not found with id: 999999"));
+    }
+
+    @Test
+    void deleteCourseForNonexistentUser_returns404WithErrorMessage() throws Exception {
+        mockMvc.perform(delete("/api/users/999999/courses/1"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("User not found with id: 999999"));
+    }
+
+    @Test
+    void updateCourse_persistsChanges() throws Exception {
+        Map<String, Object> courseBody = Map.of(
+                "courseName", "Original Name",
+                "courseCode", "ORIG101",
+                "userId", userId
+        );
+        MvcResult courseResult = mockMvc.perform(post("/api/courses")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(courseBody)))
+                .andExpect(status().isOk())
+                .andReturn();
+        Map<?, ?> courseResponse = objectMapper.readValue(courseResult.getResponse().getContentAsString(), Map.class);
+        Long courseId = ((Number) courseResponse.get("id")).longValue();
+
+        Map<String, Object> updateBody = Map.of(
+                "courseName", "Updated Name",
+                "courseCode", "UPD101"
+        );
+
+        mockMvc.perform(put("/api/users/" + userId + "/courses/" + courseId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateBody)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.courseName").value("Updated Name"))
+                .andExpect(jsonPath("$.courseCode").value("UPD101"));
+    }
+
+    @Test
+    void deleteCourse_removesFromDatabase() throws Exception {
+        Map<String, Object> courseBody = Map.of(
+                "courseName", "To Be Deleted",
+                "courseCode", "DEL101",
+                "userId", userId
+        );
+        MvcResult courseResult = mockMvc.perform(post("/api/courses")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(courseBody)))
+                .andExpect(status().isOk())
+                .andReturn();
+        Map<?, ?> courseResponse = objectMapper.readValue(courseResult.getResponse().getContentAsString(), Map.class);
+        Long courseId = ((Number) courseResponse.get("id")).longValue();
+
+        mockMvc.perform(delete("/api/users/" + userId + "/courses/" + courseId))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/users/" + userId + "/courses/" + courseId))
+                .andExpect(status().isNotFound());
     }
 }

@@ -53,4 +53,24 @@ public class CourseService {
         return courseRepository.findByIdAndUserId(courseId, userId)
                 .orElseThrow(() -> new CourseNotFoundException(courseId));
     }
+
+    public Course updateCourse(Long userId, Long courseId, CourseRequest courseRequest) {
+        if (!userRepository.existsById(userId)) {
+            throw new UserNotFoundException(userId);
+        }
+        Course course = courseRepository.findByIdAndUserId(courseId, userId)
+                .orElseThrow(() -> new CourseNotFoundException(courseId));
+        course.setCourseName(courseRequest.getCourseName());
+        course.setCourseCode(courseRequest.getCourseCode());
+        return courseRepository.save(course);
+    }
+
+    public void deleteCourse(Long userId, Long courseId) {
+        if (!userRepository.existsById(userId)) {
+            throw new UserNotFoundException(userId);
+        }
+        Course course = courseRepository.findByIdAndUserId(courseId, userId)
+                .orElseThrow(() -> new CourseNotFoundException(courseId));
+        courseRepository.delete(course);
+    }
 }
