@@ -39,8 +39,13 @@ public class SecretManagerService {
     private final String serviceAccountJson;
 
     public SecretManagerService(@Value("${gcp.project.id:}") String projectId) {
+        this(projectId, System.getenv("GCP_SERVICE_ACCOUNT_JSON"));
+    }
+
+    /** Package-private constructor used by unit tests to supply both values directly. */
+    SecretManagerService(String projectId, String serviceAccountJson) {
         this.projectId          = projectId;
-        this.serviceAccountJson = System.getenv("GCP_SERVICE_ACCOUNT_JSON");
+        this.serviceAccountJson = serviceAccountJson;
 
         if (isConfigured()) {
             log.info("SecretManagerService: configured (project: {}). "
@@ -80,22 +85,41 @@ public class SecretManagerService {
     public String getSecret(String secretId) throws IOException {
         // Parse the service account JSON into a credentials object.
         // createScoped() tells Google which APIs this credential is allowed to call.
-        GoogleCredentials credentials = GoogleCredentials
-                .fromStream(new ByteArrayInputStream(
-                        serviceAccountJson.getBytes(StandardCharsets.UTF_8)))
-                .createScoped(Collections.singletonList(
-                        "https://www.googleapis.com/auth/cloud-platform"));
+        GoogleCredentials credentials = buildCredentials();
 
         SecretManagerServiceSettings settings = SecretManagerServiceSettings.newBuilder()
                 .setCredentialsProvider(FixedCredentialsProvider.create(credentials))
                 .build();
 
-        try (SecretManagerServiceClient client = SecretManagerServiceClient.create(settings)) {
+        try (SecretManagerServiceClient client = createClient(settings)) {
             SecretVersionName versionName =
                     SecretVersionName.of(projectId, secretId, "latest");
             AccessSecretVersionResponse response = client.accessSecretVersion(versionName);
             return response.getPayload().getData().toStringUtf8();
         }
+    }
+
+    /**
+     * Parses the service account JSON into scoped {@link GoogleCredentials}.
+     * Extracted as a protected method so unit tests can override it and avoid real credential
+     * parsing.
+     */
+    protected GoogleCredentials buildCredentials() throws IOException {
+        return GoogleCredentials
+                .fromStream(new ByteArrayInputStream(
+                        serviceAccountJson.getBytes(StandardCharsets.UTF_8)))
+                .createScoped(Collections.singletonList(
+                        "https://www.googleapis.com/auth/cloud-platform"));
+    }
+
+    /**
+     * Creates a {@link SecretManagerServiceClient} from the given settings.
+     * Extracted as a protected method so unit tests can override it and inject a mock client
+     * without making real GCP calls.
+     */
+    protected SecretManagerServiceClient createClient(SecretManagerServiceSettings settings)
+            throws IOException {
+        return SecretManagerServiceClient.create(settings);
     }
 
     private static boolean isPresent(String value) {

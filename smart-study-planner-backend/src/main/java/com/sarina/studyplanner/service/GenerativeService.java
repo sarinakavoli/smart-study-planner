@@ -31,10 +31,15 @@ public class GenerativeService {
     private volatile String cachedApiKey;
 
     public GenerativeService(SecretManagerService secretManagerService) {
-        this.secretManagerService = secretManagerService;
-        this.httpClient = HttpClient.newBuilder()
+        this(secretManagerService, HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
-                .build();
+                .build());
+    }
+
+    /** Package-private constructor used by unit tests to inject a mock {@link HttpClient}. */
+    GenerativeService(SecretManagerService secretManagerService, HttpClient httpClient) {
+        this.secretManagerService = secretManagerService;
+        this.httpClient = httpClient;
     }
 
     /** Returns true when Secret Manager has all required credentials. */
