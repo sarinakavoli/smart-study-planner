@@ -3,6 +3,7 @@ package com.sarina.studyplanner.service;
 import com.sarina.studyplanner.dto.TaskRequest;
 import com.sarina.studyplanner.entity.Task;
 import com.sarina.studyplanner.entity.User;
+import com.sarina.studyplanner.exception.CourseNotFoundException;
 import com.sarina.studyplanner.exception.TaskNotFoundException;
 import com.sarina.studyplanner.exception.UserNotFoundException;
 import com.sarina.studyplanner.repository.CourseRep;
@@ -41,8 +42,8 @@ public class TaskService {
         }
 
         if (taskRequest.getCourseId() != null) {
-            courseRepository.findById(taskRequest.getCourseId())
-                    .ifPresent(task::setCourse);
+            task.setCourse(courseRepository.findById(taskRequest.getCourseId())
+                    .orElseThrow(() -> new CourseNotFoundException(taskRequest.getCourseId())));
         }
 
         return taskRepository.save(task);
@@ -91,8 +92,8 @@ public class TaskService {
         task.setCategory(taskRequest.getCategory());
 
         if (taskRequest.getCourseId() != null) {
-            courseRepository.findById(taskRequest.getCourseId())
-                    .ifPresent(task::setCourse);
+            task.setCourse(courseRepository.findById(taskRequest.getCourseId())
+                    .orElseThrow(() -> new CourseNotFoundException(taskRequest.getCourseId())));
         }
 
         return taskRepository.save(task);

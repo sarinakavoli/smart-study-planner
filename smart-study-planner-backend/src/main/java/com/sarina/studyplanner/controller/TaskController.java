@@ -2,6 +2,7 @@ package com.sarina.studyplanner.controller;
 
 import com.sarina.studyplanner.dto.TaskRequest;
 import com.sarina.studyplanner.entity.Task;
+import com.sarina.studyplanner.exception.CourseNotFoundException;
 import com.sarina.studyplanner.exception.TaskNotFoundException;
 import com.sarina.studyplanner.exception.UserNotFoundException;
 import com.sarina.studyplanner.service.TaskService;
@@ -27,6 +28,8 @@ public class TaskController {
             Task task = taskService.createTask(taskRequest);
             return ResponseEntity.ok(task);
         } catch (UserNotFoundException e) {
+            return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
+        } catch (CourseNotFoundException e) {
             return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
         }
     }
@@ -69,6 +72,8 @@ public class TaskController {
             Task task = taskService.updateTask(taskId, taskRequest);
             return ResponseEntity.ok(task);
         } catch (TaskNotFoundException e) {
+            return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
+        } catch (CourseNotFoundException e) {
             return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
         }
     }
