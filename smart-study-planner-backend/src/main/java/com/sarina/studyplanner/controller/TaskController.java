@@ -74,11 +74,15 @@ public class TaskController {
     }
 
     @PutMapping("/tasks/category/move-to-other")
-    public String moveCategoryToOther(@RequestBody Map<String, Object> body) {
-        String oldCategory = (String) body.get("oldCategory");
-        Long userId = body.get("userId") != null ? Long.valueOf(body.get("userId").toString()) : null;
-        taskService.moveCategoryToOther(oldCategory, userId);
-        return "Category moved to OTHER successfully";
+    public ResponseEntity<?> moveCategoryToOther(@RequestBody Map<String, Object> body) {
+        try {
+            String oldCategory = (String) body.get("oldCategory");
+            Long userId = body.get("userId") != null ? Long.valueOf(body.get("userId").toString()) : null;
+            taskService.moveCategoryToOther(oldCategory, userId);
+            return ResponseEntity.ok("Category moved to OTHER successfully");
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
     }
 
     @DeleteMapping("/tasks/{taskId}")

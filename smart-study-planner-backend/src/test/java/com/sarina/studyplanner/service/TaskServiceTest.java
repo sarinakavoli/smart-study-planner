@@ -284,7 +284,7 @@ class TaskServiceTest {
     @Test
     void moveCategoryToOther_withBlankCategory_throwsException() {
         assertThatThrownBy(() -> taskService.moveCategoryToOther("", 1L))
-                .isInstanceOf(RuntimeException.class)
+                .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Category is required");
 
         verify(taskRepository, never()).saveAll(any());
@@ -293,7 +293,7 @@ class TaskServiceTest {
     @Test
     void moveCategoryToOther_withNullCategory_throwsException() {
         assertThatThrownBy(() -> taskService.moveCategoryToOther(null, 1L))
-                .isInstanceOf(RuntimeException.class)
+                .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Category is required");
     }
 }

@@ -104,7 +104,7 @@ public class TaskService {
 
     public void moveCategoryToOther(String oldCategory, Long userId) {
         if (oldCategory == null || oldCategory.isBlank()) {
-            throw new RuntimeException("Category is required");
+            throw new IllegalArgumentException("Category is required");
         }
 
         List<Task> tasks = userId != null
