@@ -104,3 +104,4 @@ jobs:
         with:
           name: frontend-dist
           path: smart-study-planner-frontend/dist/
+          retention-days: 7
