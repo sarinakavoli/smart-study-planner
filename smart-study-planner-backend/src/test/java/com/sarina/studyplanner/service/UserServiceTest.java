@@ -5,9 +5,9 @@ import com.sarina.studyplanner.repository.UserRep;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 import java.util.List;
 import java.util.Optional;
@@ -23,14 +23,17 @@ class UserServiceTest {
     @Mock
     private UserRep userRepository;
 
-    @InjectMocks
+    private BCryptPasswordEncoder passwordEncoder;
     private UserService userService;
 
     private User existingUser;
 
     @BeforeEach
     void setUp() {
-        existingUser = new User("alice", "alice@example.com", "password123");
+        passwordEncoder = new BCryptPasswordEncoder();
+        userService = new UserService(userRepository, passwordEncoder);
+        String hashedPassword = passwordEncoder.encode("password123");
+        existingUser = new User("alice", "alice@example.com", hashedPassword);
     }
 
     @Test
@@ -73,12 +76,12 @@ class UserServiceTest {
     @Test
     void register_withValidData_savesAndReturnsUser() {
         when(userRepository.findByName("bob")).thenReturn(Optional.empty());
-        User savedUser = new User("bob", "", "securepass");
-        when(userRepository.save(any(User.class))).thenReturn(savedUser);
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
 
         User result = userService.register("bob", "securepass");
 
         assertThat(result.getName()).isEqualTo("bob");
+        assertThat(passwordEncoder.matches("securepass", result.getPassword())).isTrue();
         verify(userRepository).save(any(User.class));
     }
 
@@ -120,13 +123,13 @@ class UserServiceTest {
     }
 
     @Test
-    void createUser_delegatesToRepository() {
+    void createUser_hashesPasswordAndDelegatesToRepository() {
         User user = new User("carol", "carol@example.com", "pass1234");
         when(userRepository.save(user)).thenReturn(user);
 
         User result = userService.createUser(user);
 
-        assertThat(result).isEqualTo(user);
+        assertThat(passwordEncoder.matches("pass1234", result.getPassword())).isTrue();
         verify(userRepository).save(user);
     }
 

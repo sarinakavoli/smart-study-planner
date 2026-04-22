@@ -3,6 +3,7 @@ package com.sarina.studyplanner.service;
 import java.util.List;
 import java.util.Optional;
 
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import com.sarina.studyplanner.entity.User;
@@ -12,9 +13,11 @@ import com.sarina.studyplanner.repository.UserRep;
 public class UserService {
 
     private final UserRep userRepository;
+    private final BCryptPasswordEncoder passwordEncoder;
 
-    public UserService(UserRep userRepository) {
+    public UserService(UserRep userRepository, BCryptPasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
     }
 
     public User login(String name, String password) {
@@ -24,7 +27,7 @@ public class UserService {
             throw new RuntimeException("No account found with that username.");
         }
         User user = existing.get();
-        if (!password.equals(user.getPassword())) {
+        if (!passwordEncoder.matches(password, user.getPassword())) {
             throw new RuntimeException("Incorrect password.");
         }
         return user;
@@ -40,12 +43,15 @@ public class UserService {
         }
         User newUser = new User();
         newUser.setName(normalized);
-        newUser.setPassword(password);
+        newUser.setPassword(passwordEncoder.encode(password));
         newUser.setEmail("");
         return userRepository.save(newUser);
     }
 
     public User createUser(User user) {
+        if (user.getPassword() != null) {
+            user.setPassword(passwordEncoder.encode(user.getPassword()));
+        }
         return userRepository.save(user);
     }
 
