@@ -63,9 +63,10 @@ public class UserService {
     }
 
     public User createUser(User user) {
-        if (user.getPassword() != null) {
-            user.setPassword(passwordEncoder.encode(user.getPassword()));
+        if (user.getPassword() == null || user.getPassword().length() < 8) {
+            throw new RuntimeException("Password must be at least 8 characters.");
         }
+        user.setPassword(passwordEncoder.encode(user.getPassword()));
         return userRepository.save(user);
     }
 
