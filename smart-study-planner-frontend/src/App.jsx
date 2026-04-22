@@ -106,25 +106,28 @@ function App() {
     };
   });
 
-  // Temporary: expose loadOverdueTasks on window so you can trigger it once
-  // from the browser console to get the Firestore missing-index error + link.
-  // Remove this block after you have deployed the index.
-  useEffect(() => {
-    window.__triggerOverdueQuery = async (category = "Math", status = "PENDING", days = 0) => {
-      if (!currentUser?.uid) {
-        console.warn("__triggerOverdueQuery: no user is logged in — log in first.");
-        return;
+  // Temporary: button to trigger loadOverdueTasks so Firestore shows the
+  // missing-index error with a one-click creation link.
+  // Remove this block + the banner in the JSX after the index is deployed.
+  const [indexTestMsg, setIndexTestMsg] = useState("");
+  const [indexCreateUrl, setIndexCreateUrl] = useState("");
+  const triggerOverdueQuery = async () => {
+    setIndexTestMsg("Running query…");
+    setIndexCreateUrl("");
+    try {
+      const results = await loadOverdueTasks(currentUser.uid, "Math", "PENDING", 0);
+      setIndexTestMsg(`✓ Index is deployed and working! ${results.length} result(s) returned.`);
+    } catch (err) {
+      // Firestore puts the index-creation URL inside the error message.
+      const urlMatch = err.message.match(/https:\/\/console\.firebase\.google\.com[^\s]+/);
+      if (urlMatch) {
+        setIndexCreateUrl(urlMatch[0]);
+        setIndexTestMsg("Index missing — click the link to create it automatically:");
+      } else {
+        setIndexTestMsg(`Error: ${err.message}`);
       }
-      console.log(`Running loadOverdueTasks for uid=${currentUser.uid}, category=${category}, status=${status}, overdueByDays=${days}`);
-      try {
-        const results = await loadOverdueTasks(currentUser.uid, category, status, days);
-        console.log("Results:", results);
-      } catch (err) {
-        console.error("Firestore error (expected before index is deployed):", err);
-      }
-    };
-    return () => { delete window.__triggerOverdueQuery; };
-  }, [currentUser]);
+    }
+  };
 
   const loadTasks = async () => {
     try {
@@ -1295,6 +1298,24 @@ function App() {
 
   return (
     <div className={`app-shell ${theme}`}>
+
+      {/* ── TEMPORARY: remove after Firestore index is deployed ── */}
+      <div style={{position:"fixed",top:0,left:0,right:0,zIndex:9999,background:"#1e3a5f",color:"#fff",padding:"6px 12px",fontSize:"13px",display:"flex",alignItems:"center",gap:"10px",flexWrap:"wrap"}}>
+        <strong>Index test:</strong>
+        <button onClick={triggerOverdueQuery} style={{background:"#f59e0b",border:"none",borderRadius:"4px",padding:"3px 10px",cursor:"pointer",fontWeight:"bold"}}>
+          Trigger overdue query
+        </button>
+        {indexTestMsg && <span>{indexTestMsg}</span>}
+        {indexCreateUrl && (
+          <a href={indexCreateUrl} target="_blank" rel="noreferrer"
+            style={{background:"#22c55e",color:"#fff",padding:"3px 10px",borderRadius:"4px",fontWeight:"bold",textDecoration:"none"}}>
+            → Create index in Firebase Console
+          </a>
+        )}
+        <span style={{marginLeft:"auto",opacity:0.6,fontSize:"11px"}}>Remove this bar after index is deployed</span>
+      </div>
+      {/* ── END TEMPORARY ── */}
+
       <div className="sidebar">
         <h1 className="sidebar-title">Inbox</h1>
         <div className="user-bar">
