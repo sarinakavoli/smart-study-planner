@@ -1,0 +1,2 @@
+-- H2-compatible stub: functional indexes not supported in H2.
+-- The unique email constraint is enforced in application logic.

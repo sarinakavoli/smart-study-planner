@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -32,6 +33,7 @@ class CourseIntegrationTest {
     private MockMvc mockMvc;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private Long userId;
+    private MockHttpSession userSession;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -46,6 +48,7 @@ class CourseIntegrationTest {
                 .andReturn();
         Map<?, ?> response = objectMapper.readValue(result.getResponse().getContentAsString(), Map.class);
         userId = ((Number) response.get("id")).longValue();
+        userSession = (MockHttpSession) result.getRequest().getSession();
     }
 
     @Test
@@ -135,6 +138,9 @@ class CourseIntegrationTest {
 
     @Test
     void updateCourseForNonexistentUser_returns404WithErrorMessage() throws Exception {
+        MockHttpSession session999 = new MockHttpSession();
+        session999.setAttribute("userId", 999999L);
+
         Map<String, Object> updateBody = Map.of(
                 "courseName", "Updated Name",
                 "courseCode", "UPD101"
@@ -142,6 +148,7 @@ class CourseIntegrationTest {
 
         mockMvc.perform(put("/api/users/999999/courses/1")
                         .contentType(MediaType.APPLICATION_JSON)
+                        .session(session999)
                         .content(objectMapper.writeValueAsString(updateBody)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error").value("User not found with id: 999999"));
@@ -149,7 +156,11 @@ class CourseIntegrationTest {
 
     @Test
     void deleteCourseForNonexistentUser_returns404WithErrorMessage() throws Exception {
-        mockMvc.perform(delete("/api/users/999999/courses/1"))
+        MockHttpSession session999 = new MockHttpSession();
+        session999.setAttribute("userId", 999999L);
+
+        mockMvc.perform(delete("/api/users/999999/courses/1")
+                        .session(session999))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error").value("User not found with id: 999999"));
     }
@@ -176,6 +187,7 @@ class CourseIntegrationTest {
 
         mockMvc.perform(put("/api/users/" + userId + "/courses/" + courseId)
                         .contentType(MediaType.APPLICATION_JSON)
+                        .session(userSession)
                         .content(objectMapper.writeValueAsString(updateBody)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.courseName").value("Updated Name"))
@@ -197,10 +209,78 @@ class CourseIntegrationTest {
         Map<?, ?> courseResponse = objectMapper.readValue(courseResult.getResponse().getContentAsString(), Map.class);
         Long courseId = ((Number) courseResponse.get("id")).longValue();
 
-        mockMvc.perform(delete("/api/users/" + userId + "/courses/" + courseId))
+        mockMvc.perform(delete("/api/users/" + userId + "/courses/" + courseId)
+                        .session(userSession))
                 .andExpect(status().isNoContent());
 
         mockMvc.perform(get("/api/users/" + userId + "/courses/" + courseId))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void updateCourseByDifferentUser_returns403() throws Exception {
+        String otherUsername = "otheruser_" + System.nanoTime();
+        Map<String, String> registerBody = Map.of("username", otherUsername, "password", "testpass99");
+        MvcResult otherResult = mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(registerBody)))
+                .andExpect(status().isOk())
+                .andReturn();
+        MockHttpSession otherSession = (MockHttpSession) otherResult.getRequest().getSession();
+
+        Map<String, Object> courseBody = Map.of(
+                "courseName", "Owner Course",
+                "courseCode", "OWN101",
+                "userId", userId
+        );
+        MvcResult courseResult = mockMvc.perform(post("/api/courses")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(courseBody)))
+                .andExpect(status().isOk())
+                .andReturn();
+        Map<?, ?> courseResponse = objectMapper.readValue(courseResult.getResponse().getContentAsString(), Map.class);
+        Long courseId = ((Number) courseResponse.get("id")).longValue();
+
+        Map<String, Object> updateBody = Map.of(
+                "courseName", "Hijacked Name",
+                "courseCode", "HIJ101"
+        );
+
+        mockMvc.perform(put("/api/users/" + userId + "/courses/" + courseId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .session(otherSession)
+                        .content(objectMapper.writeValueAsString(updateBody)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").exists());
+    }
+
+    @Test
+    void deleteCourseByDifferentUser_returns403() throws Exception {
+        String otherUsername = "otheruser2_" + System.nanoTime();
+        Map<String, String> registerBody = Map.of("username", otherUsername, "password", "testpass99");
+        MvcResult otherResult = mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(registerBody)))
+                .andExpect(status().isOk())
+                .andReturn();
+        MockHttpSession otherSession = (MockHttpSession) otherResult.getRequest().getSession();
+
+        Map<String, Object> courseBody = Map.of(
+                "courseName", "Protected Course",
+                "courseCode", "PRO101",
+                "userId", userId
+        );
+        MvcResult courseResult = mockMvc.perform(post("/api/courses")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(courseBody)))
+                .andExpect(status().isOk())
+                .andReturn();
+        Map<?, ?> courseResponse = objectMapper.readValue(courseResult.getResponse().getContentAsString(), Map.class);
+        Long courseId = ((Number) courseResponse.get("id")).longValue();
+
+        mockMvc.perform(delete("/api/users/" + userId + "/courses/" + courseId)
+                        .session(otherSession))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").exists());
     }
 }

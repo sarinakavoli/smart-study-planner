@@ -16,8 +16,11 @@ import org.springframework.web.bind.annotation.RestController;
 import com.sarina.studyplanner.dto.CourseRequest;
 import com.sarina.studyplanner.entity.Course;
 import com.sarina.studyplanner.exception.CourseNotFoundException;
+import com.sarina.studyplanner.exception.ForbiddenException;
 import com.sarina.studyplanner.exception.UserNotFoundException;
 import com.sarina.studyplanner.service.CourseService;
+
+import jakarta.servlet.http.HttpSession;
 
 @RestController
 @RequestMapping("/api")
@@ -72,10 +75,17 @@ public class CourseController {
     public ResponseEntity<?> updateCourse(
             @PathVariable Long userId,
             @PathVariable Long courseId,
+            HttpSession session,
             @RequestBody CourseRequest courseRequest) {
         try {
+            Long sessionUserId = (Long) session.getAttribute("userId");
+            if (sessionUserId == null || !sessionUserId.equals(userId)) {
+                throw new ForbiddenException("You are not allowed to modify another user's course.");
+            }
             Course course = courseService.updateCourse(userId, courseId, courseRequest);
             return ResponseEntity.ok(course);
+        } catch (ForbiddenException e) {
+            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
         } catch (UserNotFoundException e) {
             return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
         } catch (CourseNotFoundException e) {
@@ -86,10 +96,17 @@ public class CourseController {
     @DeleteMapping("/users/{userId}/courses/{courseId}")
     public ResponseEntity<?> deleteCourse(
             @PathVariable Long userId,
-            @PathVariable Long courseId) {
+            @PathVariable Long courseId,
+            HttpSession session) {
         try {
+            Long sessionUserId = (Long) session.getAttribute("userId");
+            if (sessionUserId == null || !sessionUserId.equals(userId)) {
+                throw new ForbiddenException("You are not allowed to modify another user's course.");
+            }
             courseService.deleteCourse(userId, courseId);
             return ResponseEntity.noContent().build();
+        } catch (ForbiddenException e) {
+            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
         } catch (UserNotFoundException e) {
             return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
         } catch (CourseNotFoundException e) {
