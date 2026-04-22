@@ -133,6 +133,17 @@ class UserServiceTest {
     }
 
     @Test
+    void register_withMixedCaseDuplicateUsername_throwsException() {
+        when(userRepository.findByName("alice")).thenReturn(Optional.of(existingUser));
+
+        assertThatThrownBy(() -> userService.register("ALICE", "password123"))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("already taken");
+
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
     void createUser_normalizesUsernameToLowercase() {
         when(userRepository.findByName("carol")).thenReturn(Optional.empty());
         when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
