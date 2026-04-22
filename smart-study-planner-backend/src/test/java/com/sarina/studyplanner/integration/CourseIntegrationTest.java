@@ -103,4 +103,31 @@ class CourseIntegrationTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error").exists());
     }
+
+    @Test
+    void getCourseByNonexistentUserId_returns404() throws Exception {
+        Map<String, Object> courseBody = Map.of(
+                "courseName", "Operating Systems",
+                "courseCode", "CS401",
+                "userId", userId
+        );
+        MvcResult courseResult = mockMvc.perform(post("/api/courses")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(courseBody)))
+                .andExpect(status().isOk())
+                .andReturn();
+        Map<?, ?> courseResponse = objectMapper.readValue(courseResult.getResponse().getContentAsString(), Map.class);
+        Long courseId = ((Number) courseResponse.get("id")).longValue();
+
+        mockMvc.perform(get("/api/users/999999/courses/" + courseId))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("User not found with id: 999999"));
+    }
+
+    @Test
+    void getCourseByValidUserIdAndNonexistentCourseId_returns404() throws Exception {
+        mockMvc.perform(get("/api/users/" + userId + "/courses/999999"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("Course not found with id: 999999"));
+    }
 }
