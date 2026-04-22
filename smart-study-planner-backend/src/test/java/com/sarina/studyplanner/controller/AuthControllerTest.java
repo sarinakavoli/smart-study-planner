@@ -162,4 +162,18 @@ class AuthControllerTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error").value("Username already taken"));
     }
+
+    @Test
+    void register_withMixedCaseDuplicateUsername_returnsConflict() throws Exception {
+        when(userService.register("ALICE", "pass1234", null))
+                .thenThrow(new RuntimeException("That username is already taken."));
+
+        Map<String, String> body = Map.of("username", "ALICE", "password", "pass1234");
+
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("That username is already taken."));
+    }
 }
