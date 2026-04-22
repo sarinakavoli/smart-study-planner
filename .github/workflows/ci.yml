@@ -65,6 +65,17 @@ jobs:
           echo "PostgreSQLSchemaValidationTest ran and passed against a real PostgreSQL container."
           grep "^Tests run:" "$REPORT"
 
+      - name: Summarise test execution
+        if: always()
+        run: |
+          if [ "${{ steps.cache-backend-tests.outputs.cache-hit }}" = "true" ]; then
+            echo "## Backend Tests: skipped (cache hit)" >> $GITHUB_STEP_SUMMARY
+            echo "All inputs matched a previous passing run. Test results were restored from cache." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## Backend Tests: ran from scratch (cache miss)" >> $GITHUB_STEP_SUMMARY
+            echo "No matching cache entry found. Tests were executed against a live PostgreSQL container." >> $GITHUB_STEP_SUMMARY
+          fi
+
       - name: Upload test reports on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -98,6 +109,12 @@ jobs:
       - name: Build frontend
         working-directory: smart-study-planner-frontend
         run: npm run build
+
+      - name: Summarise test execution
+        if: always()
+        run: |
+          echo "## Frontend Check: ran from scratch (no result cache)" >> $GITHUB_STEP_SUMMARY
+          echo "Lint and build are always executed; there is no hash-based result cache for the frontend job." >> $GITHUB_STEP_SUMMARY
 
       - name: Upload frontend build artifact
         uses: actions/upload-artifact@v4
