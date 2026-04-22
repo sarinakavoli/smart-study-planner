@@ -56,10 +56,18 @@ jobs:
       - name: Verify Docker daemon is available
         run: docker info
 
-      - name: Run all tests
+      - name: Run all tests including integration
         if: steps.cache-backend-tests.outputs.cache-hit != 'true'
         working-directory: smart-study-planner-backend
-        run: mvn test --batch-mode
+        # Run the complete test suite (unit + integration).
+        # Both -DexcludedGroups= and -Dgroups= are passed as explicit empty overrides
+        # so that any inherited or system-property value cannot silently filter out the
+        # integration group via either mechanism.
+        # The Testcontainers-based PostgreSQLSchemaValidationTest (@Tag("integration"))
+        # MUST always execute in CI — do NOT set -DexcludedGroups=integration or
+        # -Dgroups=<non-integration-subset> here, as either would hide schema
+        # regressions behind a green build.
+        run: mvn test --batch-mode -DexcludedGroups= -Dgroups=
 
       # Confirm PostgreSQLSchemaValidationTest ran and passed. Testcontainers
       # silently aborts the test when Docker is unavailable, so the report file
