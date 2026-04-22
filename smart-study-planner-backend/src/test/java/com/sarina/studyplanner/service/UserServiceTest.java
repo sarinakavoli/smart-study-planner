@@ -123,6 +123,18 @@ class UserServiceTest {
     }
 
     @Test
+    void createUser_normalizesUsernameToLowercase() {
+        when(userRepository.findByName("carol")).thenReturn(Optional.empty());
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+        User user = new User("Carol", "carol@example.com", "pass1234");
+
+        User result = userService.createUser(user);
+
+        assertThat(result.getName()).isEqualTo("carol");
+        verify(userRepository).findByName("carol");
+    }
+
+    @Test
     void createUser_withDuplicateUsername_throwsException() {
         when(userRepository.findByName("alice")).thenReturn(Optional.of(existingUser));
         User user = new User("alice", "alice@example.com", "password123");
