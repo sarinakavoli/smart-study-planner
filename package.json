@@ -3,6 +3,7 @@
   "private": true,
   "description": "Root package.json to satisfy deployment environment Node.js detection. Actual build is handled by Maven.",
   "dependencies": {
-    "firebase": "^12.12.0"
+    "firebase": "^12.12.0",
+    "firebase-admin": "^13.8.0"
   }
 }
