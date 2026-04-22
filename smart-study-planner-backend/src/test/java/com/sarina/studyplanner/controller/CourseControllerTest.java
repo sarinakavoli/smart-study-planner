@@ -148,4 +148,14 @@ class CourseControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error").value("Course not found with id: 99"));
     }
+
+    @Test
+    void getCourseByUserIdAndCourseId_whenUserNotFound_returns404WithErrorMessage() throws Exception {
+        when(courseService.getCourseByUserIdAndCourseId(eq(999L), eq(1L)))
+                .thenThrow(new UserNotFoundException(999L));
+
+        mockMvc.perform(get("/api/users/999/courses/1"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("User not found with id: 999"));
+    }
 }
