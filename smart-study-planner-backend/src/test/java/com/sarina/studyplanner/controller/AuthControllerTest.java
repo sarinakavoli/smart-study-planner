@@ -16,6 +16,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import java.lang.reflect.Field;
 import java.util.Map;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -103,7 +104,7 @@ class AuthControllerTest {
     @Test
     void register_withValidData_returnsOkWithIdAndName() throws Exception {
         User user = buildUser(2L, "bob");
-        when(userService.register("bob", "pass1234")).thenReturn(user);
+        when(userService.register("bob", "pass1234", null)).thenReturn(user);
 
         Map<String, String> body = Map.of("username", "bob", "password", "pass1234");
 
@@ -150,7 +151,7 @@ class AuthControllerTest {
 
     @Test
     void register_withDuplicateUsername_returnsConflict() throws Exception {
-        when(userService.register(anyString(), anyString()))
+        when(userService.register(anyString(), anyString(), any()))
                 .thenThrow(new RuntimeException("Username already taken"));
 
         Map<String, String> body = Map.of("username", "alice", "password", "pass1234");

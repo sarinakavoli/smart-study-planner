@@ -1,6 +1,7 @@
 package com.sarina.studyplanner.service;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -48,6 +49,10 @@ public class UserService {
     }
 
     public User register(String name, String password) {
+        return register(name, password, "");
+    }
+
+    public User register(String name, String password, String email) {
         String normalized = name.toLowerCase();
         if (password == null || password.length() < 8) {
             throw new RuntimeException("Password must be at least 8 characters.");
@@ -55,10 +60,11 @@ public class UserService {
         if (userRepository.findByName(normalized).isPresent()) {
             throw new RuntimeException("That username is already taken.");
         }
+        String normalizedEmail = (email != null) ? email.toLowerCase(Locale.ROOT) : "";
         User newUser = new User();
         newUser.setName(normalized);
         newUser.setPassword(passwordEncoder.encode(password));
-        newUser.setEmail("");
+        newUser.setEmail(normalizedEmail);
         return userRepository.save(newUser);
     }
 
@@ -66,6 +72,7 @@ public class UserService {
         if (user.getEmail() == null || user.getEmail().isBlank()) {
             throw new RuntimeException("Email address is required.");
         }
+        user.setEmail(user.getEmail().toLowerCase(Locale.ROOT));
         if (user.getPassword() == null || user.getPassword().length() < 8) {
             throw new RuntimeException("Password must be at least 8 characters.");
         }

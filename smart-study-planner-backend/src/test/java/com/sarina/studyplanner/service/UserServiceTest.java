@@ -96,6 +96,16 @@ class UserServiceTest {
     }
 
     @Test
+    void register_normalizesEmailToLowercase() {
+        when(userRepository.findByName("bob")).thenReturn(Optional.empty());
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        User result = userService.register("bob", "securepass", "Bob@Example.COM");
+
+        assertThat(result.getEmail()).isEqualTo("bob@example.com");
+    }
+
+    @Test
     void register_withShortPassword_throwsException() {
         assertThatThrownBy(() -> userService.register("bob", "short"))
                 .isInstanceOf(RuntimeException.class)
@@ -132,6 +142,17 @@ class UserServiceTest {
 
         assertThat(result.getName()).isEqualTo("carol");
         verify(userRepository).findByName("carol");
+    }
+
+    @Test
+    void createUser_normalizesEmailToLowercase() {
+        when(userRepository.findByName("carol")).thenReturn(Optional.empty());
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+        User user = new User("carol", "Carol@Example.COM", "pass1234");
+
+        User result = userService.createUser(user);
+
+        assertThat(result.getEmail()).isEqualTo("carol@example.com");
     }
 
     @Test

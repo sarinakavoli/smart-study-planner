@@ -45,6 +45,7 @@ public class AuthController {
     public ResponseEntity<?> register(@RequestBody Map<String, String> body) {
         String name = body.get("username");
         String password = body.get("password");
+        String email = body.get("email");
 
         if (name == null || name.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "Username is required."));
@@ -57,7 +58,7 @@ public class AuthController {
         }
 
         try {
-            User user = userService.register(name.trim(), password);
+            User user = userService.register(name.trim(), password, email);
             return ResponseEntity.ok(Map.of("id", user.getId(), "name", user.getName()));
         } catch (RuntimeException e) {
             return ResponseEntity.status(409).body(Map.of("error", e.getMessage()));
