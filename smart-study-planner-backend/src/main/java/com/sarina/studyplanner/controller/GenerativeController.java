@@ -45,7 +45,7 @@ public class GenerativeController {
             return ResponseEntity.status(503)
                     .body(Map.of("error",
                             "AI features are not enabled. " +
-                            "GCP_PROJECT_ID and GCP_SERVICE_ACCOUNT_JSON must be configured."));
+                            "GEMINI_API_KEY Replit Secret is not configured."));
         }
 
         try {

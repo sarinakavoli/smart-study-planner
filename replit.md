@@ -54,15 +54,18 @@ The Vite dev server proxies all `/api` requests to `http://localhost:8080`.
 | `VITE_FIREBASE_*` | Replit Environment Variables | Frontend build (public identifiers) | Yes (by design — Firebase web SDK requires this) |
 | `PGHOST/PGUSER/etc.` | Replit Secrets (auto-provisioned) | Backend only | Never |
 
-- Firebase config values are Google-documented as safe to include in frontend code.  What keeps Firebase secure is your Security Rules, not hiding the config values.
-- The `GEMINI_API_KEY` only ever exists in the backend JVM process. It is never sent in any HTTP response.
+- Firebase config values are Google-documented as safe to include in frontend code. What keeps Firebase secure is your Security Rules, not hiding the config values.
+- `GEMINI_API_KEY` is read by Spring at startup via `${GEMINI_API_KEY:}` in `application.properties`. It only ever exists inside the backend JVM process — it is never serialised into any HTTP response.
+
+**Why not Google Cloud Secret Manager?**
+Secret Manager requires authentication via either a JSON service account key (blocked by the `iam.disableServiceAccountKeyCreation` org policy on this project) or Workload Identity Federation (which requires the workload to run on GCP infrastructure — Replit is not GCP). Replit Secrets are encrypted at rest, never in source code, never in git, and only injected into the server process. This is the correct and sufficient secret store for a Replit-hosted app.
 
 ## Generative AI (Gemini)
 
 - `POST /api/generate` — accepts `{"prompt": "..."}`, returns `{"result": "..."}` or an error body.
-- `GenerativeService.java` — holds the key, makes the HTTPS call to Google, parses the response.
-- `GenerativeController.java` — the secure proxy endpoint. Validates the prompt, calls the service, returns only the AI text.
-- The key is injected via `${GEMINI_API_KEY:}` in `application.properties`. If unset, the endpoint returns 503.
+- `GenerativeService.java` — reads the key via `@Value("${gemini.api.key:}")`, makes the HTTPS call to Google's Gemini API server-side, returns only the response text.
+- `GenerativeController.java` — the secure proxy endpoint. The browser sends a prompt; the server adds the key and calls Gemini; only the AI text is returned to the browser.
+- If `GEMINI_API_KEY` is unset the endpoint returns HTTP 503. If the free-tier quota is hit it returns HTTP 429.
 
 ## Firebase Attachments
 
