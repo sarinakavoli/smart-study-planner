@@ -4,6 +4,7 @@ import com.sarina.studyplanner.dto.TaskRequest;
 import com.sarina.studyplanner.entity.Course;
 import com.sarina.studyplanner.entity.Task;
 import com.sarina.studyplanner.entity.User;
+import com.sarina.studyplanner.exception.UserNotFoundException;
 import com.sarina.studyplanner.repository.CourseRep;
 import com.sarina.studyplanner.repository.TaskRep;
 import com.sarina.studyplanner.repository.UserRep;
@@ -107,7 +108,7 @@ class TaskServiceTest {
         when(userRepository.findById(99L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> taskService.createTask(request))
-                .isInstanceOf(RuntimeException.class)
+                .isInstanceOf(UserNotFoundException.class)
                 .hasMessageContaining("User not found");
 
         verify(taskRepository, never()).save(any());
