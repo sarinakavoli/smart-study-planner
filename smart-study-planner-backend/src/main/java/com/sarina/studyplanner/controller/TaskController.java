@@ -91,6 +91,8 @@ public class TaskController {
             return ResponseEntity.ok("Category moved to OTHER successfully");
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (UserNotFoundException e) {
+            return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
         }
     }
 

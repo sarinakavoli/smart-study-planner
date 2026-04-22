@@ -319,4 +319,18 @@ class TaskControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error").value("Course not found with id: 42"));
     }
+
+    @Test
+    void moveCategoryToOther_withNonExistentUserId_returns404WithErrorBody() throws Exception {
+        doThrow(new UserNotFoundException(99L))
+                .when(taskService).moveCategoryToOther(eq("MATH"), eq(99L));
+
+        Map<String, Object> body = Map.of("oldCategory", "MATH", "userId", 99);
+
+        mockMvc.perform(put("/api/tasks/category/move-to-other")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("User not found with id: 99"));
+    }
 }

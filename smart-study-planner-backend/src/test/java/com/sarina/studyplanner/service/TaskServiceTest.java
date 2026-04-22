@@ -277,6 +277,7 @@ class TaskServiceTest {
         t1.setCategory("MATH");
         Task t2 = new Task();
         t2.setCategory("MATH");
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
         when(taskRepository.findByUser_IdAndCategory(1L, "MATH")).thenReturn(List.of(t1, t2));
 
         taskService.moveCategoryToOther("MATH", 1L);
@@ -362,5 +363,16 @@ class TaskServiceTest {
         assertThatThrownBy(() -> taskService.moveCategoryToOther(null, 1L))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Category is required");
+    }
+
+    @Test
+    void moveCategoryToOther_withNonExistentUserId_throwsUserNotFoundException() {
+        when(userRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> taskService.moveCategoryToOther("MATH", 99L))
+                .isInstanceOf(UserNotFoundException.class)
+                .hasMessageContaining("User not found with id: 99");
+
+        verify(taskRepository, never()).saveAll(any());
     }
 }

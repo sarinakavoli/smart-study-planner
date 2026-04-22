@@ -117,6 +117,11 @@ public class TaskService {
             throw new IllegalArgumentException("Category is required");
         }
 
+        if (userId != null) {
+            userRepository.findById(userId)
+                    .orElseThrow(() -> new UserNotFoundException(userId));
+        }
+
         List<Task> tasks = userId != null
                 ? taskRepository.findByUser_IdAndCategory(userId, oldCategory)
                 : taskRepository.findByCategory(oldCategory);
