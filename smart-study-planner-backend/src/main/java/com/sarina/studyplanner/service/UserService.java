@@ -4,10 +4,12 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import com.sarina.studyplanner.entity.User;
+import com.sarina.studyplanner.exception.DuplicateEmailException;
 import com.sarina.studyplanner.repository.UserRep;
 
 @Service
@@ -71,7 +73,11 @@ public class UserService {
         newUser.setName(normalized);
         newUser.setPassword(passwordEncoder.encode(password));
         newUser.setEmail(normalizedEmail);
-        return userRepository.save(newUser);
+        try {
+            return userRepository.save(newUser);
+        } catch (DataIntegrityViolationException e) {
+            throw new DuplicateEmailException();
+        }
     }
 
     public User createUser(User user) {
@@ -94,7 +100,11 @@ public class UserService {
             throw new RuntimeException("That username is already taken.");
         }
         user.setPassword(passwordEncoder.encode(user.getPassword()));
-        return userRepository.save(user);
+        try {
+            return userRepository.save(user);
+        } catch (DataIntegrityViolationException e) {
+            throw new DuplicateEmailException();
+        }
     }
 
     public List<User> getAllUsers() {
