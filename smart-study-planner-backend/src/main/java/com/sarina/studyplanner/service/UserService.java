@@ -27,9 +27,23 @@ public class UserService {
             throw new RuntimeException("No account found with that username.");
         }
         User user = existing.get();
-        if (!passwordEncoder.matches(password, user.getPassword())) {
-            throw new RuntimeException("Incorrect password.");
+        String storedPassword = user.getPassword();
+
+        boolean isHashed = storedPassword != null
+                && storedPassword.length() == 60
+                && storedPassword.startsWith("$2");
+        if (isHashed) {
+            if (!passwordEncoder.matches(password, storedPassword)) {
+                throw new RuntimeException("Incorrect password.");
+            }
+        } else {
+            if (password == null || !password.equals(storedPassword)) {
+                throw new RuntimeException("Incorrect password.");
+            }
+            user.setPassword(passwordEncoder.encode(password));
+            userRepository.save(user);
         }
+
         return user;
     }
 
