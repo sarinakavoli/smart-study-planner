@@ -1,0 +1,47 @@
+I want to work on the next task now: move the generative-data secret/config to Google Secret Manager.
+
+Current context:
+- The app already uses Firebase
+- I’m working in Replit
+- I want the sensitive generative secret/config to stop living in normal env/local app config if that is still happening
+- I want the app to read it securely from Google Secret Manager instead
+
+Please implement this carefully and explain everything clearly because I’m a junior engineer.
+
+What I want:
+1. Identify exactly which secret(s) or generative config values should be moved to Google Secret Manager
+2. Remove any insecure or duplicate usage from the current setup if needed
+3. Integrate Google Secret Manager properly into the app
+4. Make the app read the secret securely at runtime
+5. Keep the implementation clean and production-appropriate
+6. Make sure the secret is not exposed to the frontend/browser
+7. Update the code and deployment/config as needed for Replit
+
+Important requirements:
+- The secret must only be accessed from the secure server/backend side
+- Do not leave the generative API key hardcoded in code
+- Do not expose the secret in frontend code, browser requests, or logs
+- If there are environment variables still needed temporarily, explain why
+- If IAM/service account permissions are required, explain exactly what to set up
+- If Replit needs configuration changes, explain those too
+
+Please explain step by step:
+- what Google Secret Manager is doing in this setup
+- why it is safer than the current approach
+- where the secret was before
+- where it is now
+- how the app fetches it
+- when it is loaded
+- which file(s) were changed
+- what each changed file now does
+- whether this affects local development, Replit preview, and deployment differently
+
+Please also show:
+1. the changed files
+2. the final code changes
+3. any commands I need to run
+4. any Google Cloud / IAM setup I need to do manually
+5. how I can test that the secret is being read correctly without exposing it
+6. how I can verify the frontend never receives the raw secret
+
+If there are multiple good implementation options, choose the simplest secure one and explain why you chose it.
