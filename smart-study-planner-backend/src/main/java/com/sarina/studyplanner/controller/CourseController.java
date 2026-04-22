@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.sarina.studyplanner.dto.CourseRequest;
 import com.sarina.studyplanner.entity.Course;
+import com.sarina.studyplanner.exception.CourseNotFoundException;
 import com.sarina.studyplanner.exception.UserNotFoundException;
 import com.sarina.studyplanner.service.CourseService;
 
@@ -47,6 +48,20 @@ public class CourseController {
             List<Course> courses = courseService.getCoursesByUserId(userId);
             return ResponseEntity.ok(courses);
         } catch (UserNotFoundException e) {
+            return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/users/{userId}/courses/{courseId}")
+    public ResponseEntity<?> getCourseByUserIdAndCourseId(
+            @PathVariable Long userId,
+            @PathVariable Long courseId) {
+        try {
+            Course course = courseService.getCourseByUserIdAndCourseId(userId, courseId);
+            return ResponseEntity.ok(course);
+        } catch (UserNotFoundException e) {
+            return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
+        } catch (CourseNotFoundException e) {
             return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
         }
     }
