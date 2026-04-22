@@ -40,7 +40,10 @@ export async function loadUserTasks(uid, filters = {}) {
 
   const q = query(collection(db, "tasks"), ...constraints);
   const snapshot = await getDocs(q);
-  return snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+  return snapshot.docs.map((docSnap) => ({
+    id: docSnap.id,
+    ...docSnap.data(),
+  }));
 }
 
 /**
@@ -68,7 +71,12 @@ export async function loadUserTasks(uid, filters = {}) {
  *   3 = tasks that were due more than 3 days ago.
  * @returns {Promise<Array<{id: string, [key: string]: any}>>}
  */
-export async function loadOverdueTasks(uid, category, status, overdueByDays = 0) {
+export async function loadOverdueTasks(
+  uid,
+  category,
+  status,
+  overdueByDays = 0,
+) {
   // Build the cutoff date string in YYYY-MM-DD format.
   // dueDate is stored as a plain string in that format so string comparison works.
   const cutoff = new Date();
@@ -88,5 +96,8 @@ export async function loadOverdueTasks(uid, category, status, overdueByDays = 0)
 
   const q = query(collection(db, "tasks"), ...constraints);
   const snapshot = await getDocs(q);
-  return snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+  return snapshot.docs.map((docSnap) => ({
+    id: docSnap.id,
+    ...docSnap.data(),
+  }));
 }

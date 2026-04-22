@@ -23,7 +23,7 @@ import {
 } from "firebase/storage";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { db, auth, storage } from "./firebase";
-import { loadUserTasks } from "./services/taskService";
+import { loadUserTasks, loadOverdueTasks } from "./services/taskService";
 
 function App() {
   const [tasks, setTasks] = useState([]);
@@ -105,6 +105,26 @@ function App() {
       delete window.cleanupOrphanedStorageFiles;
     };
   });
+
+  // Temporary: expose loadOverdueTasks on window so you can trigger it once
+  // from the browser console to get the Firestore missing-index error + link.
+  // Remove this block after you have deployed the index.
+  useEffect(() => {
+    window.__triggerOverdueQuery = async (category = "Math", status = "PENDING", days = 0) => {
+      if (!currentUser?.uid) {
+        console.warn("__triggerOverdueQuery: no user is logged in — log in first.");
+        return;
+      }
+      console.log(`Running loadOverdueTasks for uid=${currentUser.uid}, category=${category}, status=${status}, overdueByDays=${days}`);
+      try {
+        const results = await loadOverdueTasks(currentUser.uid, category, status, days);
+        console.log("Results:", results);
+      } catch (err) {
+        console.error("Firestore error (expected before index is deployed):", err);
+      }
+    };
+    return () => { delete window.__triggerOverdueQuery; };
+  }, [currentUser]);
 
   const loadTasks = async () => {
     try {
