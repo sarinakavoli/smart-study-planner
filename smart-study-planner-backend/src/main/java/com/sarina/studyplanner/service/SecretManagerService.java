@@ -8,6 +8,7 @@ import com.google.cloud.secretmanager.v1.SecretManagerServiceSettings;
 import com.google.cloud.secretmanager.v1.SecretVersionName;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -38,6 +39,7 @@ public class SecretManagerService {
     private final String projectId;
     private final String serviceAccountJson;
 
+    @Autowired
     public SecretManagerService(@Value("${gcp.project.id:}") String projectId) {
         this(projectId, System.getenv("GCP_SERVICE_ACCOUNT_JSON"));
     }
