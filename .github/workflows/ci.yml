@@ -1,5 +1,16 @@
 name: CI
 
+# Cache strategy
+# ──────────────
+# Every cache key is prefixed with the branch ref so that branches cannot
+# overwrite each other's caches.  When an exact key is missing (e.g. on the
+# first run of a new branch) restore-keys provide a progressive fallback:
+#   1. Any prior run on the same branch (same inputs, older run) → fastest
+#   2. The most recent cache from the main branch → good partial hit
+#   3. Any cache entry for the tool-version prefix → partial hit from any branch
+# This means new branches warm up quickly from main instead of starting cold,
+# while exact-match hits still skip redundant work entirely.
+
 on:
   push:
     branches: ["**"]
@@ -22,17 +33,22 @@ jobs:
           distribution: temurin
           cache: maven
 
-      # Cache key is derived from the Java version, the workflow file, pom.xml,
-      # and every source/test file.  A cache hit means the exact same inputs
-      # produced a passing test run previously, so re-running is redundant.
-      # Any change to the Java version, workflow, pom.xml, or source files
-      # produces a new key and tests run fresh.
+      # Cache key is derived from the branch ref, Java version, the workflow
+      # file, pom.xml, and every source/test file.  A cache hit means the exact
+      # same inputs produced a passing test run previously, so re-running is
+      # redundant.  Any change to those inputs produces a new key and tests run
+      # fresh.  restore-keys let a new branch warm up from main's cache instead
+      # of starting cold (see top-of-file cache strategy comment).
       - name: Restore cached test results
         id: cache-backend-tests
         uses: actions/cache@v4
         with:
           path: smart-study-planner-backend/target/surefire-reports
-          key: backend-tests-java17-${{ hashFiles('.github/workflows/ci.yml', 'smart-study-planner-backend/pom.xml', 'smart-study-planner-backend/src/main/**', 'smart-study-planner-backend/src/test/**') }}
+          key: backend-tests-${{ github.ref }}-java17-${{ hashFiles('.github/workflows/ci.yml', 'smart-study-planner-backend/pom.xml', 'smart-study-planner-backend/src/main/**', 'smart-study-planner-backend/src/test/**') }}
+          restore-keys: |
+            backend-tests-${{ github.ref }}-java17-
+            backend-tests-refs/heads/main-java17-
+            backend-tests-java17-
 
       # Docker is pre-installed on ubuntu-latest runners. Verify the daemon is
       # responsive before running Testcontainers tests so any misconfiguration
@@ -95,8 +111,19 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: npm
-          cache-dependency-path: smart-study-planner-frontend/package-lock.json
+
+      # Branch-scoped npm cache with restore-key fallbacks so new branches
+      # reuse main's cached packages instead of downloading everything fresh
+      # (see top-of-file cache strategy comment).
+      - name: Cache npm dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: frontend-npm-${{ github.ref }}-node20-${{ hashFiles('smart-study-planner-frontend/package-lock.json') }}
+          restore-keys: |
+            frontend-npm-${{ github.ref }}-node20-
+            frontend-npm-refs/heads/main-node20-
+            frontend-npm-node20-
 
       - name: Install frontend dependencies
         working-directory: smart-study-planner-frontend
