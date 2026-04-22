@@ -3,6 +3,7 @@ package com.sarina.studyplanner.service;
 import com.sarina.studyplanner.dto.CourseRequest;
 import com.sarina.studyplanner.entity.Course;
 import com.sarina.studyplanner.entity.User;
+import com.sarina.studyplanner.exception.CourseNotFoundException;
 import com.sarina.studyplanner.repository.CourseRep;
 import com.sarina.studyplanner.repository.UserRep;
 import org.junit.jupiter.api.BeforeEach;
@@ -125,5 +126,15 @@ class CourseServiceTest {
                 .hasMessageContaining("User not found");
 
         verify(courseRepository, never()).findByUserId(any());
+    }
+
+    @Test
+    void getCourseByUserIdAndCourseId_withNonExistentCourseId_throwsCourseNotFoundException() {
+        when(userRepository.existsById(1L)).thenReturn(true);
+        when(courseRepository.findByIdAndUserId(99L, 1L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> courseService.getCourseByUserIdAndCourseId(1L, 99L))
+                .isInstanceOf(CourseNotFoundException.class)
+                .hasMessageContaining("Course not found with id: 99");
     }
 }

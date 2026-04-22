@@ -4,6 +4,7 @@ import com.sarina.studyplanner.dto.TaskRequest;
 import com.sarina.studyplanner.entity.Course;
 import com.sarina.studyplanner.entity.Task;
 import com.sarina.studyplanner.entity.User;
+import com.sarina.studyplanner.exception.CourseNotFoundException;
 import com.sarina.studyplanner.exception.TaskNotFoundException;
 import com.sarina.studyplanner.exception.UserNotFoundException;
 import com.sarina.studyplanner.repository.CourseRep;
@@ -127,6 +128,37 @@ class TaskServiceTest {
         Task result = taskService.createTask(request);
 
         assertThat(result.getCourse()).isEqualTo(course);
+    }
+
+    @Test
+    void createTask_withInvalidCourseId_throwsCourseNotFoundException() {
+        TaskRequest request = new TaskRequest();
+        request.setTitle("Task with bad course");
+        request.setCourseId(99L);
+
+        when(courseRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> taskService.createTask(request))
+                .isInstanceOf(CourseNotFoundException.class)
+                .hasMessageContaining("Course not found with id: 99");
+
+        verify(taskRepository, never()).save(any());
+    }
+
+    @Test
+    void updateTask_withInvalidCourseId_throwsCourseNotFoundException() {
+        TaskRequest request = new TaskRequest();
+        request.setTitle("Updated task");
+        request.setCourseId(99L);
+
+        when(taskRepository.findById(1L)).thenReturn(Optional.of(task));
+        when(courseRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> taskService.updateTask(1L, request))
+                .isInstanceOf(CourseNotFoundException.class)
+                .hasMessageContaining("Course not found with id: 99");
+
+        verify(taskRepository, never()).save(any());
     }
 
     @Test
