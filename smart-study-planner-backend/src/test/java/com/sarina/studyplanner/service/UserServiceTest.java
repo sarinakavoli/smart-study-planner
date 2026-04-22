@@ -147,6 +147,28 @@ class UserServiceTest {
     }
 
     @Test
+    void createUser_withNullEmail_throwsException() {
+        User user = new User("carol", null, "pass1234");
+
+        assertThatThrownBy(() -> userService.createUser(user))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("Email address is required");
+
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    void createUser_withBlankEmail_throwsException() {
+        User user = new User("carol", "   ", "pass1234");
+
+        assertThatThrownBy(() -> userService.createUser(user))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("Email address is required");
+
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
     void createUser_withShortPassword_throwsException() {
         User user = new User("carol", "carol@example.com", "short");
 

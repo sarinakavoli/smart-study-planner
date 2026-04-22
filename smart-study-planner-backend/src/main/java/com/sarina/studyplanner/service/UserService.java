@@ -63,6 +63,9 @@ public class UserService {
     }
 
     public User createUser(User user) {
+        if (user.getEmail() == null || user.getEmail().isBlank()) {
+            throw new RuntimeException("Email address is required.");
+        }
         if (user.getPassword() == null || user.getPassword().length() < 8) {
             throw new RuntimeException("Password must be at least 8 characters.");
         }
