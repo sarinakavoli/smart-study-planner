@@ -432,23 +432,30 @@ function App() {
     setAttachmentSaving(true);
     try {
       setError("");
+
       const task = tasks.find((t) => t.id === taskId);
       const oldAttachment = (task?.attachments || []).find(
         (a) => a.path === attachmentPath
       );
-      if (!oldAttachment) return;
+      if (!oldAttachment) {
+        setError("Could not find the attachment to replace. Please refresh and try again.");
+        return;
+      }
 
       const newPath = `tasks/${taskId}/attachments/${createAttachmentId()}-${sanitizeFileName(replaceFile.name)}`;
       const newRef = storageRef(storage, newPath);
 
       await uploadBytes(newRef, replaceFile, {
         contentType: replaceFile.type || "application/octet-stream",
-        customMetadata: { userId: currentUser.uid, taskId },
+        customMetadata: {
+          userId: currentUser.uid,
+          taskId,
+        },
       });
 
       const newUrl = await getDownloadURL(newRef);
 
-      const updated = {
+      const updatedAttachment = {
         ...oldAttachment,
         name: replaceFile.name,
         displayName: displayName.trim() || replaceFile.name,
@@ -460,14 +467,27 @@ function App() {
         uploadedAt: new Date().toISOString(),
       };
 
-      await updateAttachmentInTask(taskId, updated);
+      const updatedAttachments = (task.attachments || []).map((a) =>
+        a.path === oldAttachment.path ? updatedAttachment : a
+      );
+
+      await updateDoc(doc(db, "tasks", taskId), {
+        attachments: updatedAttachments,
+      });
+
+      setTasks((prev) =>
+        prev.map((t) =>
+          t.id === taskId ? { ...t, attachments: updatedAttachments } : t
+        )
+      );
+
       await removeFileFromStorage(oldAttachment.path);
 
       setEditingAttachment(null);
       setReplaceFile(null);
     } catch (err) {
-      console.error(err);
-      setError("Could not replace attachment.");
+      console.error("[saveAttachmentReplacement] Error:", err);
+      setError(`Could not replace attachment: ${err.message}`);
     } finally {
       setAttachmentSaving(false);
     }
@@ -775,8 +795,22 @@ function App() {
         "[deleteAttachment] Step 1 — Storage path resolved:",
         storagePath
       );
-      await removeFileFromStorage(storagePath);
-      console.log("[deleteAttachment] Step 2 — Storage file deleted.");
+      try {
+        await removeFileFromStorage(storagePath);
+        console.log("[deleteAttachment] Step 2 — Storage file deleted.");
+      } catch (storageErr) {
+        if (storageErr.code === "storage/unauthorized") {
+          console.warn(
+            "[deleteAttachment] Step 2 — Storage returned unauthorized for path:",
+            storagePath,
+            "The file may already be deleted (Firebase returns unauthorized instead of",
+            "not-found when the file is missing and rules cannot read resource.metadata).",
+            "Continuing with Firestore cleanup."
+          );
+        } else {
+          throw storageErr;
+        }
+      }
 
       const task = tasks.find((item) => item.id === taskId);
       const updatedAttachments = (task?.attachments || []).filter((item) => {
