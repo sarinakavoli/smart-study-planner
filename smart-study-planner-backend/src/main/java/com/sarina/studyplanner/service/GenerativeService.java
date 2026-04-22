@@ -12,20 +12,9 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 
 /**
- * Sends prompts to the Google Gemini API on the server side.
- *
- * The Gemini API key is fetched from Google Secret Manager via
- * {@link SecretManagerService} on the first call and then cached for the
- * lifetime of the process.  It is never returned in any HTTP response and
- * never reaches the browser.
- *
- * Security model:
- *   - The Gemini API key lives ONLY in Google Secret Manager.
- *   - SecretManagerService authenticates to GCP using OAuth2 user credentials
- *     (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN), which are
- *     stored as encrypted Replit Secrets — still not the key itself.
- *   - Only this class holds the cached key value; no controller, DTO, or
- *     response body ever contains it.
+ * Sends prompts to the Google Gemini API server-side.
+ * The API key is fetched from Google Secret Manager via {@link SecretManagerService}
+ * on the first call and cached for subsequent calls. It is never returned to callers.
  */
 @Service
 public class GenerativeService {
@@ -48,31 +37,20 @@ public class GenerativeService {
                 .build();
     }
 
-    /**
-     * Returns true if Secret Manager is configured with all required credentials.
-     * A false result means /api/generate will return 503 before attempting any
-     * network call.
-     */
+    /** Returns true when Secret Manager has all required credentials. */
     public boolean isConfigured() {
         return secretManagerService.isConfigured();
     }
 
-    /**
-     * Returns a description of whichever required environment values are missing,
-     * for use in a helpful 503 error message.
-     */
+    /** Returns a comma-separated list of missing required config keys. */
     public String missingConfigDescription() {
         return secretManagerService.missingConfigDescription();
     }
 
     /**
-     * Sends a plain-text prompt to Gemini and returns the response text.
+     * Sends {@code prompt} to Gemini and returns the response text.
+     * Fetches the API key from Secret Manager on the first call and caches it.
      *
-     * On the first call, the Gemini API key is fetched from Google Secret Manager
-     * and cached.  Subsequent calls reuse the cached value.
-     *
-     * @param prompt the user's prompt — validated and sanitised by the caller
-     * @return the generated text from Gemini
      * @throws IOException          if the Secret Manager fetch or HTTP request fails
      * @throws InterruptedException if the request is interrupted
      */
@@ -103,21 +81,13 @@ public class GenerativeService {
         return extractText(response.body());
     }
 
-    /**
-     * Returns the cached Gemini API key, fetching it from Secret Manager on the
-     * first call.
-     *
-     * Thread-safety note: two threads may both observe cachedApiKey == null on
-     * the very first call and both fetch from Secret Manager.  That is harmless —
-     * both will write the same value, and thereafter the cached copy is used.
-     */
+    // Two threads may both see null on the very first call and both fetch;
+    // that is harmless — both write the same value and subsequent calls use the cache.
     private String resolveApiKey() throws IOException {
         if (cachedApiKey == null) {
-            log.info("GenerativeService: fetching GEMINI_API_KEY from Google Secret Manager "
-                    + "(first request — will be cached for subsequent calls).");
+            log.info("Fetching GEMINI_API_KEY from Secret Manager (will be cached).");
             cachedApiKey = secretManagerService.getSecret("GEMINI_API_KEY");
-            log.info("GenerativeService: GEMINI_API_KEY successfully retrieved from "
-                    + "Google Secret Manager and cached in memory.");
+            log.info("GEMINI_API_KEY retrieved from Secret Manager and cached.");
         }
         return cachedApiKey;
     }
