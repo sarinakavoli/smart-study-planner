@@ -2,7 +2,9 @@ package com.sarina.studyplanner.controller;
 
 import com.sarina.studyplanner.dto.TaskRequest;
 import com.sarina.studyplanner.entity.Task;
+import com.sarina.studyplanner.exception.UserNotFoundException;
 import com.sarina.studyplanner.service.TaskService;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -19,8 +21,13 @@ public class TaskController {
     }
 
     @PostMapping("/tasks")
-    public Task createTask(@RequestBody TaskRequest taskRequest) {
-        return taskService.createTask(taskRequest);
+    public ResponseEntity<?> createTask(@RequestBody TaskRequest taskRequest) {
+        try {
+            Task task = taskService.createTask(taskRequest);
+            return ResponseEntity.ok(task);
+        } catch (UserNotFoundException e) {
+            return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
+        }
     }
 
     @GetMapping("/tasks")

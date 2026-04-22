@@ -3,6 +3,7 @@ package com.sarina.studyplanner.service;
 import com.sarina.studyplanner.dto.TaskRequest;
 import com.sarina.studyplanner.entity.Task;
 import com.sarina.studyplanner.entity.User;
+import com.sarina.studyplanner.exception.UserNotFoundException;
 import com.sarina.studyplanner.repository.CourseRep;
 import com.sarina.studyplanner.repository.TaskRep;
 import com.sarina.studyplanner.repository.UserRep;
@@ -34,7 +35,7 @@ public class TaskService {
 
         if (taskRequest.getUserId() != null) {
             User user = userRepository.findById(taskRequest.getUserId())
-                    .orElseThrow(() -> new RuntimeException("User not found"));
+                    .orElseThrow(() -> new UserNotFoundException(taskRequest.getUserId()));
             task.setUser(user);
         }
 

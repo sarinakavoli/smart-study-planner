@@ -2,6 +2,7 @@ package com.sarina.studyplanner.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sarina.studyplanner.entity.Task;
+import com.sarina.studyplanner.exception.UserNotFoundException;
 import com.sarina.studyplanner.service.TaskService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -196,15 +197,16 @@ class TaskControllerTest {
     }
 
     @Test
-    void createTask_whenUserNotFound_returns500() throws Exception {
+    void createTask_whenUserNotFound_returns404WithErrorBody() throws Exception {
         when(taskService.createTask(any()))
-                .thenThrow(new RuntimeException("User not found"));
+                .thenThrow(new UserNotFoundException(99L));
 
         Map<String, Object> body = Map.of("title", "Task", "userId", 99);
 
         mockMvc.perform(post("/api/tasks")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(body)))
-                .andExpect(status().is5xxServerError());
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("User not found with id: 99"));
     }
 }
