@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Service account key — never commit this
+scripts/serviceAccountKey.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
