@@ -130,6 +130,17 @@ class CourseServiceTest {
     }
 
     @Test
+    void getCourseByUserIdAndCourseId_withNonExistentUserId_throwsUserNotFoundException() {
+        when(userRepository.existsById(99L)).thenReturn(false);
+
+        assertThatThrownBy(() -> courseService.getCourseByUserIdAndCourseId(99L, 1L))
+                .isInstanceOf(UserNotFoundException.class)
+                .hasMessageContaining("User not found");
+
+        verify(courseRepository, never()).findByIdAndUserId(any(), any());
+    }
+
+    @Test
     void getCourseByUserIdAndCourseId_withNonExistentCourseId_throwsCourseNotFoundException() {
         when(userRepository.existsById(1L)).thenReturn(true);
         when(courseRepository.findByIdAndUserId(99L, 1L)).thenReturn(Optional.empty());
