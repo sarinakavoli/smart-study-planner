@@ -299,6 +299,56 @@ class TaskServiceTest {
     }
 
     @Test
+    void createTask_withNullTitle_throwsIllegalArgumentException() {
+        TaskRequest request = new TaskRequest();
+        request.setTitle(null);
+
+        assertThatThrownBy(() -> taskService.createTask(request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Title is required");
+
+        verify(taskRepository, never()).save(any());
+    }
+
+    @Test
+    void createTask_withBlankTitle_throwsIllegalArgumentException() {
+        TaskRequest request = new TaskRequest();
+        request.setTitle("   ");
+
+        assertThatThrownBy(() -> taskService.createTask(request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Title is required");
+
+        verify(taskRepository, never()).save(any());
+    }
+
+    @Test
+    void updateTask_withNullTitle_throwsIllegalArgumentException() {
+        TaskRequest request = new TaskRequest();
+        request.setTitle(null);
+
+        assertThatThrownBy(() -> taskService.updateTask(1L, request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Title is required");
+
+        verify(taskRepository, never()).findById(any());
+        verify(taskRepository, never()).save(any());
+    }
+
+    @Test
+    void updateTask_withBlankTitle_throwsIllegalArgumentException() {
+        TaskRequest request = new TaskRequest();
+        request.setTitle("   ");
+
+        assertThatThrownBy(() -> taskService.updateTask(1L, request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Title is required");
+
+        verify(taskRepository, never()).findById(any());
+        verify(taskRepository, never()).save(any());
+    }
+
+    @Test
     void moveCategoryToOther_withBlankCategory_throwsException() {
         assertThatThrownBy(() -> taskService.moveCategoryToOther("", 1L))
                 .isInstanceOf(IllegalArgumentException.class)
