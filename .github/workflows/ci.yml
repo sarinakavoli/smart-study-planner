@@ -22,7 +22,20 @@ jobs:
           distribution: temurin
           cache: maven
 
+      # Cache key is derived from the Java version, the workflow file, pom.xml,
+      # and every source/test file.  A cache hit means the exact same inputs
+      # produced a passing test run previously, so re-running is redundant.
+      # Any change to the Java version, workflow, pom.xml, or source files
+      # produces a new key and tests run fresh.
+      - name: Restore cached test results
+        id: cache-backend-tests
+        uses: actions/cache@v4
+        with:
+          path: smart-study-planner-backend/target/surefire-reports
+          key: backend-tests-java17-${{ hashFiles('.github/workflows/ci.yml', 'smart-study-planner-backend/pom.xml', 'smart-study-planner-backend/src/main/**', 'smart-study-planner-backend/src/test/**') }}
+
       - name: Run all tests
+        if: steps.cache-backend-tests.outputs.cache-hit != 'true'
         working-directory: smart-study-planner-backend
         run: mvn test --batch-mode
 
