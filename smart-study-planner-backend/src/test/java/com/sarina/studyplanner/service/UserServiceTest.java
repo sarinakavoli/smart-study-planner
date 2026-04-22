@@ -106,6 +106,15 @@ class UserServiceTest {
     }
 
     @Test
+    void register_withInvalidEmailFormat_throwsException() {
+        assertThatThrownBy(() -> userService.register("bob", "securepass", "notanemail"))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("not valid");
+
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
     void register_withShortPassword_throwsException() {
         assertThatThrownBy(() -> userService.register("bob", "short"))
                 .isInstanceOf(RuntimeException.class)

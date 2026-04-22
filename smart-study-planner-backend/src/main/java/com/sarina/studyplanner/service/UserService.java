@@ -60,7 +60,13 @@ public class UserService {
         if (userRepository.findByName(normalized).isPresent()) {
             throw new RuntimeException("That username is already taken.");
         }
-        String normalizedEmail = (email != null) ? email.toLowerCase(Locale.ROOT) : "";
+        String normalizedEmail = (email != null) ? email.trim().toLowerCase(Locale.ROOT) : "";
+        if (!normalizedEmail.isBlank()) {
+            int atIndex = normalizedEmail.indexOf('@');
+            if (atIndex <= 0 || atIndex == normalizedEmail.length() - 1 || normalizedEmail.indexOf('.', atIndex) <= atIndex + 1) {
+                throw new RuntimeException("Email address is not valid.");
+            }
+        }
         User newUser = new User();
         newUser.setName(normalized);
         newUser.setPassword(passwordEncoder.encode(password));
