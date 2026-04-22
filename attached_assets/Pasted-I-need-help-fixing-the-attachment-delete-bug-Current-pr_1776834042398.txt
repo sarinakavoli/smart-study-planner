@@ -1,0 +1,55 @@
+I need help fixing the attachment delete bug.
+
+Current problem:
+
+* The delete confirmation popup appears correctly
+* But after I click OK, the file does not actually get deleted
+* The failure seems to be in deleting the real file from Firebase Storage
+
+Context:
+
+* Files are stored in Firebase Storage
+* Attachment metadata is stored in the task document in Firestore
+* Some attachments were uploaded normally
+* Some attachments were renamed in the UI
+* Some attachments were replaced with newer files
+* So I need the delete logic to work reliably for all of these cases
+
+What I think may be wrong:
+
+* The code may be trying to delete by the visible file name instead of the real Firebase Storage path
+* Or older attachment objects may be missing required metadata like path
+* Or the Firestore metadata update may not stay in sync with the Storage delete
+
+Please fix the delete flow properly.
+
+Required behavior:
+
+1. Delete the real file from Firebase Storage using the exact stored attachment path
+2. Do not delete by display name or visible label alone
+3. After the Storage delete succeeds, remove that attachment object from the task’s attachments array in Firestore
+4. Make sure the delete flow works for:
+    * normal attachments
+    * renamed/displayName attachments
+    * replaced attachments
+    * older attachments with partial metadata
+5. If an attachment is missing path, handle it safely and show a clear error instead of failing silently
+6. Add temporary debug logging if needed to identify whether the failure is caused by:
+    * wrong storage path
+    * missing metadata
+    * Firebase Storage rules
+    * Firestore update failure
+
+Please also explain clearly because I’m a junior engineer:
+
+* which file(s) you changed
+* what the root cause was
+* how the delete function now finds the correct file
+* how you keep Firebase Storage and Firestore metadata in sync
+* how I can test that the fix really works
+
+At the end, show me:
+
+1. the changed files
+2. the final code
+3. the exact reason the old delete flow was failing

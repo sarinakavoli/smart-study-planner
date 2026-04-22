@@ -277,6 +277,17 @@ function App() {
     return `${(size / (1024 * 1024)).toFixed(1)} MB`;
   };
 
+  const extractStoragePathFromUrl = (url) => {
+    try {
+      const u = new URL(url);
+      const segment = u.pathname.split("/o/")[1];
+      if (!segment) return null;
+      return decodeURIComponent(segment.split("?")[0]);
+    } catch {
+      return null;
+    }
+  };
+
   const removeFileFromStorage = async (path) => {
     if (!path) return;
 
@@ -737,21 +748,51 @@ function App() {
   };
 
   const deleteAttachment = async (taskId, attachment) => {
-    const confirmed = window.confirm(`Delete attachment "${attachment.name}"?`);
+    const label =
+      attachment.displayName || attachment.name || "this attachment";
+    const confirmed = window.confirm(`Delete "${label}"?`);
     if (!confirmed) return;
 
     try {
       setError("");
-      await removeFileFromStorage(attachment.path);
+
+      const storagePath =
+        attachment.path || extractStoragePathFromUrl(attachment.url);
+
+      if (!storagePath) {
+        console.warn(
+          "[deleteAttachment] No storage path found. Full attachment metadata:",
+          JSON.stringify(attachment, null, 2)
+        );
+        setError(
+          `Cannot delete "${label}" from storage — path information is missing. ` +
+            "Please remove it manually in the Firebase Console under Storage."
+        );
+        return;
+      }
+
+      console.log(
+        "[deleteAttachment] Step 1 — Storage path resolved:",
+        storagePath
+      );
+      await removeFileFromStorage(storagePath);
+      console.log("[deleteAttachment] Step 2 — Storage file deleted.");
 
       const task = tasks.find((item) => item.id === taskId);
-      const updatedAttachments = (task?.attachments || []).filter(
-        (item) => item.path !== attachment.path
-      );
+      const updatedAttachments = (task?.attachments || []).filter((item) => {
+        if (attachment.url) return item.url !== attachment.url;
+        if (attachment.path) return item.path !== attachment.path;
+        return true;
+      });
 
+      console.log(
+        "[deleteAttachment] Step 3 — Writing Firestore. Remaining count:",
+        updatedAttachments.length
+      );
       await updateDoc(doc(db, "tasks", taskId), {
         attachments: updatedAttachments,
       });
+      console.log("[deleteAttachment] Step 4 — Firestore updated.");
 
       setTasks((prev) =>
         prev.map((item) =>
@@ -761,8 +802,8 @@ function App() {
         )
       );
     } catch (err) {
-      console.error(err);
-      setError("Could not delete attachment.");
+      console.error("[deleteAttachment] Failed:", err);
+      setError(`Could not delete "${label}": ${err.message}`);
     }
   };
 
