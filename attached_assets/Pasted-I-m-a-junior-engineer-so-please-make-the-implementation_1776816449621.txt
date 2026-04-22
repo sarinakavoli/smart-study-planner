@@ -1,0 +1,69 @@
+I’m a junior engineer, so please make the implementation clear, structured, and easy to follow.
+
+I want to add file attachments for every task in my app.
+
+Current setup:
+
+* Frontend: React
+* Backend/data layer: Firebase
+* Tasks already exist
+* Firebase is already connected
+
+Feature goal:
+I want each task to support multiple file attachments.
+
+How I want it to work:
+
+1. A user should be able to attach one or more files when creating a task
+2. A user should also be able to add or remove attachments later when editing a task
+3. The actual files should be uploaded to Firebase Storage
+4. Each task document in Firebase database should contain an attachments array
+5. That attachments array should store only file metadata, not the file binary itself
+
+For each attachment, store metadata like:
+
+* name
+* url
+* path
+* type
+* size
+* uploadedAt
+
+Expected storage behavior:
+
+* Files should be saved in Firebase Storage in a task-specific path, for example:
+    tasks/{taskId}/attachments/{fileNameOrGeneratedId}
+* After each upload, save the returned file metadata into the task’s attachments array in the database
+* On load, attachments should be fetched from the task document and displayed in the UI
+* Users should be able to open/download attachments from the saved URL
+* Users should be able to delete attachments
+* When an attachment is deleted, it should:
+    * be removed from Firebase Storage
+    * also be removed from the task document’s attachments array in the database
+
+Please also explain the implementation step by step as you make changes, because I want to understand what is happening.
+
+I want you to explain:
+
+* which files you changed
+* what each change does
+* how the upload flow works from frontend to Firebase Storage to database
+* how attachments are fetched and rendered
+* how deletion stays synced between Storage and the database
+* any Firebase rules or config changes needed
+* any edge cases I should know about
+
+Important requirements:
+
+* Do not store raw files inside the database
+* Store files only in Firebase Storage
+* Store only metadata in the task document
+* Make sure the attachments persist after refresh
+* Make sure the code is clean and consistent with the current project structure
+* Keep the implementation beginner-friendly and explain important choices
+
+At the end, show me:
+
+1. the full list of changed files
+2. the final code changes
+3. how I can test the featur
