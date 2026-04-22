@@ -50,22 +50,63 @@ The Vite dev server proxies all `/api` requests to `http://localhost:8080`.
 
 | Name | Where stored | Who reads it | Exposed to browser? |
 |------|-------------|--------------|---------------------|
-| `GEMINI_API_KEY` | Replit Secret (encrypted) | Backend only (`GenerativeService`) | Never |
+| `GOOGLE_CLIENT_ID` | Replit Secret (encrypted) | Backend only (`SecretManagerService`) | Never |
+| `GOOGLE_CLIENT_SECRET` | Replit Secret (encrypted) | Backend only (`SecretManagerService`) | Never |
+| `GOOGLE_REFRESH_TOKEN` | Replit Secret (encrypted) | Backend only (`SecretManagerService`) | Never |
+| `GCP_PROJECT_ID` | Replit Environment Variable | Backend only (`application.properties`) | Never |
 | `VITE_FIREBASE_*` | Replit Environment Variables | Frontend build (public identifiers) | Yes (by design — Firebase web SDK requires this) |
 | `PGHOST/PGUSER/etc.` | Replit Secrets (auto-provisioned) | Backend only | Never |
 
 - Firebase config values are Google-documented as safe to include in frontend code. What keeps Firebase secure is your Security Rules, not hiding the config values.
-- `GEMINI_API_KEY` is read by Spring at startup via `${GEMINI_API_KEY:}` in `application.properties`. It only ever exists inside the backend JVM process — it is never serialised into any HTTP response.
+- The Gemini API key is **not** stored in Replit at all — it lives only in Google Secret Manager under the secret name `GEMINI_API_KEY`. The three `GOOGLE_*` Replit Secrets are bootstrap OAuth2 credentials that allow the backend to authenticate to GCP and read the secret from Secret Manager.
 
-**Why not Google Cloud Secret Manager?**
-Secret Manager requires authentication via either a JSON service account key (blocked by the `iam.disableServiceAccountKeyCreation` org policy on this project) or Workload Identity Federation (which requires the workload to run on GCP infrastructure — Replit is not GCP). Replit Secrets are encrypted at rest, never in source code, never in git, and only injected into the server process. This is the correct and sufficient secret store for a Replit-hosted app.
+### Why OAuth2 refresh token instead of a service account key?
+
+The GCP org policy `iam.disableServiceAccountKeyCreation` blocks downloading JSON key files.
+Workload Identity Federation requires the workload to run on GCP infrastructure — Replit is not GCP.
+The solution is **OAuth2 user credentials** (a refresh token tied to your personal Google account).
+These three values are stored in Replit Secrets:
+  - `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` — identify the OAuth2 "Desktop app" client you created in GCP Console.
+  - `GOOGLE_REFRESH_TOKEN` — obtained by running `gcloud auth application-default login` locally once.
+
+At runtime, the GCP client library automatically exchanges the refresh token for a short-lived access token. The Gemini key itself is fetched from Secret Manager on the first request and cached in memory.
+
+### GCP setup required before /api/generate works
+
+1. **Create OAuth2 Client ID** — GCP Console → APIs & Services → Credentials →
+   Create Credentials → OAuth 2.0 Client ID → Application type: **Desktop app**.
+   Download the JSON; copy `client_id` and `client_secret`.
+
+2. **Grant Secret Manager access** — IAM & Admin → IAM → find your personal Google account
+   email → Add role: **Secret Manager Secret Accessor**.
+
+3. **Get a refresh token** — run locally:
+   ```
+   gcloud auth application-default login \
+     --client-id-file=<path-to-downloaded-json> \
+     --scopes=https://www.googleapis.com/auth/cloud-platform
+   ```
+   Open `~/.config/gcloud/application_default_credentials.json` and copy `"refresh_token"`.
+
+4. **Add to Replit Secrets:** `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`
+   **Add to Replit Environment Variables:** `GCP_PROJECT_ID` = `dev-sarina`
+
+5. **Create the secret in Secret Manager** — GCP Console → Secret Manager → Create Secret,
+   name it exactly `GEMINI_API_KEY`, paste the Gemini API key as the value.
 
 ## Generative AI (Gemini)
 
 - `POST /api/generate` — accepts `{"prompt": "..."}`, returns `{"result": "..."}` or an error body.
-- `GenerativeService.java` — reads the key via `@Value("${gemini.api.key:}")`, makes the HTTPS call to Google's Gemini API server-side, returns only the response text.
-- `GenerativeController.java` — the secure proxy endpoint. The browser sends a prompt; the server adds the key and calls Gemini; only the AI text is returned to the browser.
-- If `GEMINI_API_KEY` is unset the endpoint returns HTTP 503. If the free-tier quota is hit it returns HTTP 429.
+- `SecretManagerService.java` — authenticates to GCP via OAuth2 user credentials, fetches the `GEMINI_API_KEY` secret from Secret Manager.
+- `GenerativeService.java` — calls `SecretManagerService.getSecret("GEMINI_API_KEY")` on the first request, caches the result, then makes the HTTPS call to the Gemini API server-side. The key is never serialised into any response.
+- `GenerativeController.java` — the secure proxy endpoint. The browser sends a prompt; the server fetches the key (from cache or Secret Manager) and calls Gemini; only the AI text is returned to the browser.
+- If any of the four required config values are missing the endpoint returns HTTP 503 with a message naming the missing values. If the free-tier quota is hit it returns HTTP 429.
+
+### How to verify Secret Manager is being used
+
+The `GEMINI_API_KEY` Replit Secret has been deleted — it no longer exists in Replit.
+Any successful response from `POST /api/generate` proves the key was fetched from
+Google Secret Manager, since there is no other source for it.
 
 ## Firebase Attachments
 

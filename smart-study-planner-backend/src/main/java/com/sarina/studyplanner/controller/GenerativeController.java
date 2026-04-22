@@ -44,8 +44,11 @@ public class GenerativeController {
         if (!generativeService.isConfigured()) {
             return ResponseEntity.status(503)
                     .body(Map.of("error",
-                            "AI features are not enabled. " +
-                            "GEMINI_API_KEY Replit Secret is not configured."));
+                            "AI features are not enabled. Missing required configuration: "
+                            + generativeService.missingConfigDescription()
+                            + ". Set GCP_PROJECT_ID as a Replit Environment Variable and "
+                            + "GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN "
+                            + "as Replit Secrets."));
         }
 
         try {
