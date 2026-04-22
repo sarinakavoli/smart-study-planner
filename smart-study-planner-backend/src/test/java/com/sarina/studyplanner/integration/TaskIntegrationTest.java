@@ -13,10 +13,12 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
+import java.util.HashMap;
 import java.util.Map;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest
@@ -139,5 +141,103 @@ class TaskIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray())
                 .andExpect(jsonPath("$[0].status").value("PENDING"));
+    }
+
+    @Test
+    void createTask_withNullTitle_returns400() throws Exception {
+        Map<String, Object> taskBody = new HashMap<>();
+        taskBody.put("title", null);
+        taskBody.put("description", "Some description");
+        taskBody.put("dueDate", "2026-05-01");
+        taskBody.put("category", "HOMEWORK");
+        taskBody.put("userId", userId);
+        taskBody.put("courseId", courseId);
+
+        mockMvc.perform(post("/api/tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(taskBody)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void createTask_withBlankTitle_returns400() throws Exception {
+        Map<String, Object> taskBody = Map.of(
+                "title", "   ",
+                "description", "Some description",
+                "dueDate", "2026-05-01",
+                "category", "HOMEWORK",
+                "userId", userId,
+                "courseId", courseId
+        );
+
+        mockMvc.perform(post("/api/tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(taskBody)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void updateTask_withNullTitle_returns400() throws Exception {
+        Map<String, Object> createBody = Map.of(
+                "title", "Valid task title",
+                "description", "Initial description",
+                "dueDate", "2026-05-01",
+                "category", "HOMEWORK",
+                "userId", userId,
+                "courseId", courseId
+        );
+        MvcResult createResult = mockMvc.perform(post("/api/tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(createBody)))
+                .andExpect(status().isOk())
+                .andReturn();
+        Map<?, ?> created = objectMapper.readValue(createResult.getResponse().getContentAsString(), Map.class);
+        Long taskId = ((Number) created.get("id")).longValue();
+
+        Map<String, Object> updateBody = new HashMap<>();
+        updateBody.put("title", null);
+        updateBody.put("description", "Updated description");
+        updateBody.put("dueDate", "2026-06-01");
+        updateBody.put("category", "HOMEWORK");
+        updateBody.put("userId", userId);
+        updateBody.put("courseId", courseId);
+
+        mockMvc.perform(put("/api/tasks/" + taskId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateBody)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void updateTask_withBlankTitle_returns400() throws Exception {
+        Map<String, Object> createBody = Map.of(
+                "title", "Another valid task",
+                "description", "Initial description",
+                "dueDate", "2026-05-01",
+                "category", "STUDY",
+                "userId", userId,
+                "courseId", courseId
+        );
+        MvcResult createResult = mockMvc.perform(post("/api/tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(createBody)))
+                .andExpect(status().isOk())
+                .andReturn();
+        Map<?, ?> created = objectMapper.readValue(createResult.getResponse().getContentAsString(), Map.class);
+        Long taskId = ((Number) created.get("id")).longValue();
+
+        Map<String, Object> updateBody = Map.of(
+                "title", "",
+                "description", "Updated description",
+                "dueDate", "2026-06-01",
+                "category", "STUDY",
+                "userId", userId,
+                "courseId", courseId
+        );
+
+        mockMvc.perform(put("/api/tasks/" + taskId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateBody)))
+                .andExpect(status().isBadRequest());
     }
 }
