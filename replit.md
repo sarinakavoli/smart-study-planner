@@ -44,6 +44,16 @@ The Vite dev server proxies all `/api` requests to `http://localhost:8080`.
 - Category colors for built-in and custom categories
 - Calendar view, overdue task tracking, search
 - Drag-to-reorder custom categories
+- Task file attachments stored in Firebase Storage, with metadata stored on each Firestore task document
+
+## Firebase Attachments
+
+- Frontend initializes Firebase Auth, Firestore (`smart-study` database), and Storage in `smart-study-planner-frontend/src/firebase.js`
+- Task documents include an `attachments` array containing metadata only: `name`, `url`, `path`, `type`, `size`, and `uploadedAt`
+- Files are stored in Firebase Storage under `tasks/{taskId}/attachments/{generatedId}-{safeFileName}`
+- Creating/editing a task uploads selected files to Storage, gets the download URL, then appends metadata to the task document
+- Removing an attachment deletes the Storage object first, then updates the task document attachments array
+- Uploaded Storage objects include custom metadata for `userId` and `taskId` to support ownership-aware Storage rules
 
 ## Frontend API Calls
 

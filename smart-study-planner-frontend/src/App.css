@@ -155,7 +155,7 @@ body {
 .task-row {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   gap: 18px;
   padding: 14px 0;
   border-bottom: 1px solid var(--border);
@@ -178,6 +178,7 @@ body {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .error-text {
@@ -496,4 +497,80 @@ body {
 
 .category-row {
   position: relative;
+}
+
+.attachment-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  margin-top: 8px;
+}
+
+.attachment-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-main);
+  margin: 0;
+}
+
+.attachment-input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.selected-attachments,
+.existing-attachments {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.selected-attachment-item,
+.attachment-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--text-main);
+}
+
+.attachment-list {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.attachment-link {
+  color: #60a5fa;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.attachment-link:hover {
+  text-decoration: underline;
+}
+
+.attachment-size {
+  color: var(--text-soft);
+  font-size: 12px;
+}
+
+.attachment-delete-btn {
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-soft);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.attachment-delete-btn:hover {
+  background: var(--bg-soft);
+  color: var(--text-main);
 }

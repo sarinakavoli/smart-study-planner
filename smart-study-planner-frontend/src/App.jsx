@@ -12,9 +12,16 @@ import {
   doc,
   query,
   where,
+  arrayUnion,
 } from "firebase/firestore";
+import {
+  ref as storageRef,
+  uploadBytes,
+  getDownloadURL,
+  deleteObject,
+} from "firebase/storage";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { db, auth } from "./firebase";
+import { db, auth, storage } from "./firebase";
 
 function App() {
   const [tasks, setTasks] = useState([]);
@@ -36,6 +43,7 @@ function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [loading, setLoading] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
+  const [attachmentFiles, setAttachmentFiles] = useState([]);
 
   const [newTask, setNewTask] = useState({
     title: "",
@@ -242,6 +250,80 @@ function App() {
     setUseCustomCategory(false);
     setCustomCategory("");
     setEditingTaskId(null);
+    setAttachmentFiles([]);
+  };
+
+  const sanitizeFileName = (fileName) => {
+    const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+    return safeName || "attachment";
+  };
+
+  const createAttachmentId = () => {
+    if (window.crypto?.randomUUID) {
+      return window.crypto.randomUUID();
+    }
+    return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  };
+
+  const formatFileSize = (size = 0) => {
+    if (size < 1024) return `${size} B`;
+    if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+    return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const removeFileFromStorage = async (path) => {
+    if (!path) return;
+
+    try {
+      await deleteObject(storageRef(storage, path));
+    } catch (err) {
+      if (err.code !== "storage/object-not-found") {
+        throw err;
+      }
+    }
+  };
+
+  const uploadTaskAttachments = async (taskId, files) => {
+    const uploadedAttachments = [];
+
+    for (const file of files) {
+      const filePath = `tasks/${taskId}/attachments/${createAttachmentId()}-${sanitizeFileName(file.name)}`;
+      const fileRef = storageRef(storage, filePath);
+
+      await uploadBytes(fileRef, file, {
+        contentType: file.type || "application/octet-stream",
+        customMetadata: {
+          userId: currentUser.uid,
+          taskId,
+        },
+      });
+
+      const url = await getDownloadURL(fileRef);
+      const attachment = {
+        name: file.name,
+        url,
+        path: filePath,
+        type: file.type || "application/octet-stream",
+        size: file.size,
+        uploadedAt: new Date().toISOString(),
+      };
+
+      await updateDoc(doc(db, "tasks", taskId), {
+        attachments: arrayUnion(attachment),
+      });
+
+      uploadedAttachments.push(attachment);
+    }
+
+    return uploadedAttachments;
+  };
+
+  const handleAttachmentFileChange = (event) => {
+    setAttachmentFiles(Array.from(event.target.files || []));
+  };
+
+  const removeSelectedAttachmentFile = (fileIndex) => {
+    setAttachmentFiles((prev) => prev.filter((_, index) => index !== fileIndex));
   };
 
   const createCategoryInBackend = async (name) => {
@@ -307,16 +389,36 @@ function App() {
         userId: currentUser.uid,
       };
 
+      let taskId = editingTaskId;
+
       if (editingTaskId) {
         await updateDoc(doc(db, "tasks", editingTaskId), payload);
       } else {
-        await addDoc(collection(db, "tasks"), payload);
+        const taskDoc = await addDoc(collection(db, "tasks"), {
+          ...payload,
+          attachments: [],
+        });
+        taskId = taskDoc.id;
+      }
+
+      let attachmentUploadFailed = false;
+
+      if (attachmentFiles.length > 0) {
+        try {
+          await uploadTaskAttachments(taskId, attachmentFiles);
+        } catch (uploadErr) {
+          console.error(uploadErr);
+          attachmentUploadFailed = true;
+        }
       }
 
       resetForm();
       setActiveView("ALL_TASKS");
       loadTasks();
       loadCategories();
+      if (attachmentUploadFailed) {
+        setError("The task was saved, but one or more attachments could not be uploaded.");
+      }
     } catch (err) {
       console.error(err);
       setError(editingTaskId ? "Could not update task." : "Could not create task.");
@@ -343,6 +445,7 @@ function App() {
 
   const startEditTask = (task) => {
     setEditingTaskId(task.id);
+    setAttachmentFiles([]);
 
     if (task.category && !fixedCategories.includes(task.category)) {
       setUseCustomCategory(true);
@@ -384,11 +487,46 @@ function App() {
 
     try {
       setError("");
+      const taskToDelete = tasks.find((task) => task.id === taskId);
+      const attachments = taskToDelete?.attachments || [];
+      await Promise.all(
+        attachments.map((attachment) => removeFileFromStorage(attachment.path))
+      );
       await deleteDoc(doc(db, "tasks", taskId));
       loadTasks();
     } catch (err) {
       console.error(err);
       setError("Could not delete task.");
+    }
+  };
+
+  const deleteAttachment = async (taskId, attachment) => {
+    const confirmed = window.confirm(`Delete attachment "${attachment.name}"?`);
+    if (!confirmed) return;
+
+    try {
+      setError("");
+      await removeFileFromStorage(attachment.path);
+
+      const task = tasks.find((item) => item.id === taskId);
+      const updatedAttachments = (task?.attachments || []).filter(
+        (item) => item.path !== attachment.path
+      );
+
+      await updateDoc(doc(db, "tasks", taskId), {
+        attachments: updatedAttachments,
+      });
+
+      setTasks((prev) =>
+        prev.map((item) =>
+          item.id === taskId
+            ? { ...item, attachments: updatedAttachments }
+            : item
+        )
+      );
+    } catch (err) {
+      console.error(err);
+      setError("Could not delete attachment.");
     }
   };
 
@@ -590,6 +728,11 @@ function App() {
     return new Set(tasks.map((task) => task.dueDate));
   }, [tasks]);
 
+  const editingTask = useMemo(() => {
+    if (!editingTaskId) return null;
+    return tasks.find((task) => task.id === editingTaskId) || null;
+  }, [editingTaskId, tasks]);
+
   const sidebarButtonStyle = (isActive = false) => ({
     width: "100%",
     textAlign: "left",
@@ -690,6 +833,32 @@ function App() {
         >
           {(task.category || "OTHER")} • {task.status} • Due: {task.dueDate}
         </div>
+        {(task.attachments || []).length > 0 && (
+          <div className="attachment-list">
+            {(task.attachments || []).map((attachment) => (
+              <div key={attachment.path} className="attachment-item">
+                <a
+                  href={attachment.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="attachment-link"
+                >
+                  {attachment.name}
+                </a>
+                <span className="attachment-size">
+                  {formatFileSize(attachment.size)}
+                </span>
+                <button
+                  type="button"
+                  className="attachment-delete-btn"
+                  onClick={() => deleteAttachment(task.id, attachment)}
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="task-actions">
@@ -1036,6 +1205,69 @@ function App() {
                 >
                   {useCustomCategory ? "Use Existing Category" : "New Category"}
                 </button>
+
+                <div className="attachment-field">
+                  <label className="attachment-label" htmlFor="task-attachments">
+                    Attach files
+                  </label>
+                  <input
+                    id="task-attachments"
+                    type="file"
+                    multiple
+                    onChange={handleAttachmentFileChange}
+                    className="input-control attachment-input"
+                  />
+                </div>
+
+                {attachmentFiles.length > 0 && (
+                  <div className="selected-attachments">
+                    {attachmentFiles.map((file, index) => (
+                      <div
+                        key={`${file.name}-${file.lastModified}-${index}`}
+                        className="selected-attachment-item"
+                      >
+                        <span>
+                          {file.name} ({formatFileSize(file.size)})
+                        </span>
+                        <button
+                          type="button"
+                          className="attachment-delete-btn"
+                          onClick={() => removeSelectedAttachmentFile(index)}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {editingTask && (editingTask.attachments || []).length > 0 && (
+                  <div className="existing-attachments">
+                    <p className="attachment-label">Current attachments</p>
+                    {(editingTask.attachments || []).map((attachment) => (
+                      <div key={attachment.path} className="selected-attachment-item">
+                        <a
+                          href={attachment.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="attachment-link"
+                        >
+                          {attachment.name}
+                        </a>
+                        <span className="attachment-size">
+                          {formatFileSize(attachment.size)}
+                        </span>
+                        <button
+                          type="button"
+                          className="attachment-delete-btn"
+                          onClick={() => deleteAttachment(editingTask.id, attachment)}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 <button type="submit" className="main-btn" disabled={loading}>
                   {loading ? "Saving..." : editingTaskId ? "Update" : "Save"}
