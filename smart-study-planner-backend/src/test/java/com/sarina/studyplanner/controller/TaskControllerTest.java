@@ -234,4 +234,32 @@ class TaskControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error").value("User not found with id: 99"));
     }
+
+    @Test
+    void createTask_whenTitleIsBlank_returns400WithErrorBody() throws Exception {
+        when(taskService.createTask(any()))
+                .thenThrow(new IllegalArgumentException("Title is required"));
+
+        Map<String, Object> body = Map.of("title", "   ", "status", "PENDING");
+
+        mockMvc.perform(post("/api/tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("Title is required"));
+    }
+
+    @Test
+    void updateTask_whenTitleIsBlank_returns400WithErrorBody() throws Exception {
+        when(taskService.updateTask(eq(1L), any()))
+                .thenThrow(new IllegalArgumentException("Title is required"));
+
+        Map<String, Object> body = Map.of("title", "", "status", "PENDING");
+
+        mockMvc.perform(put("/api/tasks/1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("Title is required"));
+    }
 }

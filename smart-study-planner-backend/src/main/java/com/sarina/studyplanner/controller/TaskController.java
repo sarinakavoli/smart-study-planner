@@ -27,6 +27,8 @@ public class TaskController {
         try {
             Task task = taskService.createTask(taskRequest);
             return ResponseEntity.ok(task);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (UserNotFoundException e) {
             return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
         } catch (CourseNotFoundException e) {
@@ -71,6 +73,8 @@ public class TaskController {
         try {
             Task task = taskService.updateTask(taskId, taskRequest);
             return ResponseEntity.ok(task);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (TaskNotFoundException e) {
             return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
         } catch (CourseNotFoundException e) {

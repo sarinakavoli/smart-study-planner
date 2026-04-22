@@ -28,6 +28,9 @@ public class TaskService {
     }
 
     public Task createTask(TaskRequest taskRequest) {
+        if (taskRequest.getTitle() == null || taskRequest.getTitle().isBlank()) {
+            throw new IllegalArgumentException("Title is required");
+        }
         Task task = new Task();
         task.setTitle(taskRequest.getTitle());
         task.setDescription(taskRequest.getDescription());
@@ -82,6 +85,9 @@ public class TaskService {
     }
 
     public Task updateTask(Long taskId, TaskRequest taskRequest) {
+        if (taskRequest.getTitle() == null || taskRequest.getTitle().isBlank()) {
+            throw new IllegalArgumentException("Title is required");
+        }
         Task task = taskRepository.findById(taskId)
                 .orElseThrow(() -> new TaskNotFoundException(taskId));
 
