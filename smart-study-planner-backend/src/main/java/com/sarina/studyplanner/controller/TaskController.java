@@ -3,6 +3,7 @@ package com.sarina.studyplanner.controller;
 import com.sarina.studyplanner.dto.TaskRequest;
 import com.sarina.studyplanner.entity.Task;
 import com.sarina.studyplanner.exception.CourseNotFoundException;
+import com.sarina.studyplanner.exception.ForbiddenException;
 import com.sarina.studyplanner.exception.TaskNotFoundException;
 import com.sarina.studyplanner.exception.UserNotFoundException;
 import com.sarina.studyplanner.service.TaskService;
@@ -101,6 +102,51 @@ public class TaskController {
         try {
             taskService.deleteTask(taskId);
             return ResponseEntity.ok("Task deleted successfully");
+        } catch (TaskNotFoundException e) {
+            return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @PutMapping("/users/{userId}/tasks/{taskId}")
+    public ResponseEntity<?> updateTaskForUser(
+            @PathVariable Long userId,
+            @PathVariable Long taskId,
+            @RequestHeader(value = "X-Requesting-User-Id", required = false) Long requestingUserId,
+            @RequestBody TaskRequest taskRequest) {
+        try {
+            if (requestingUserId == null || !requestingUserId.equals(userId)) {
+                throw new ForbiddenException("You are not allowed to modify another user's task.");
+            }
+            Task task = taskService.updateTaskForUser(userId, taskId, taskRequest);
+            return ResponseEntity.ok(task);
+        } catch (ForbiddenException e) {
+            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (UserNotFoundException e) {
+            return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
+        } catch (TaskNotFoundException e) {
+            return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
+        } catch (CourseNotFoundException e) {
+            return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @DeleteMapping("/users/{userId}/tasks/{taskId}")
+    public ResponseEntity<?> deleteTaskForUser(
+            @PathVariable Long userId,
+            @PathVariable Long taskId,
+            @RequestHeader(value = "X-Requesting-User-Id", required = false) Long requestingUserId) {
+        try {
+            if (requestingUserId == null || !requestingUserId.equals(userId)) {
+                throw new ForbiddenException("You are not allowed to modify another user's task.");
+            }
+            taskService.deleteTaskForUser(userId, taskId);
+            return ResponseEntity.noContent().build();
+        } catch (ForbiddenException e) {
+            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
+        } catch (UserNotFoundException e) {
+            return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
         } catch (TaskNotFoundException e) {
             return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
         }

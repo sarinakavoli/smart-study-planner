@@ -4,6 +4,7 @@ import com.sarina.studyplanner.dto.TaskRequest;
 import com.sarina.studyplanner.entity.Task;
 import com.sarina.studyplanner.entity.User;
 import com.sarina.studyplanner.exception.CourseNotFoundException;
+import com.sarina.studyplanner.exception.ForbiddenException;
 import com.sarina.studyplanner.exception.TaskNotFoundException;
 import com.sarina.studyplanner.exception.UserNotFoundException;
 import com.sarina.studyplanner.repository.CourseRep;
@@ -108,6 +109,40 @@ public class TaskService {
     public void deleteTask(Long taskId) {
         Task task = taskRepository.findById(taskId)
                 .orElseThrow(() -> new TaskNotFoundException(taskId));
+        taskRepository.delete(task);
+    }
+
+    public Task updateTaskForUser(Long userId, Long taskId, TaskRequest taskRequest) {
+        userRepository.findById(userId)
+                .orElseThrow(() -> new UserNotFoundException(userId));
+        Task task = taskRepository.findById(taskId)
+                .orElseThrow(() -> new TaskNotFoundException(taskId));
+        if (task.getUser() == null || !task.getUser().getId().equals(userId)) {
+            throw new ForbiddenException("You are not allowed to modify another user's task.");
+        }
+        if (taskRequest.getTitle() == null || taskRequest.getTitle().isBlank()) {
+            throw new IllegalArgumentException("Title is required");
+        }
+        task.setTitle(taskRequest.getTitle());
+        task.setDescription(taskRequest.getDescription());
+        task.setDueDate(taskRequest.getDueDate());
+        task.setStatus(taskRequest.getStatus());
+        task.setCategory(taskRequest.getCategory());
+        if (taskRequest.getCourseId() != null) {
+            task.setCourse(courseRepository.findById(taskRequest.getCourseId())
+                    .orElseThrow(() -> new CourseNotFoundException(taskRequest.getCourseId())));
+        }
+        return taskRepository.save(task);
+    }
+
+    public void deleteTaskForUser(Long userId, Long taskId) {
+        userRepository.findById(userId)
+                .orElseThrow(() -> new UserNotFoundException(userId));
+        Task task = taskRepository.findById(taskId)
+                .orElseThrow(() -> new TaskNotFoundException(taskId));
+        if (task.getUser() == null || !task.getUser().getId().equals(userId)) {
+            throw new ForbiddenException("You are not allowed to modify another user's task.");
+        }
         taskRepository.delete(task);
     }
 

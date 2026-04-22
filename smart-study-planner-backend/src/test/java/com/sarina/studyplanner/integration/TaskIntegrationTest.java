@@ -16,6 +16,7 @@ import org.springframework.web.context.WebApplicationContext;
 import java.util.HashMap;
 import java.util.Map;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -239,5 +240,83 @@ class TaskIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(updateBody)))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void updateTaskByDifferentUser_returns403() throws Exception {
+        String otherUsername = "othertaskuser_" + System.nanoTime();
+        Map<String, String> registerBody = Map.of("username", otherUsername, "password", "testpass99");
+        MvcResult otherResult = mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(registerBody)))
+                .andExpect(status().isOk())
+                .andReturn();
+        Map<?, ?> otherResponse = objectMapper.readValue(otherResult.getResponse().getContentAsString(), Map.class);
+        Long otherUserId = ((Number) otherResponse.get("id")).longValue();
+
+        Map<String, Object> taskBody = Map.of(
+                "title", "Owner task",
+                "description", "Belongs to original user",
+                "dueDate", "2026-05-01",
+                "category", "HOMEWORK",
+                "userId", userId,
+                "courseId", courseId
+        );
+        MvcResult taskResult = mockMvc.perform(post("/api/tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(taskBody)))
+                .andExpect(status().isOk())
+                .andReturn();
+        Map<?, ?> taskResponse = objectMapper.readValue(taskResult.getResponse().getContentAsString(), Map.class);
+        Long taskId = ((Number) taskResponse.get("id")).longValue();
+
+        Map<String, Object> updateBody = Map.of(
+                "title", "Hijacked title",
+                "description", "Unauthorized update",
+                "dueDate", "2026-06-01",
+                "category", "HOMEWORK",
+                "userId", userId
+        );
+
+        mockMvc.perform(put("/api/users/" + userId + "/tasks/" + taskId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("X-Requesting-User-Id", otherUserId)
+                        .content(objectMapper.writeValueAsString(updateBody)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").exists());
+    }
+
+    @Test
+    void deleteTaskByDifferentUser_returns403() throws Exception {
+        String otherUsername = "othertaskuser2_" + System.nanoTime();
+        Map<String, String> registerBody = Map.of("username", otherUsername, "password", "testpass99");
+        MvcResult otherResult = mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(registerBody)))
+                .andExpect(status().isOk())
+                .andReturn();
+        Map<?, ?> otherResponse = objectMapper.readValue(otherResult.getResponse().getContentAsString(), Map.class);
+        Long otherUserId = ((Number) otherResponse.get("id")).longValue();
+
+        Map<String, Object> taskBody = Map.of(
+                "title", "Protected task",
+                "description", "Should not be deletable by another user",
+                "dueDate", "2026-05-01",
+                "category", "STUDY",
+                "userId", userId,
+                "courseId", courseId
+        );
+        MvcResult taskResult = mockMvc.perform(post("/api/tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(taskBody)))
+                .andExpect(status().isOk())
+                .andReturn();
+        Map<?, ?> taskResponse = objectMapper.readValue(taskResult.getResponse().getContentAsString(), Map.class);
+        Long taskId = ((Number) taskResponse.get("id")).longValue();
+
+        mockMvc.perform(delete("/api/users/" + userId + "/tasks/" + taskId)
+                        .header("X-Requesting-User-Id", otherUserId))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").exists());
     }
 }
