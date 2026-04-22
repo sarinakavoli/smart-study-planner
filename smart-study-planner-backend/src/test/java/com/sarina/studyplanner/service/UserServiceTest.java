@@ -146,6 +146,17 @@ class UserServiceTest {
     }
 
     @Test
+    void createUser_withNullPassword_throwsException() {
+        User user = new User("carol", "carol@example.com", null);
+
+        assertThatThrownBy(() -> userService.createUser(user))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("at least 8 characters");
+
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
     void createUser_hashesPasswordAndDelegatesToRepository() {
         User user = new User("carol", "carol@example.com", "pass1234");
         when(userRepository.save(user)).thenReturn(user);
