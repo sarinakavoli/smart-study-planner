@@ -4,6 +4,7 @@ import com.sarina.studyplanner.dto.TaskRequest;
 import com.sarina.studyplanner.entity.Course;
 import com.sarina.studyplanner.entity.Task;
 import com.sarina.studyplanner.entity.User;
+import com.sarina.studyplanner.exception.TaskNotFoundException;
 import com.sarina.studyplanner.exception.UserNotFoundException;
 import com.sarina.studyplanner.repository.CourseRep;
 import com.sarina.studyplanner.repository.TaskRep;
@@ -242,16 +243,32 @@ class TaskServiceTest {
     void updateTask_withInvalidId_throwsException() {
         when(taskRepository.findById(99L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> taskService.updateTask(99L, new TaskRequest()))
+        TaskRequest request = new TaskRequest();
+        request.setTitle("Valid title");
+
+        assertThatThrownBy(() -> taskService.updateTask(99L, request))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("Task not found");
     }
 
     @Test
-    void deleteTask_delegatesToRepository() {
+    void deleteTask_whenTaskExists_callsDeleteById() {
+        when(taskRepository.existsById(5L)).thenReturn(true);
+
         taskService.deleteTask(5L);
 
         verify(taskRepository).deleteById(5L);
+    }
+
+    @Test
+    void deleteTask_whenTaskDoesNotExist_throwsTaskNotFoundException() {
+        when(taskRepository.existsById(99L)).thenReturn(false);
+
+        assertThatThrownBy(() -> taskService.deleteTask(99L))
+                .isInstanceOf(TaskNotFoundException.class)
+                .hasMessageContaining("Task not found");
+
+        verify(taskRepository, never()).deleteById(any());
     }
 
     @Test
