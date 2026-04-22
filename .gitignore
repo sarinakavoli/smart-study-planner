@@ -3,3 +3,15 @@ node_modules
 smart-study-planner-frontend/node_modules
 smart-study-planner-frontend/dist
 smart-study-planner-backend/target
+
+# Local environment variable overrides — never commit real values
+.env
+.env.local
+.env.*.local
+smart-study-planner-frontend/.env
+smart-study-planner-frontend/.env.local
+smart-study-planner-frontend/.env.*.local
+
+# Google Cloud service account key — never commit this
+scripts/serviceAccountKey.json
+smart-study-planner-backend/service-account.json
