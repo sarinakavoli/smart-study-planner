@@ -4,6 +4,7 @@ import com.sarina.studyplanner.dto.CourseRequest;
 import com.sarina.studyplanner.entity.Course;
 import com.sarina.studyplanner.entity.User;
 import com.sarina.studyplanner.exception.CourseNotFoundException;
+import com.sarina.studyplanner.exception.UserNotFoundException;
 import com.sarina.studyplanner.repository.CourseRep;
 import com.sarina.studyplanner.repository.UserRep;
 import org.junit.jupiter.api.BeforeEach;
@@ -136,5 +137,98 @@ class CourseServiceTest {
         assertThatThrownBy(() -> courseService.getCourseByUserIdAndCourseId(1L, 99L))
                 .isInstanceOf(CourseNotFoundException.class)
                 .hasMessageContaining("Course not found with id: 99");
+    }
+
+    @Test
+    void updateCourse_whenUserNotFound_throwsUserNotFoundException() {
+        CourseRequest request = new CourseRequest();
+        request.setCourseName("Updated Name");
+        request.setCourseCode("UPD101");
+
+        when(userRepository.existsById(99L)).thenReturn(false);
+
+        assertThatThrownBy(() -> courseService.updateCourse(99L, 1L, request))
+                .isInstanceOf(UserNotFoundException.class)
+                .hasMessageContaining("User not found");
+
+        verify(courseRepository, never()).findByIdAndUserId(any(), any());
+        verify(courseRepository, never()).save(any());
+    }
+
+    @Test
+    void updateCourse_whenCourseNotFound_throwsCourseNotFoundException() {
+        CourseRequest request = new CourseRequest();
+        request.setCourseName("Updated Name");
+        request.setCourseCode("UPD101");
+
+        when(userRepository.existsById(1L)).thenReturn(true);
+        when(courseRepository.findByIdAndUserId(99L, 1L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> courseService.updateCourse(1L, 99L, request))
+                .isInstanceOf(CourseNotFoundException.class)
+                .hasMessageContaining("Course not found with id: 99");
+
+        verify(courseRepository, never()).save(any());
+    }
+
+    @Test
+    void updateCourse_withValidUserAndCourse_updatesAndReturnsCourse() {
+        CourseRequest request = new CourseRequest();
+        request.setCourseName("Updated Math");
+        request.setCourseCode("MTH202");
+
+        Course existing = new Course();
+        existing.setCourseName("Old Math");
+        existing.setCourseCode("MTH101");
+        existing.setUser(user);
+
+        when(userRepository.existsById(1L)).thenReturn(true);
+        when(courseRepository.findByIdAndUserId(5L, 1L)).thenReturn(Optional.of(existing));
+        when(courseRepository.save(existing)).thenReturn(existing);
+
+        Course result = courseService.updateCourse(1L, 5L, request);
+
+        assertThat(result.getCourseName()).isEqualTo("Updated Math");
+        assertThat(result.getCourseCode()).isEqualTo("MTH202");
+        verify(courseRepository).save(existing);
+    }
+
+    @Test
+    void deleteCourse_whenUserNotFound_throwsUserNotFoundException() {
+        when(userRepository.existsById(99L)).thenReturn(false);
+
+        assertThatThrownBy(() -> courseService.deleteCourse(99L, 1L))
+                .isInstanceOf(UserNotFoundException.class)
+                .hasMessageContaining("User not found");
+
+        verify(courseRepository, never()).findByIdAndUserId(any(), any());
+        verify(courseRepository, never()).delete(any());
+    }
+
+    @Test
+    void deleteCourse_whenCourseNotFound_throwsCourseNotFoundException() {
+        when(userRepository.existsById(1L)).thenReturn(true);
+        when(courseRepository.findByIdAndUserId(99L, 1L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> courseService.deleteCourse(1L, 99L))
+                .isInstanceOf(CourseNotFoundException.class)
+                .hasMessageContaining("Course not found with id: 99");
+
+        verify(courseRepository, never()).delete(any());
+    }
+
+    @Test
+    void deleteCourse_withValidUserAndCourse_deletesCourse() {
+        Course existing = new Course();
+        existing.setCourseName("Math 101");
+        existing.setCourseCode("MTH101");
+        existing.setUser(user);
+
+        when(userRepository.existsById(1L)).thenReturn(true);
+        when(courseRepository.findByIdAndUserId(5L, 1L)).thenReturn(Optional.of(existing));
+
+        courseService.deleteCourse(1L, 5L);
+
+        verify(courseRepository).delete(existing);
     }
 }
