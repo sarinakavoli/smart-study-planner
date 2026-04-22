@@ -23,6 +23,7 @@ import {
 } from "firebase/storage";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { db, auth, storage } from "./firebase";
+import { loadUserTasks } from "./services/taskService";
 
 function App() {
   const [tasks, setTasks] = useState([]);
@@ -114,18 +115,7 @@ function App() {
         return;
       }
 
-      const q = query(
-        collection(db, "tasks"),
-        where("userId", "==", currentUser.uid)
-      );
-
-      const snapshot = await getDocs(q);
-
-      const data = snapshot.docs.map((docSnap) => ({
-        id: docSnap.id,
-        ...docSnap.data(),
-      }));
-
+      const data = await loadUserTasks(currentUser.uid);
       setTasks(data);
     } catch (err) {
       console.error(err);
