@@ -3,6 +3,7 @@ package com.sarina.studyplanner.service;
 import com.sarina.studyplanner.dto.TaskRequest;
 import com.sarina.studyplanner.entity.Task;
 import com.sarina.studyplanner.entity.User;
+import com.sarina.studyplanner.exception.TaskNotFoundException;
 import com.sarina.studyplanner.exception.UserNotFoundException;
 import com.sarina.studyplanner.repository.CourseRep;
 import com.sarina.studyplanner.repository.TaskRep;
@@ -74,14 +75,14 @@ public class TaskService {
 
     public Task updateTaskStatus(Long taskId, String status) {
         Task task = taskRepository.findById(taskId)
-                .orElseThrow(() -> new RuntimeException("Task not found"));
+                .orElseThrow(() -> new TaskNotFoundException(taskId));
         task.setStatus(status);
         return taskRepository.save(task);
     }
 
     public Task updateTask(Long taskId, TaskRequest taskRequest) {
         Task task = taskRepository.findById(taskId)
-                .orElseThrow(() -> new RuntimeException("Task not found"));
+                .orElseThrow(() -> new TaskNotFoundException(taskId));
 
         task.setTitle(taskRequest.getTitle());
         task.setDescription(taskRequest.getDescription());

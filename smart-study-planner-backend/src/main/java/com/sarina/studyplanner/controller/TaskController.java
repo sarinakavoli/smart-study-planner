@@ -2,6 +2,7 @@ package com.sarina.studyplanner.controller;
 
 import com.sarina.studyplanner.dto.TaskRequest;
 import com.sarina.studyplanner.entity.Task;
+import com.sarina.studyplanner.exception.TaskNotFoundException;
 import com.sarina.studyplanner.exception.UserNotFoundException;
 import com.sarina.studyplanner.service.TaskService;
 import org.springframework.http.ResponseEntity;
@@ -53,13 +54,23 @@ public class TaskController {
     }
 
     @PutMapping("/tasks/{taskId}/status")
-    public Task updateTaskStatus(@PathVariable Long taskId, @RequestBody Map<String, String> body) {
-        return taskService.updateTaskStatus(taskId, body.get("status"));
+    public ResponseEntity<?> updateTaskStatus(@PathVariable Long taskId, @RequestBody Map<String, String> body) {
+        try {
+            Task task = taskService.updateTaskStatus(taskId, body.get("status"));
+            return ResponseEntity.ok(task);
+        } catch (TaskNotFoundException e) {
+            return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
+        }
     }
 
     @PutMapping("/tasks/{taskId}")
-    public Task updateTask(@PathVariable Long taskId, @RequestBody TaskRequest taskRequest) {
-        return taskService.updateTask(taskId, taskRequest);
+    public ResponseEntity<?> updateTask(@PathVariable Long taskId, @RequestBody TaskRequest taskRequest) {
+        try {
+            Task task = taskService.updateTask(taskId, taskRequest);
+            return ResponseEntity.ok(task);
+        } catch (TaskNotFoundException e) {
+            return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
+        }
     }
 
     @PutMapping("/tasks/category/move-to-other")
