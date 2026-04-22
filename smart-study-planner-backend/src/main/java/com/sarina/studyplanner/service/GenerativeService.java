@@ -68,6 +68,10 @@ public class GenerativeService {
         HttpResponse<String> response =
                 httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
+        if (response.statusCode() == 429) {
+            throw new IOException("QUOTA_EXCEEDED");
+        }
+
         if (response.statusCode() != 200) {
             throw new IOException(
                     "Gemini API returned status " + response.statusCode());

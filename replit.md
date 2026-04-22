@@ -46,6 +46,24 @@ The Vite dev server proxies all `/api` requests to `http://localhost:8080`.
 - Drag-to-reorder custom categories
 - Task file attachments stored in Firebase Storage, with metadata stored on each Firestore task document
 
+## Secrets & Environment Variables
+
+| Name | Where stored | Who reads it | Exposed to browser? |
+|------|-------------|--------------|---------------------|
+| `GEMINI_API_KEY` | Replit Secret (encrypted) | Backend only (`GenerativeService`) | Never |
+| `VITE_FIREBASE_*` | Replit Environment Variables | Frontend build (public identifiers) | Yes (by design — Firebase web SDK requires this) |
+| `PGHOST/PGUSER/etc.` | Replit Secrets (auto-provisioned) | Backend only | Never |
+
+- Firebase config values are Google-documented as safe to include in frontend code.  What keeps Firebase secure is your Security Rules, not hiding the config values.
+- The `GEMINI_API_KEY` only ever exists in the backend JVM process. It is never sent in any HTTP response.
+
+## Generative AI (Gemini)
+
+- `POST /api/generate` — accepts `{"prompt": "..."}`, returns `{"result": "..."}` or an error body.
+- `GenerativeService.java` — holds the key, makes the HTTPS call to Google, parses the response.
+- `GenerativeController.java` — the secure proxy endpoint. Validates the prompt, calls the service, returns only the AI text.
+- The key is injected via `${GEMINI_API_KEY:}` in `application.properties`. If unset, the endpoint returns 503.
+
 ## Firebase Attachments
 
 - Frontend initializes Firebase Auth, Firestore (`smart-study` database), and Storage in `smart-study-planner-frontend/src/firebase.js`

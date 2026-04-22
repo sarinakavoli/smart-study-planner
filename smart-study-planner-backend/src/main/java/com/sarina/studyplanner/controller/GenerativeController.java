@@ -51,6 +51,11 @@ public class GenerativeController {
             String result = generativeService.generate(prompt.trim());
             return ResponseEntity.ok(Map.of("result", result));
         } catch (Exception e) {
+            if (e.getMessage() != null && e.getMessage().contains("QUOTA_EXCEEDED")) {
+                return ResponseEntity.status(429)
+                        .body(Map.of("error",
+                                "AI quota exceeded. Please wait a moment and try again."));
+            }
             return ResponseEntity.status(502)
                     .body(Map.of("error", "Could not reach the AI service. Please try again."));
         }
