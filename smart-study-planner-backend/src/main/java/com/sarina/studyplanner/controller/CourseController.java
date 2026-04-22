@@ -42,7 +42,12 @@ public class CourseController {
     }
 
     @GetMapping("/users/{userId}/courses")
-    public List<Course> getCoursesByUserId(@PathVariable Long userId) {
-        return courseService.getCoursesByUserId(userId);
+    public ResponseEntity<?> getCoursesByUserId(@PathVariable Long userId) {
+        try {
+            List<Course> courses = courseService.getCoursesByUserId(userId);
+            return ResponseEntity.ok(courses);
+        } catch (UserNotFoundException e) {
+            return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
+        }
     }
 }

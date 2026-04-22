@@ -91,6 +91,16 @@ class CourseControllerTest {
     }
 
     @Test
+    void getCoursesByUserId_whenUserNotFound_returns404WithErrorMessage() throws Exception {
+        when(courseService.getCoursesByUserId(999L))
+                .thenThrow(new UserNotFoundException(999L));
+
+        mockMvc.perform(get("/api/users/999/courses"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("User not found with id: 999"));
+    }
+
+    @Test
     void createCourse_returnsOkWithCreatedCourse() throws Exception {
         Course course = buildCourse("Chemistry", "CHEM301");
         when(courseService.createCourse(any(CourseRequest.class))).thenReturn(course);

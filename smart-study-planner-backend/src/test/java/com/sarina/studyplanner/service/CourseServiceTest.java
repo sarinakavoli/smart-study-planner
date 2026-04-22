@@ -96,6 +96,7 @@ class CourseServiceTest {
     void getCoursesByUserId_delegatesToRepository() {
         Course c1 = new Course();
         c1.setCourseName("History");
+        when(userRepository.existsById(1L)).thenReturn(true);
         when(courseRepository.findByUserId(1L)).thenReturn(List.of(c1));
 
         List<Course> result = courseService.getCoursesByUserId(1L);
@@ -107,10 +108,22 @@ class CourseServiceTest {
 
     @Test
     void getCoursesByUserId_withNoMatchingCourses_returnsEmptyList() {
+        when(userRepository.existsById(42L)).thenReturn(true);
         when(courseRepository.findByUserId(42L)).thenReturn(List.of());
 
         List<Course> result = courseService.getCoursesByUserId(42L);
 
         assertThat(result).isEmpty();
+    }
+
+    @Test
+    void getCoursesByUserId_whenUserNotFound_throwsException() {
+        when(userRepository.existsById(999L)).thenReturn(false);
+
+        assertThatThrownBy(() -> courseService.getCoursesByUserId(999L))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("User not found");
+
+        verify(courseRepository, never()).findByUserId(any());
     }
 }

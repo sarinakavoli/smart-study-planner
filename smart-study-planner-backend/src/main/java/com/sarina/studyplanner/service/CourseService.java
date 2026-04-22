@@ -39,6 +39,9 @@ public class CourseService {
     }
 
     public List<Course> getCoursesByUserId(Long userId) {
+        if (!userRepository.existsById(userId)) {
+            throw new UserNotFoundException(userId);
+        }
         return courseRepository.findByUserId(userId);
     }
 }
