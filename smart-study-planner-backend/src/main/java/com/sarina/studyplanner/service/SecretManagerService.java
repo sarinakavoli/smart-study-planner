@@ -6,6 +6,8 @@ import com.google.cloud.secretmanager.v1.AccessSecretVersionResponse;
 import com.google.cloud.secretmanager.v1.SecretManagerServiceClient;
 import com.google.cloud.secretmanager.v1.SecretManagerServiceSettings;
 import com.google.cloud.secretmanager.v1.SecretVersionName;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -54,6 +56,8 @@ import java.io.IOException;
 @Service
 public class SecretManagerService {
 
+    private static final Logger log = LoggerFactory.getLogger(SecretManagerService.class);
+
     private final String projectId;
     private final String clientId;
     private final String clientSecret;
@@ -67,6 +71,20 @@ public class SecretManagerService {
         this.clientId      = System.getenv("GOOGLE_CLIENT_ID");
         this.clientSecret  = System.getenv("GOOGLE_CLIENT_SECRET");
         this.refreshToken  = System.getenv("GOOGLE_REFRESH_TOKEN");
+
+        // Emit a startup log so operators can confirm the Secret Manager path is
+        // active without having to wait for the first /api/generate request.
+        if (isConfigured()) {
+            log.info("SecretManagerService: Google Secret Manager is configured. "
+                    + "Gemini API key will be fetched from Secret Manager "
+                    + "(project: {}) on the first /api/generate request. "
+                    + "The GEMINI_API_KEY Replit Secret is intentionally absent — "
+                    + "Secret Manager is the sole source of truth.", projectId);
+        } else {
+            log.warn("SecretManagerService: Secret Manager is NOT fully configured. "
+                    + "Missing: {}. The /api/generate endpoint will return 503 until "
+                    + "all required values are set.", missingConfigDescription());
+        }
     }
 
     /**

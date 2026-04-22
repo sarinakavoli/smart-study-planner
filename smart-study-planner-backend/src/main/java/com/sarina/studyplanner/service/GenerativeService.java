@@ -1,5 +1,7 @@
 package com.sarina.studyplanner.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -27,6 +29,8 @@ import java.time.Duration;
  */
 @Service
 public class GenerativeService {
+
+    private static final Logger log = LoggerFactory.getLogger(GenerativeService.class);
 
     private static final String GEMINI_API_URL =
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
@@ -109,7 +113,11 @@ public class GenerativeService {
      */
     private String resolveApiKey() throws IOException {
         if (cachedApiKey == null) {
+            log.info("GenerativeService: fetching GEMINI_API_KEY from Google Secret Manager "
+                    + "(first request — will be cached for subsequent calls).");
             cachedApiKey = secretManagerService.getSecret("GEMINI_API_KEY");
+            log.info("GenerativeService: GEMINI_API_KEY successfully retrieved from "
+                    + "Google Secret Manager and cached in memory.");
         }
         return cachedApiKey;
     }
