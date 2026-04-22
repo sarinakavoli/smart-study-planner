@@ -1,6 +1,8 @@
 package com.sarina.studyplanner.controller;
 
 import com.sarina.studyplanner.service.GenerativeService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -18,6 +20,8 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api")
 public class GenerativeController {
+
+    private static final Logger log = LoggerFactory.getLogger(GenerativeController.class);
 
     private final GenerativeService generativeService;
 
@@ -60,6 +64,7 @@ public class GenerativeController {
                         .body(Map.of("error",
                                 "AI quota exceeded. Please wait a moment and try again."));
             }
+            log.error("/api/generate failed: {}", e.getMessage(), e);
             return ResponseEntity.status(502)
                     .body(Map.of("error", "Could not reach the AI service. Please try again."));
         }
