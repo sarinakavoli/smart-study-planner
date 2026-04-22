@@ -123,6 +123,18 @@ class UserServiceTest {
     }
 
     @Test
+    void createUser_withDuplicateUsername_throwsException() {
+        when(userRepository.findByName("alice")).thenReturn(Optional.of(existingUser));
+        User user = new User("alice", "alice@example.com", "password123");
+
+        assertThatThrownBy(() -> userService.createUser(user))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("already taken");
+
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
     void createUser_withShortPassword_throwsException() {
         User user = new User("carol", "carol@example.com", "short");
 

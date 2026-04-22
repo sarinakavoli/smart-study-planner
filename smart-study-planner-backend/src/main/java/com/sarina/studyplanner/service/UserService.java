@@ -66,6 +66,9 @@ public class UserService {
         if (user.getPassword() == null || user.getPassword().length() < 8) {
             throw new RuntimeException("Password must be at least 8 characters.");
         }
+        if (user.getName() != null && userRepository.findByName(user.getName()).isPresent()) {
+            throw new RuntimeException("That username is already taken.");
+        }
         user.setPassword(passwordEncoder.encode(user.getPassword()));
         return userRepository.save(user);
     }
