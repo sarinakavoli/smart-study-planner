@@ -1,7 +1,7 @@
 package com.sarina.studyplanner.service;
 
 import com.google.api.gax.core.FixedCredentialsProvider;
-import com.google.auth.oauth2.UserCredentials;
+import com.google.auth.oauth2.GoogleCredentials;
 import com.google.cloud.secretmanager.v1.AccessSecretVersionResponse;
 import com.google.cloud.secretmanager.v1.SecretManagerServiceClient;
 import com.google.cloud.secretmanager.v1.SecretManagerServiceSettings;
@@ -11,13 +11,24 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.Collections;
 
 /**
- * Fetches secrets from Google Secret Manager using OAuth2 user credentials.
- * Authenticates via GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and
- * GOOGLE_REFRESH_TOKEN (Replit Secrets) rather than a service-account JSON key.
+ * Fetches secrets from Google Secret Manager using a service account JSON key.
+ *
+ * The full JSON key content is stored as the GCP_SERVICE_ACCOUNT_JSON Replit Secret.
  * The GCP project is read from the GCP_PROJECT_ID environment variable.
+ *
+ * What happens at runtime (step by step):
+ *  1. Spring reads GCP_PROJECT_ID from the environment (set as a Replit env var).
+ *  2. The constructor reads GCP_SERVICE_ACCOUNT_JSON from the environment.
+ *  3. On the first call to getSecret(), the JSON is parsed into a GoogleCredentials
+ *     object — this is what proves to Google that the server is allowed to read secrets.
+ *  4. A Secret Manager client is opened, the secret is fetched, and the client is closed.
+ *  5. The caller (GenerativeService) caches the value so step 3–4 only happen once.
  */
 @Service
 public class SecretManagerService {
@@ -25,15 +36,11 @@ public class SecretManagerService {
     private static final Logger log = LoggerFactory.getLogger(SecretManagerService.class);
 
     private final String projectId;
-    private final String clientId;
-    private final String clientSecret;
-    private final String refreshToken;
+    private final String serviceAccountJson;
 
     public SecretManagerService(@Value("${gcp.project.id:}") String projectId) {
-        this.projectId    = projectId;
-        this.clientId     = System.getenv("GOOGLE_CLIENT_ID");
-        this.clientSecret = System.getenv("GOOGLE_CLIENT_SECRET");
-        this.refreshToken = System.getenv("GOOGLE_REFRESH_TOKEN");
+        this.projectId          = projectId;
+        this.serviceAccountJson = System.getenv("GCP_SERVICE_ACCOUNT_JSON");
 
         if (isConfigured()) {
             log.info("SecretManagerService: configured (project: {}). "
@@ -45,13 +52,10 @@ public class SecretManagerService {
     }
 
     /**
-     * Returns true when all four required values are present.
+     * Returns true when both required values are present.
      */
     public boolean isConfigured() {
-        return isPresent(projectId)
-                && isPresent(clientId)
-                && isPresent(clientSecret)
-                && isPresent(refreshToken);
+        return isPresent(projectId) && isPresent(serviceAccountJson);
     }
 
     /**
@@ -59,10 +63,8 @@ public class SecretManagerService {
      */
     public String missingConfigDescription() {
         var missing = new StringBuilder();
-        if (!isPresent(projectId))    missing.append("GCP_PROJECT_ID ");
-        if (!isPresent(clientId))     missing.append("GOOGLE_CLIENT_ID ");
-        if (!isPresent(clientSecret)) missing.append("GOOGLE_CLIENT_SECRET ");
-        if (!isPresent(refreshToken)) missing.append("GOOGLE_REFRESH_TOKEN ");
+        if (!isPresent(projectId))          missing.append("GCP_PROJECT_ID ");
+        if (!isPresent(serviceAccountJson)) missing.append("GCP_SERVICE_ACCOUNT_JSON ");
         return missing.toString().trim().replace(" ", ", ");
     }
 
@@ -76,11 +78,13 @@ public class SecretManagerService {
      * @throws IOException if the GCP call fails
      */
     public String getSecret(String secretId) throws IOException {
-        UserCredentials credentials = UserCredentials.newBuilder()
-                .setClientId(clientId)
-                .setClientSecret(clientSecret)
-                .setRefreshToken(refreshToken)
-                .build();
+        // Parse the service account JSON into a credentials object.
+        // createScoped() tells Google which APIs this credential is allowed to call.
+        GoogleCredentials credentials = GoogleCredentials
+                .fromStream(new ByteArrayInputStream(
+                        serviceAccountJson.getBytes(StandardCharsets.UTF_8)))
+                .createScoped(Collections.singletonList(
+                        "https://www.googleapis.com/auth/cloud-platform"));
 
         SecretManagerServiceSettings settings = SecretManagerServiceSettings.newBuilder()
                 .setCredentialsProvider(FixedCredentialsProvider.create(credentials))
