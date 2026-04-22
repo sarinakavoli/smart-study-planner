@@ -1,0 +1,88 @@
+I want to improve the attachment system for each task.
+
+Current setup:
+
+* Tasks already support multiple attachments
+* Actual files are stored in Firebase Storage
+* Attachment metadata is stored in the task document in Firestore
+* Attachments can already be added and deleted
+
+New feature I want:
+Add an Edit attachment option for each existing attachment.
+
+Important clarification:
+“Edit” can mean 2 different things, and I want support for both cases in a clean way.
+
+1. Edit attachment metadata
+
+The user should be able to change metadata like:
+
+* display name / label shown in the UI
+* optional description if needed
+* maybe order if that is easy
+
+This kind of edit should update only the attachment metadata in Firestore, not the actual file in Storage.
+
+2. Replace the actual file
+
+The user should also be able to replace the real uploaded file with a new one.
+
+For this case, the flow should be:
+
+1. user clicks Edit/Replace on an attachment
+2. user selects a new file
+3. app uploads the new file to Firebase Storage
+4. app updates the attachment metadata in the task document
+5. old file in Firebase Storage should be deleted if replacement succeeds
+
+What I want in the UI
+
+* Each attachment should have:
+    * Open / Download
+    * Edit
+    * Delete
+* Edit should open a clean attachment edit flow
+* The UI should clearly separate:
+    * editing metadata only
+    * replacing the actual file
+
+Data requirements
+
+Each attachment object should stay individually accessible and should continue storing metadata like:
+
+* id
+* name
+* url
+* path
+* type
+* size
+* uploadedAt
+
+If metadata editing is added, also support fields like:
+
+* displayName
+* optional description
+
+Behavior requirements
+
+* Editing metadata should update the Firestore task document only
+* Replacing the file should update both Storage and Firestore
+* Deleting an attachment should still remove both Storage file and Firestore metadata
+* Existing attachments and newly uploaded attachments should behave consistently
+* Keep the code beginner-friendly and explain the implementation clearly
+
+Please explain
+
+I’m a junior engineer, so please explain:
+
+* which files you changed
+* how attachment editing is now handled
+* how metadata editing differs from file replacement
+* how the old file is removed from Storage during replacement
+* how the Firestore task document stays in sync
+
+At the end, show me:
+
+1. the changed files
+2. the final code
+3. how I can test metadata edit and file replacement

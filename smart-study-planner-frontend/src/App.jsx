@@ -46,6 +46,11 @@ function App() {
   const [attachmentFiles, setAttachmentFiles] = useState([]);
   const fileInputRef = useRef(null);
 
+  const [editingAttachment, setEditingAttachment] = useState(null);
+  const [replaceFile, setReplaceFile] = useState(null);
+  const [attachmentSaving, setAttachmentSaving] = useState(false);
+  const replaceFileInputRef = useRef(null);
+
   const [newTask, setNewTask] = useState({
     title: "",
     dueDate: "",
@@ -301,7 +306,10 @@ function App() {
 
       const url = await getDownloadURL(fileRef);
       const attachment = {
+        id: createAttachmentId(),
         name: file.name,
+        displayName: file.name,
+        description: "",
         url,
         path: filePath,
         type: file.type || "application/octet-stream",
@@ -341,6 +349,218 @@ function App() {
   const removeSelectedAttachmentFile = (fileIndex) => {
     setAttachmentFiles((prev) => prev.filter((_, index) => index !== fileIndex));
   };
+
+  const updateAttachmentInTask = async (taskId, updatedAttachment) => {
+    const task = tasks.find((t) => t.id === taskId);
+    const updatedAttachments = (task?.attachments || []).map((a) =>
+      a.path === updatedAttachment.path ? updatedAttachment : a
+    );
+    await updateDoc(doc(db, "tasks", taskId), { attachments: updatedAttachments });
+    setTasks((prev) =>
+      prev.map((t) =>
+        t.id === taskId ? { ...t, attachments: updatedAttachments } : t
+      )
+    );
+  };
+
+  const startEditAttachment = (taskId, attachment) => {
+    setEditingAttachment({
+      taskId,
+      attachmentPath: attachment.path,
+      displayName: attachment.displayName || attachment.name,
+      description: attachment.description || "",
+    });
+    setReplaceFile(null);
+  };
+
+  const cancelEditAttachment = () => {
+    setEditingAttachment(null);
+    setReplaceFile(null);
+  };
+
+  const saveAttachmentMetadata = async () => {
+    if (!editingAttachment) return;
+    const { taskId, attachmentPath, displayName, description } = editingAttachment;
+
+    setAttachmentSaving(true);
+    try {
+      setError("");
+      const task = tasks.find((t) => t.id === taskId);
+      const attachment = (task?.attachments || []).find(
+        (a) => a.path === attachmentPath
+      );
+      if (!attachment) return;
+
+      const updated = {
+        ...attachment,
+        displayName: displayName.trim() || attachment.name,
+        description: description.trim(),
+      };
+      await updateAttachmentInTask(taskId, updated);
+      setEditingAttachment(null);
+    } catch (err) {
+      console.error(err);
+      setError("Could not save attachment name/description.");
+    } finally {
+      setAttachmentSaving(false);
+    }
+  };
+
+  const handleReplaceFileChange = (event) => {
+    const file = event.target.files?.[0] || null;
+    setReplaceFile(file);
+    if (replaceFileInputRef.current) {
+      replaceFileInputRef.current.value = "";
+    }
+  };
+
+  const saveAttachmentReplacement = async () => {
+    if (!editingAttachment || !replaceFile) return;
+    const { taskId, attachmentPath, displayName, description } = editingAttachment;
+
+    setAttachmentSaving(true);
+    try {
+      setError("");
+      const task = tasks.find((t) => t.id === taskId);
+      const oldAttachment = (task?.attachments || []).find(
+        (a) => a.path === attachmentPath
+      );
+      if (!oldAttachment) return;
+
+      const newPath = `tasks/${taskId}/attachments/${createAttachmentId()}-${sanitizeFileName(replaceFile.name)}`;
+      const newRef = storageRef(storage, newPath);
+
+      await uploadBytes(newRef, replaceFile, {
+        contentType: replaceFile.type || "application/octet-stream",
+        customMetadata: { userId: currentUser.uid, taskId },
+      });
+
+      const newUrl = await getDownloadURL(newRef);
+
+      const updated = {
+        ...oldAttachment,
+        name: replaceFile.name,
+        displayName: displayName.trim() || replaceFile.name,
+        description: description.trim(),
+        url: newUrl,
+        path: newPath,
+        type: replaceFile.type || "application/octet-stream",
+        size: replaceFile.size,
+        uploadedAt: new Date().toISOString(),
+      };
+
+      await updateAttachmentInTask(taskId, updated);
+      await removeFileFromStorage(oldAttachment.path);
+
+      setEditingAttachment(null);
+      setReplaceFile(null);
+    } catch (err) {
+      console.error(err);
+      setError("Could not replace attachment.");
+    } finally {
+      setAttachmentSaving(false);
+    }
+  };
+
+  const renderAttachmentEditPanel = (taskId, attachment) => (
+    <div className="attachment-edit-panel">
+      <div className="attachment-edit-section">
+        <p className="attachment-edit-section-title">Rename / describe</p>
+        <div className="attachment-input-group">
+          <label className="attachment-edit-field-label">Display name</label>
+          <input
+            type="text"
+            value={editingAttachment?.displayName ?? ""}
+            onChange={(e) =>
+              setEditingAttachment((prev) => ({
+                ...prev,
+                displayName: e.target.value,
+              }))
+            }
+            className="input-control"
+            placeholder="Display name"
+          />
+        </div>
+        <div className="attachment-input-group">
+          <label className="attachment-edit-field-label">
+            Description (optional)
+          </label>
+          <input
+            type="text"
+            value={editingAttachment?.description ?? ""}
+            onChange={(e) =>
+              setEditingAttachment((prev) => ({
+                ...prev,
+                description: e.target.value,
+              }))
+            }
+            className="input-control"
+            placeholder="e.g. Lecture notes from week 3"
+          />
+        </div>
+        <div className="attachment-edit-actions">
+          <button
+            type="button"
+            onClick={saveAttachmentMetadata}
+            disabled={attachmentSaving}
+            className="main-btn"
+          >
+            {attachmentSaving ? "Saving..." : "Save name & description"}
+          </button>
+        </div>
+      </div>
+
+      <div className="attachment-edit-section">
+        <p className="attachment-edit-section-title">Replace file</p>
+        <p className="attachment-edit-hint">
+          Picking a new file will upload it and remove the current one from
+          storage.
+        </p>
+        <div className="attachment-edit-actions">
+          <label
+            htmlFor={`replace-${attachment.path}`}
+            className="add-attachment-btn"
+          >
+            {replaceFile ? "Change selection" : "+ Pick new file"}
+          </label>
+          <input
+            ref={replaceFileInputRef}
+            id={`replace-${attachment.path}`}
+            type="file"
+            style={{ display: "none" }}
+            onChange={handleReplaceFileChange}
+          />
+          {replaceFile && (
+            <span className="attachment-size">
+              {replaceFile.name} ({formatFileSize(replaceFile.size)})
+            </span>
+          )}
+        </div>
+        {replaceFile && (
+          <div className="attachment-edit-actions" style={{ marginTop: "8px" }}>
+            <button
+              type="button"
+              onClick={saveAttachmentReplacement}
+              disabled={attachmentSaving}
+              className="main-btn"
+            >
+              {attachmentSaving ? "Uploading..." : "Upload & replace"}
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="attachment-edit-cancel">
+        <button
+          type="button"
+          onClick={cancelEditAttachment}
+          className="attachment-delete-btn"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
 
   const createCategoryInBackend = async (name) => {
     const normalizedName = name.trim().toUpperCase();
@@ -851,28 +1071,54 @@ function App() {
         </div>
         {(task.attachments || []).length > 0 && (
           <div className="attachment-list">
-            {(task.attachments || []).map((attachment) => (
-              <div key={attachment.path} className="attachment-item">
-                <a
-                  href={attachment.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="attachment-link"
-                >
-                  {attachment.name}
-                </a>
-                <span className="attachment-size">
-                  {formatFileSize(attachment.size)}
-                </span>
-                <button
-                  type="button"
-                  className="attachment-delete-btn"
-                  onClick={() => deleteAttachment(task.id, attachment)}
-                >
-                  Remove
-                </button>
-              </div>
-            ))}
+            {(task.attachments || []).map((attachment) => {
+              const isEditing =
+                editingAttachment?.taskId === task.id &&
+                editingAttachment?.attachmentPath === attachment.path;
+              const displayLabel =
+                attachment.displayName || attachment.name;
+              return (
+                <div key={attachment.path}>
+                  <div className="attachment-item">
+                    <a
+                      href={attachment.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="attachment-link"
+                    >
+                      {displayLabel}
+                    </a>
+                    {attachment.description && (
+                      <span className="attachment-description">
+                        {attachment.description}
+                      </span>
+                    )}
+                    <span className="attachment-size">
+                      {formatFileSize(attachment.size)}
+                    </span>
+                    <button
+                      type="button"
+                      className="attachment-action-btn"
+                      onClick={() =>
+                        isEditing
+                          ? cancelEditAttachment()
+                          : startEditAttachment(task.id, attachment)
+                      }
+                    >
+                      {isEditing ? "Close" : "Edit"}
+                    </button>
+                    <button
+                      type="button"
+                      className="attachment-delete-btn"
+                      onClick={() => deleteAttachment(task.id, attachment)}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                  {isEditing && renderAttachmentEditPanel(task.id, attachment)}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -1249,31 +1495,61 @@ function App() {
                       </p>
                     )}
 
-                  {(editingTask?.attachments || []).map((attachment) => (
-                    <div key={attachment.path} className="attachment-row">
-                      <span className="attachment-badge saved">Saved</span>
-                      <a
-                        href={attachment.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="attachment-link"
-                      >
-                        {attachment.name}
-                      </a>
-                      <span className="attachment-size">
-                        {formatFileSize(attachment.size)}
-                      </span>
-                      <button
-                        type="button"
-                        className="attachment-delete-btn"
-                        onClick={() =>
-                          deleteAttachment(editingTask.id, attachment)
-                        }
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ))}
+                  {(editingTask?.attachments || []).map((attachment) => {
+                    const isEditing =
+                      editingAttachment?.taskId === editingTask.id &&
+                      editingAttachment?.attachmentPath === attachment.path;
+                    const displayLabel =
+                      attachment.displayName || attachment.name;
+                    return (
+                      <div key={attachment.path}>
+                        <div className="attachment-row">
+                          <span className="attachment-badge saved">Saved</span>
+                          <a
+                            href={attachment.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="attachment-link"
+                          >
+                            {displayLabel}
+                          </a>
+                          {attachment.description && (
+                            <span className="attachment-description">
+                              {attachment.description}
+                            </span>
+                          )}
+                          <span className="attachment-size">
+                            {formatFileSize(attachment.size)}
+                          </span>
+                          <button
+                            type="button"
+                            className="attachment-action-btn"
+                            onClick={() =>
+                              isEditing
+                                ? cancelEditAttachment()
+                                : startEditAttachment(
+                                    editingTask.id,
+                                    attachment
+                                  )
+                            }
+                          >
+                            {isEditing ? "Close" : "Edit"}
+                          </button>
+                          <button
+                            type="button"
+                            className="attachment-delete-btn"
+                            onClick={() =>
+                              deleteAttachment(editingTask.id, attachment)
+                            }
+                          >
+                            Remove
+                          </button>
+                        </div>
+                        {isEditing &&
+                          renderAttachmentEditPanel(editingTask.id, attachment)}
+                      </div>
+                    );
+                  })}
 
                   {attachmentFiles.map((file, index) => (
                     <div
