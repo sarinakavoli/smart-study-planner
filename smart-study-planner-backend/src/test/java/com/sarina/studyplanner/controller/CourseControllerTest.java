@@ -3,6 +3,7 @@ package com.sarina.studyplanner.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sarina.studyplanner.dto.CourseRequest;
 import com.sarina.studyplanner.entity.Course;
+import com.sarina.studyplanner.exception.UserNotFoundException;
 import com.sarina.studyplanner.service.CourseService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -106,5 +107,23 @@ class CourseControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.courseName").value("Chemistry"))
                 .andExpect(jsonPath("$.courseCode").value("CHEM301"));
+    }
+
+    @Test
+    void createCourse_whenUserNotFound_returns404WithErrorMessage() throws Exception {
+        when(courseService.createCourse(any(CourseRequest.class)))
+                .thenThrow(new UserNotFoundException(99L));
+
+        Map<String, Object> body = Map.of(
+                "courseName", "Physics",
+                "courseCode", "PHYS101",
+                "userId", 99
+        );
+
+        mockMvc.perform(post("/api/courses")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("User not found with id: 99"));
     }
 }

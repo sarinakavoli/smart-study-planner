@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import com.sarina.studyplanner.dto.CourseRequest;
 import com.sarina.studyplanner.entity.Course;
 import com.sarina.studyplanner.entity.User;
+import com.sarina.studyplanner.exception.UserNotFoundException;
 import com.sarina.studyplanner.repository.CourseRep;
 import com.sarina.studyplanner.repository.UserRep;
 
@@ -23,7 +24,7 @@ public class CourseService {
 
     public Course createCourse(CourseRequest courseRequest) {
         User user = userRepository.findById(courseRequest.getUserId())
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new UserNotFoundException(courseRequest.getUserId()));
 
         Course course = new Course();
         course.setCourseName(courseRequest.getCourseName());
