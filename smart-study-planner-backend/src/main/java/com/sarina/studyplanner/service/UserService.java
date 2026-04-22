@@ -72,7 +72,12 @@ public class UserService {
         if (user.getEmail() == null || user.getEmail().isBlank()) {
             throw new RuntimeException("Email address is required.");
         }
-        user.setEmail(user.getEmail().toLowerCase(Locale.ROOT));
+        String trimmedEmail = user.getEmail().trim();
+        int atIndex = trimmedEmail.indexOf('@');
+        if (atIndex <= 0 || atIndex == trimmedEmail.length() - 1 || trimmedEmail.indexOf('.', atIndex) <= atIndex + 1) {
+            throw new RuntimeException("Email address is not valid.");
+        }
+        user.setEmail(trimmedEmail.toLowerCase(Locale.ROOT));
         if (user.getPassword() == null || user.getPassword().length() < 8) {
             throw new RuntimeException("Password must be at least 8 characters.");
         }

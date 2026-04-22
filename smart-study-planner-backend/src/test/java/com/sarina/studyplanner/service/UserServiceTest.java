@@ -202,6 +202,17 @@ class UserServiceTest {
     }
 
     @Test
+    void createUser_withInvalidEmailFormat_throwsException() {
+        User user = new User("carol", "notanemail", "pass1234");
+
+        assertThatThrownBy(() -> userService.createUser(user))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("not valid");
+
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
     void createUser_withShortPassword_throwsException() {
         User user = new User("carol", "carol@example.com", "short");
 
