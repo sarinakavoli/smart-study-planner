@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
 import "./App.css";
@@ -44,6 +44,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
   const [attachmentFiles, setAttachmentFiles] = useState([]);
+  const fileInputRef = useRef(null);
 
   const [newTask, setNewTask] = useState({
     title: "",
@@ -319,7 +320,22 @@ function App() {
   };
 
   const handleAttachmentFileChange = (event) => {
-    setAttachmentFiles(Array.from(event.target.files || []));
+    const newFiles = Array.from(event.target.files || []);
+    if (newFiles.length === 0) return;
+
+    setAttachmentFiles((prev) => {
+      const existingKeys = new Set(
+        prev.map((f) => `${f.name}-${f.size}-${f.lastModified}`)
+      );
+      const toAdd = newFiles.filter(
+        (f) => !existingKeys.has(`${f.name}-${f.size}-${f.lastModified}`)
+      );
+      return [...prev, ...toAdd];
+    });
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   };
 
   const removeSelectedAttachmentFile = (fileIndex) => {
@@ -1206,68 +1222,79 @@ function App() {
                   {useCustomCategory ? "Use Existing Category" : "New Category"}
                 </button>
 
-                <div className="attachment-field">
-                  <label className="attachment-label" htmlFor="task-attachments">
-                    Attach files
-                  </label>
-                  <input
-                    id="task-attachments"
-                    type="file"
-                    multiple
-                    onChange={handleAttachmentFileChange}
-                    className="input-control attachment-input"
-                  />
-                </div>
+                <div className="attachment-section">
+                  <div className="attachment-section-header">
+                    <span className="attachment-label">Attachments</span>
+                    <label
+                      htmlFor="task-attachments"
+                      className="add-attachment-btn"
+                      title="Add files"
+                    >
+                      + Add files
+                    </label>
+                    <input
+                      ref={fileInputRef}
+                      id="task-attachments"
+                      type="file"
+                      multiple
+                      onChange={handleAttachmentFileChange}
+                      style={{ display: "none" }}
+                    />
+                  </div>
 
-                {attachmentFiles.length > 0 && (
-                  <div className="selected-attachments">
-                    {attachmentFiles.map((file, index) => (
-                      <div
-                        key={`${file.name}-${file.lastModified}-${index}`}
-                        className="selected-attachment-item"
+                  {(editingTask?.attachments || []).length === 0 &&
+                    attachmentFiles.length === 0 && (
+                      <p className="no-attachments-hint">
+                        No attachments yet.
+                      </p>
+                    )}
+
+                  {(editingTask?.attachments || []).map((attachment) => (
+                    <div key={attachment.path} className="attachment-row">
+                      <span className="attachment-badge saved">Saved</span>
+                      <a
+                        href={attachment.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="attachment-link"
                       >
-                        <span>
-                          {file.name} ({formatFileSize(file.size)})
-                        </span>
-                        <button
-                          type="button"
-                          className="attachment-delete-btn"
-                          onClick={() => removeSelectedAttachmentFile(index)}
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                        {attachment.name}
+                      </a>
+                      <span className="attachment-size">
+                        {formatFileSize(attachment.size)}
+                      </span>
+                      <button
+                        type="button"
+                        className="attachment-delete-btn"
+                        onClick={() =>
+                          deleteAttachment(editingTask.id, attachment)
+                        }
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
 
-                {editingTask && (editingTask.attachments || []).length > 0 && (
-                  <div className="existing-attachments">
-                    <p className="attachment-label">Current attachments</p>
-                    {(editingTask.attachments || []).map((attachment) => (
-                      <div key={attachment.path} className="selected-attachment-item">
-                        <a
-                          href={attachment.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="attachment-link"
-                        >
-                          {attachment.name}
-                        </a>
-                        <span className="attachment-size">
-                          {formatFileSize(attachment.size)}
-                        </span>
-                        <button
-                          type="button"
-                          className="attachment-delete-btn"
-                          onClick={() => deleteAttachment(editingTask.id, attachment)}
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                  {attachmentFiles.map((file, index) => (
+                    <div
+                      key={`${file.name}-${file.size}-${file.lastModified}`}
+                      className="attachment-row"
+                    >
+                      <span className="attachment-badge pending">Pending</span>
+                      <span className="attachment-name">{file.name}</span>
+                      <span className="attachment-size">
+                        {formatFileSize(file.size)}
+                      </span>
+                      <button
+                        type="button"
+                        className="attachment-delete-btn"
+                        onClick={() => removeSelectedAttachmentFile(index)}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
 
                 <button type="submit" className="main-btn" disabled={loading}>
                   {loading ? "Saving..." : editingTaskId ? "Update" : "Save"}
