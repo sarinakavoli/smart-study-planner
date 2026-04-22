@@ -19,6 +19,7 @@ import {
   uploadBytes,
   getDownloadURL,
   deleteObject,
+  listAll,
 } from "firebase/storage";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { db, auth, storage } from "./firebase";
@@ -96,6 +97,13 @@ function App() {
     });
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    window.cleanupOrphanedStorageFiles = cleanupOrphanedStorageFiles;
+    return () => {
+      delete window.cleanupOrphanedStorageFiles;
+    };
+  });
 
   const loadTasks = async () => {
     try {
@@ -298,6 +306,55 @@ function App() {
         throw err;
       }
     }
+  };
+
+  const cleanupOrphanedStorageFiles = async (taskId) => {
+    console.log(`[cleanup] Starting orphan scan for task: ${taskId}`);
+
+    const folderRef = storageRef(storage, `tasks/${taskId}/attachments`);
+    const listResult = await listAll(folderRef);
+    const storageFiles = listResult.items;
+
+    console.log(`[cleanup] Files found in Storage (${storageFiles.length}):`);
+    storageFiles.forEach((item) => console.log("  storage:", item.fullPath));
+
+    const taskDoc = await getDocs(
+      query(collection(db, "tasks"), where("__name__", "==", taskId))
+    );
+
+    let referencedPaths = [];
+    if (!taskDoc.empty) {
+      const taskData = taskDoc.docs[0].data();
+      referencedPaths = (taskData.attachments || [])
+        .map((a) => a.path)
+        .filter(Boolean);
+    }
+
+    console.log(`[cleanup] Paths referenced in Firestore (${referencedPaths.length}):`);
+    referencedPaths.forEach((p) => console.log("  firestore:", p));
+
+    const orphans = storageFiles.filter(
+      (item) => !referencedPaths.includes(item.fullPath)
+    );
+
+    if (orphans.length === 0) {
+      console.log("[cleanup] No orphaned files found. Storage is clean.");
+      return;
+    }
+
+    console.log(`[cleanup] Found ${orphans.length} orphaned file(s) to delete:`);
+    orphans.forEach((item) => console.log("  orphan:", item.fullPath));
+
+    for (const orphan of orphans) {
+      try {
+        await deleteObject(orphan);
+        console.log("[cleanup] Deleted:", orphan.fullPath);
+      } catch (err) {
+        console.error("[cleanup] Failed to delete:", orphan.fullPath, err.message);
+      }
+    }
+
+    console.log("[cleanup] Done. Deleted", orphans.length, "orphaned file(s).");
   };
 
   const uploadTaskAttachments = async (taskId, files) => {
