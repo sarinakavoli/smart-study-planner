@@ -213,6 +213,15 @@ class TaskControllerTest {
     }
 
     @Test
+    void deleteTask_whenTaskNotFound_returns404WithErrorBody() throws Exception {
+        doThrow(new TaskNotFoundException(99L)).when(taskService).deleteTask(99L);
+
+        mockMvc.perform(delete("/api/tasks/99"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("Task not found with id: 99"));
+    }
+
+    @Test
     void createTask_whenUserNotFound_returns404WithErrorBody() throws Exception {
         when(taskService.createTask(any()))
                 .thenThrow(new UserNotFoundException(99L));

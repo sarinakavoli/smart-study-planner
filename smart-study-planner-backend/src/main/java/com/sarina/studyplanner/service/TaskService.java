@@ -100,6 +100,9 @@ public class TaskService {
     }
 
     public void deleteTask(Long taskId) {
+        if (!taskRepository.existsById(taskId)) {
+            throw new TaskNotFoundException(taskId);
+        }
         taskRepository.deleteById(taskId);
     }
 
