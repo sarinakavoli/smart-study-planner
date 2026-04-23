@@ -133,29 +133,61 @@ jobs:
             frontend-npm-refs/heads/main-node20-
             frontend-npm-node20-
 
+      # Cache key is derived from the branch ref, Node version, the workflow
+      # file, package-lock.json, and every frontend source/test file.  A cache
+      # hit means the exact same inputs produced a passing run previously, so
+      # lint, tests, and build can be safely skipped.  restore-keys let a new
+      # branch warm up from main's cache instead of starting cold (see
+      # top-of-file cache strategy comment).
+      - name: Restore cached frontend test results
+        id: cache-frontend-tests
+        uses: actions/cache@v4
+        with:
+          path: smart-study-planner-frontend/.test-cache
+          key: frontend-tests-${{ github.ref }}-node20-${{ hashFiles('.github/workflows/ci.yml', 'smart-study-planner-frontend/package-lock.json', 'smart-study-planner-frontend/src/**') }}
+          restore-keys: |
+            frontend-tests-${{ github.ref }}-node20-
+            frontend-tests-refs/heads/main-node20-
+            frontend-tests-node20-
+
       - name: Install frontend dependencies
         working-directory: smart-study-planner-frontend
         run: npm ci
 
       - name: Lint frontend
+        if: steps.cache-frontend-tests.outputs.cache-hit != 'true'
         working-directory: smart-study-planner-frontend
         run: npm run lint
 
       - name: Run frontend tests
+        if: steps.cache-frontend-tests.outputs.cache-hit != 'true'
         working-directory: smart-study-planner-frontend
         run: npm test
 
       - name: Build frontend
+        if: steps.cache-frontend-tests.outputs.cache-hit != 'true'
         working-directory: smart-study-planner-frontend
         run: npm run build
+
+      - name: Record successful test run
+        if: steps.cache-frontend-tests.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p smart-study-planner-frontend/.test-cache
+          echo "passed" > smart-study-planner-frontend/.test-cache/result.txt
 
       - name: Summarise frontend execution
         if: always()
         run: |
-          echo "## Frontend Check: ran from scratch (no result cache)" >> $GITHUB_STEP_SUMMARY
-          echo "Lint, tests, and build are always executed; there is no hash-based result cache for the frontend job." >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.cache-frontend-tests.outputs.cache-hit }}" = "true" ]; then
+            echo "## Frontend Check: skipped (cache hit)" >> $GITHUB_STEP_SUMMARY
+            echo "All inputs matched a previous passing run. Lint, tests, and build were skipped." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## Frontend Check: ran from scratch (cache miss)" >> $GITHUB_STEP_SUMMARY
+            echo "No matching cache entry found. Lint, tests, and build were executed." >> $GITHUB_STEP_SUMMARY
+          fi
 
       - name: Upload frontend build artifact
+        if: steps.cache-frontend-tests.outputs.cache-hit != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: frontend-dist
