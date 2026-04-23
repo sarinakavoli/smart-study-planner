@@ -93,6 +93,20 @@ Any successful response from `POST /api/generate` proves the key came from Googl
 since there is no other source for it. On the first request the backend log will print:
 `GEMINI_API_KEY retrieved from Secret Manager and cached.`
 
+## Firestore Document ID Strategy & Multi-Org Design
+
+- All newly created tasks and categories use **human-readable, prefixed document IDs** instead of Firestore auto-IDs
+- ID generation lives in `smart-study-planner-frontend/src/utils/firestoreIds.js`:
+  - `slugify(text)` — lowercase, alphanumeric + hyphens, max 30 chars
+  - `personalOrgId(uid)` → `org_<uid>` (personal-org placeholder, ready to swap for a real org ID)
+  - `generateTaskId(orgId, userId)` → `task_<orgId>_<userId>_<nanoid(10)>`
+  - `generateCategoryId(orgId, name)` → `cat_<orgId>_<slugifiedName>_<nanoid(10)>`
+- Schema documentation (comment-only, not imported) lives in `smart-study-planner-frontend/src/utils/firestoreSchema.js`
+- New tasks and categories include `organizationId` and `readableId` fields in every document
+- On every login/signup, a `users/<uid>` document is written (with `merge: true`) containing `{ email, organizationId, createdAt }`
+- Existing data is untouched — the new ID strategy applies only to newly created documents
+- `taskService.js` has comments marking exactly where to add `organizationId` filters when real multi-org support is activated
+
 ## Firebase Attachments
 
 - Frontend initializes Firebase Auth, Firestore (`smart-study` database), and Storage in `smart-study-planner-frontend/src/firebase.js`

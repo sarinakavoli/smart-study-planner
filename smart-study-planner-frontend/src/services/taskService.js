@@ -29,6 +29,13 @@ import { db } from "../firebase";
  * @returns {Promise<Array<{id: string, [key: string]: any}>>}
  */
 export async function loadUserTasks(uid, filters = {}) {
+  // ── MULTI-ORG NOTE ──────────────────────────────────────────────────────
+  // Currently filtering by userId only (single-user / personal-org mode).
+  // When real multi-org support is activated, add:
+  //   where("organizationId", "==", orgId)
+  // to scope tasks to the user's organization. The orgId should be loaded
+  // from the users/<uid> Firestore document's organizationId field.
+  // ────────────────────────────────────────────────────────────────────────
   const constraints = [where("userId", "==", uid)];
 
   if (filters.status) {
@@ -83,6 +90,12 @@ export async function loadOverdueTasks(
   cutoff.setDate(cutoff.getDate() - overdueByDays);
   const cutoffString = cutoff.toISOString().split("T")[0]; // e.g. "2025-04-19"
 
+  // ── MULTI-ORG NOTE ──────────────────────────────────────────────────────
+  // Currently filtering by userId only (single-user / personal-org mode).
+  // When real multi-org support is activated, add:
+  //   where("organizationId", "==", orgId)
+  // alongside the userId filter to scope results to the user's organization.
+  // ────────────────────────────────────────────────────────────────────────
   const constraints = [
     where("userId", "==", uid),
     where("category", "==", category),

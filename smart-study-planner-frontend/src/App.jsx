@@ -7,6 +7,7 @@ import {
   collection,
   getDocs,
   addDoc,
+  setDoc,
   updateDoc,
   deleteDoc,
   doc,
@@ -14,6 +15,11 @@ import {
   where,
   arrayUnion,
 } from "firebase/firestore";
+import {
+  personalOrgId,
+  generateTaskId,
+  generateCategoryId,
+} from "./utils/firestoreIds";
 import {
   ref as storageRef,
   uploadBytes,
@@ -23,7 +29,7 @@ import {
 } from "firebase/storage";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { db, auth, storage } from "./firebase";
-import { loadUserTasks, loadOverdueTasks } from "./services/taskService";
+import { loadUserTasks } from "./services/taskService";
 
 function App() {
   const [tasks, setTasks] = useState([]);
@@ -92,7 +98,27 @@ function App() {
   }, [theme]);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        // Write (or refresh) the user's Firestore profile document.
+        // merge: true means existing fields are preserved — this is safe to
+        // call on every login, not just the first signup.
+        // organizationId defaults to the personal-org placeholder so that
+        // future multi-org code can simply swap this value to a real org ID.
+        try {
+          await setDoc(
+            doc(db, "users", firebaseUser.uid),
+            {
+              email: firebaseUser.email,
+              organizationId: personalOrgId(firebaseUser.uid),
+              createdAt: firebaseUser.metadata.creationTime ?? new Date().toISOString(),
+            },
+            { merge: true }
+          );
+        } catch (profileErr) {
+          console.error("Could not write user profile doc:", profileErr);
+        }
+      }
       setCurrentUser(firebaseUser ?? null);
       setAuthLoading(false);
     });
@@ -105,29 +131,6 @@ function App() {
       delete window.cleanupOrphanedStorageFiles;
     };
   });
-
-  // Temporary: button to trigger loadOverdueTasks so Firestore shows the
-  // missing-index error with a one-click creation link.
-  // Remove this block + the banner in the JSX after the index is deployed.
-  const [indexTestMsg, setIndexTestMsg] = useState("");
-  const [indexCreateUrl, setIndexCreateUrl] = useState("");
-  const triggerOverdueQuery = async () => {
-    setIndexTestMsg("Running query…");
-    setIndexCreateUrl("");
-    try {
-      const results = await loadOverdueTasks(currentUser.uid, "Math", "PENDING", 0);
-      setIndexTestMsg(`✓ Index is deployed and working! ${results.length} result(s) returned.`);
-    } catch (err) {
-      // Firestore puts the index-creation URL inside the error message.
-      const urlMatch = err.message.match(/https:\/\/console\.firebase\.google\.com[^\s]+/);
-      if (urlMatch) {
-        setIndexCreateUrl(urlMatch[0]);
-        setIndexTestMsg("Index missing — click the link to create it automatically:");
-      } else {
-        setIndexTestMsg(`Error: ${err.message}`);
-      }
-    }
-  };
 
   const loadTasks = async () => {
     try {
@@ -674,11 +677,15 @@ function App() {
       ? Math.max(...customCategories.map((c) => c.displayOrder ?? 0))
       : 3;
 
-    await addDoc(collection(db, "categories"), {
+    const orgId = personalOrgId(currentUser.uid);
+    const catId = generateCategoryId(orgId, normalizedName);
+    await setDoc(doc(db, "categories", catId), {
       name: normalizedName,
       color: "",
       displayOrder: maxOrder + 1,
       userId: currentUser?.uid ?? null,
+      organizationId: orgId,
+      readableId: catId,
     });
 
     await loadCategories();
@@ -717,6 +724,8 @@ function App() {
         throw new Error("User not logged in");
       }
 
+      const orgId = personalOrgId(currentUser.uid);
+
       const payload = {
         title: newTask.title.trim(),
         dueDate: newTask.dueDate,
@@ -724,6 +733,7 @@ function App() {
         description: "",
         category: finalCategory,
         userId: currentUser.uid,
+        organizationId: orgId,
       };
 
       let taskId = editingTaskId;
@@ -731,11 +741,13 @@ function App() {
       if (editingTaskId) {
         await updateDoc(doc(db, "tasks", editingTaskId), payload);
       } else {
-        const taskDoc = await addDoc(collection(db, "tasks"), {
+        const newTaskId = generateTaskId(orgId, currentUser.uid);
+        await setDoc(doc(db, "tasks", newTaskId), {
           ...payload,
+          readableId: newTaskId,
           attachments: [],
         });
-        taskId = taskDoc.id;
+        taskId = newTaskId;
       }
 
       let attachmentUploadFailed = false;
@@ -1298,23 +1310,6 @@ function App() {
 
   return (
     <div className={`app-shell ${theme}`}>
-
-      {/* ── TEMPORARY: remove after Firestore index is deployed ── */}
-      <div style={{position:"fixed",top:0,left:0,right:0,zIndex:9999,background:"#1e3a5f",color:"#fff",padding:"6px 12px",fontSize:"13px",display:"flex",alignItems:"center",gap:"10px",flexWrap:"wrap"}}>
-        <strong>Index test:</strong>
-        <button onClick={triggerOverdueQuery} style={{background:"#f59e0b",border:"none",borderRadius:"4px",padding:"3px 10px",cursor:"pointer",fontWeight:"bold"}}>
-          Trigger overdue query
-        </button>
-        {indexTestMsg && <span>{indexTestMsg}</span>}
-        {indexCreateUrl && (
-          <a href={indexCreateUrl} target="_blank" rel="noreferrer"
-            style={{background:"#22c55e",color:"#fff",padding:"3px 10px",borderRadius:"4px",fontWeight:"bold",textDecoration:"none"}}>
-            → Create index in Firebase Console
-          </a>
-        )}
-        <span style={{marginLeft:"auto",opacity:0.6,fontSize:"11px"}}>Remove this bar after index is deployed</span>
-      </div>
-      {/* ── END TEMPORARY ── */}
 
       <div className="sidebar">
         <h1 className="sidebar-title">Inbox</h1>

@@ -1,0 +1,99 @@
+I want to improve my Firestore database design and document ID strategy based on everything we discussed.
+
+Current situation:
+- I currently have Firestore collections like tasks and categories
+- For tasks, I currently store fields like:
+  - category
+  - description
+  - dueDate
+  - status
+  - title
+  - userId
+- I want to support future multi-organization use
+- I care a lot about debugging, so unreadable random Firestore document IDs are not ideal for me
+
+Very important:
+I want to assume that my application may be used by different organizations in the future, not just one personal workspace. So I want the database design and ID strategy to be built with multi-organization support in mind from the start.
+
+What I want help with:
+
+1. Custom readable unique ID strategy
+Please propose and implement a better ID strategy for Firestore documents.
+
+Important:
+- I do NOT want IDs that are only readable but not truly unique
+- I want IDs to be:
+  - human-readable
+  - unique
+  - stable
+  - good for debugging
+  - safe for future multi-organization support
+
+Please use the idea of:
+- readable prefix/context
+- plus a true unique suffix
+
+For example, something like:
+- categories: cat_<orgId>_<categorySlug>_<uniqueSuffix>
+- tasks: task_<orgId>_<userId>_<uniqueSuffix>
+
+Please explain:
+- what the “unique suffix” should be called
+- whether you recommend UUID, NanoID, timestamp+random, or something else
+- how you will guarantee uniqueness
+- how category names should be slugified
+
+2. Category ID / document strategy
+I want to know what is best for categories:
+- use Firestore custom document IDs directly
+or
+- keep Firestore auto IDs and store a separate readable custom ID field inside the document
+
+Please recommend the best approach for debugging and maintainability.
+
+3. Multi-organization database design
+I want to redesign my Firestore data model so the app can support multiple organizations in the future.
+
+Please propose the proper structure for these collections:
+- organizations
+- users
+- categories
+- tasks
+
+Please explain:
+- what fields each collection should have
+- how they should relate to each other
+- what should be added to my existing documents
+- how organizationId should be used
+- how a user belongs to an organization
+- how categories and tasks should be scoped so that different organizations do not mix data
+- whether categories should be organization-level, user-level, or support both
+- what should happen if in the future multiple users in the same organization use the app at the same time
+
+4. Keep my current task schema idea
+For tasks, I want to keep the current idea of fields like:
+- category
+- description
+- dueDate
+- status
+- title
+- userId
+
+But I’m okay with adding fields needed for a better design, such as:
+- organizationId
+- maybe categoryId
+- maybe a readable custom ID/debug field
+
+5. Implementation guidance
+Please do this in a beginner-friendly way and explain clearly:
+- which files should change
+- what should change in Firestore document creation logic
+- whether existing data should be migrated or left as-is
+- whether this should be done for seeded data too
+- how I can verify in Firebase Console that it is working correctly
+
+Please start by:
+1. proposing the full design step by step
+2. explaining the tradeoffs
+3. then implementing the best version
+4. and showing me exactly which files changed
