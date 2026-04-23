@@ -141,15 +141,19 @@ jobs:
         working-directory: smart-study-planner-frontend
         run: npm run lint
 
+      - name: Run frontend tests
+        working-directory: smart-study-planner-frontend
+        run: npm test
+
       - name: Build frontend
         working-directory: smart-study-planner-frontend
         run: npm run build
 
-      - name: Summarise test execution
+      - name: Summarise frontend execution
         if: always()
         run: |
           echo "## Frontend Check: ran from scratch (no result cache)" >> $GITHUB_STEP_SUMMARY
-          echo "Lint and build are always executed; there is no hash-based result cache for the frontend job." >> $GITHUB_STEP_SUMMARY
+          echo "Lint, tests, and build are always executed; there is no hash-based result cache for the frontend job." >> $GITHUB_STEP_SUMMARY
 
       - name: Upload frontend build artifact
         uses: actions/upload-artifact@v4
