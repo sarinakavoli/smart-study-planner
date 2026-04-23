@@ -77,7 +77,8 @@ class CourseControllerTest {
         Course course = buildCourse("Biology", "BIO201");
         when(courseService.getCoursesByUserId(1L)).thenReturn(List.of(course));
 
-        mockMvc.perform(get("/api/users/1/courses"))
+        mockMvc.perform(get("/api/users/1/courses")
+                        .requestAttr("authenticatedUserId", 1L))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].courseName").value("Biology"))
                 .andExpect(jsonPath("$[0].courseCode").value("BIO201"));
@@ -87,7 +88,8 @@ class CourseControllerTest {
     void getCoursesByUserId_whenUserHasNoCourses_returnsOkWithEmptyList() throws Exception {
         when(courseService.getCoursesByUserId(99L)).thenReturn(List.of());
 
-        mockMvc.perform(get("/api/users/99/courses"))
+        mockMvc.perform(get("/api/users/99/courses")
+                        .requestAttr("authenticatedUserId", 99L))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isEmpty());
     }
@@ -97,7 +99,8 @@ class CourseControllerTest {
         when(courseService.getCoursesByUserId(999L))
                 .thenThrow(new UserNotFoundException(999L));
 
-        mockMvc.perform(get("/api/users/999/courses"))
+        mockMvc.perform(get("/api/users/999/courses")
+                        .requestAttr("authenticatedUserId", 999L))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error").value("User not found with id: 999"));
     }
@@ -115,7 +118,8 @@ class CourseControllerTest {
 
         mockMvc.perform(post("/api/courses")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(body)))
+                        .content(objectMapper.writeValueAsString(body))
+                        .requestAttr("authenticatedUserId", 1L))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.courseName").value("Chemistry"))
                 .andExpect(jsonPath("$.courseCode").value("CHEM301"));
@@ -134,9 +138,25 @@ class CourseControllerTest {
 
         mockMvc.perform(post("/api/courses")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(body)))
+                        .content(objectMapper.writeValueAsString(body))
+                        .requestAttr("authenticatedUserId", 99L))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error").value("User not found with id: 99"));
+    }
+
+    @Test
+    void createCourse_withoutAuthenticatedUserId_returns401() throws Exception {
+        Map<String, Object> body = Map.of(
+                "courseName", "Physics",
+                "courseCode", "PHYS101",
+                "userId", 1
+        );
+
+        mockMvc.perform(post("/api/courses")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error").exists());
     }
 
     @Test
@@ -144,7 +164,8 @@ class CourseControllerTest {
         when(courseService.getCourseByUserIdAndCourseId(eq(1L), eq(99L)))
                 .thenThrow(new CourseNotFoundException(99L));
 
-        mockMvc.perform(get("/api/users/1/courses/99"))
+        mockMvc.perform(get("/api/users/1/courses/99")
+                        .requestAttr("authenticatedUserId", 1L))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error").value("Course not found with id: 99"));
     }
@@ -154,7 +175,8 @@ class CourseControllerTest {
         when(courseService.getCourseByUserIdAndCourseId(eq(999L), eq(1L)))
                 .thenThrow(new UserNotFoundException(999L));
 
-        mockMvc.perform(get("/api/users/999/courses/1"))
+        mockMvc.perform(get("/api/users/999/courses/1")
+                        .requestAttr("authenticatedUserId", 999L))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error").value("User not found with id: 999"));
     }

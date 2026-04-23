@@ -1,5 +1,6 @@
 package com.sarina.studyplanner.controller;
 
+import java.util.HashMap;
 import java.util.Map;
 
 import org.springframework.http.ResponseEntity;
@@ -8,23 +9,24 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.sarina.studyplanner.config.JwtUtil;
 import com.sarina.studyplanner.entity.User;
 import com.sarina.studyplanner.service.UserService;
-
-import jakarta.servlet.http.HttpSession;
 
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
 
     private final UserService userService;
+    private final JwtUtil jwtUtil;
 
-    public AuthController(UserService userService) {
+    public AuthController(UserService userService, JwtUtil jwtUtil) {
         this.userService = userService;
+        this.jwtUtil = jwtUtil;
     }
 
     @PostMapping("/login")
-    public ResponseEntity<?> login(@RequestBody Map<String, String> body, HttpSession session) {
+    public ResponseEntity<?> login(@RequestBody Map<String, String> body) {
         String name = body.get("username");
         String password = body.get("password");
 
@@ -37,15 +39,19 @@ public class AuthController {
 
         try {
             User user = userService.login(name.trim(), password);
-            session.setAttribute("userId", user.getId());
-            return ResponseEntity.ok(Map.of("id", user.getId(), "name", user.getName()));
+            String token = jwtUtil.generateToken(user.getId());
+            Map<String, Object> responseBody = new HashMap<>();
+            responseBody.put("id", user.getId());
+            responseBody.put("name", user.getName());
+            responseBody.put("token", token);
+            return ResponseEntity.ok(responseBody);
         } catch (RuntimeException e) {
             return ResponseEntity.status(401).body(Map.of("error", e.getMessage()));
         }
     }
 
     @PostMapping("/register")
-    public ResponseEntity<?> register(@RequestBody Map<String, String> body, HttpSession session) {
+    public ResponseEntity<?> register(@RequestBody Map<String, String> body) {
         String name = body.get("username");
         String password = body.get("password");
         String email = body.get("email");
@@ -62,8 +68,12 @@ public class AuthController {
 
         try {
             User user = userService.register(name.trim(), password, email);
-            session.setAttribute("userId", user.getId());
-            return ResponseEntity.ok(Map.of("id", user.getId(), "name", user.getName()));
+            String token = jwtUtil.generateToken(user.getId());
+            Map<String, Object> responseBody = new HashMap<>();
+            responseBody.put("id", user.getId());
+            responseBody.put("name", user.getName());
+            responseBody.put("token", token);
+            return ResponseEntity.ok(responseBody);
         } catch (RuntimeException e) {
             return ResponseEntity.status(409).body(Map.of("error", e.getMessage()));
         }

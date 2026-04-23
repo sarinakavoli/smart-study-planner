@@ -3,6 +3,7 @@ package com.sarina.studyplanner.controller;
 import java.util.List;
 import java.util.Map;
 
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,8 +21,6 @@ import com.sarina.studyplanner.exception.ForbiddenException;
 import com.sarina.studyplanner.exception.UserNotFoundException;
 import com.sarina.studyplanner.service.CourseService;
 
-import jakarta.servlet.http.HttpSession;
-
 @RestController
 @RequestMapping("/api")
 public class CourseController {
@@ -32,11 +31,25 @@ public class CourseController {
         this.courseService = courseService;
     }
 
+    private Long requireAuthenticatedUserId(HttpServletRequest request) {
+        Long id = (Long) request.getAttribute("authenticatedUserId");
+        if (id == null) {
+            throw new IllegalStateException("No authenticated user identity found on request.");
+        }
+        return id;
+    }
+
     @PostMapping("/courses")
-    public ResponseEntity<?> createCourse(@RequestBody CourseRequest courseRequest) {
+    public ResponseEntity<?> createCourse(
+            @RequestBody CourseRequest courseRequest,
+            HttpServletRequest request) {
         try {
+            Long authenticatedUserId = requireAuthenticatedUserId(request);
+            courseRequest.setUserId(authenticatedUserId);
             Course course = courseService.createCourse(courseRequest);
             return ResponseEntity.ok(course);
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(401).body(Map.of("error", e.getMessage()));
         } catch (UserNotFoundException e) {
             return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
         }
@@ -48,10 +61,18 @@ public class CourseController {
     }
 
     @GetMapping("/users/{userId}/courses")
-    public ResponseEntity<?> getCoursesByUserId(@PathVariable Long userId) {
+    public ResponseEntity<?> getCoursesByUserId(
+            @PathVariable Long userId,
+            HttpServletRequest request) {
         try {
+            Long authenticatedUserId = requireAuthenticatedUserId(request);
+            if (!authenticatedUserId.equals(userId)) {
+                return ResponseEntity.status(403).body(Map.of("error", "You can only access your own courses."));
+            }
             List<Course> courses = courseService.getCoursesByUserId(userId);
             return ResponseEntity.ok(courses);
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(401).body(Map.of("error", e.getMessage()));
         } catch (UserNotFoundException e) {
             return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
         }
@@ -60,10 +81,17 @@ public class CourseController {
     @GetMapping("/users/{userId}/courses/{courseId}")
     public ResponseEntity<?> getCourseByUserIdAndCourseId(
             @PathVariable Long userId,
-            @PathVariable Long courseId) {
+            @PathVariable Long courseId,
+            HttpServletRequest request) {
         try {
+            Long authenticatedUserId = requireAuthenticatedUserId(request);
+            if (!authenticatedUserId.equals(userId)) {
+                return ResponseEntity.status(403).body(Map.of("error", "You can only access your own courses."));
+            }
             Course course = courseService.getCourseByUserIdAndCourseId(userId, courseId);
             return ResponseEntity.ok(course);
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(401).body(Map.of("error", e.getMessage()));
         } catch (UserNotFoundException e) {
             return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
         } catch (CourseNotFoundException e) {
@@ -75,15 +103,17 @@ public class CourseController {
     public ResponseEntity<?> updateCourse(
             @PathVariable Long userId,
             @PathVariable Long courseId,
-            HttpSession session,
+            HttpServletRequest request,
             @RequestBody CourseRequest courseRequest) {
         try {
-            Long sessionUserId = (Long) session.getAttribute("userId");
-            if (sessionUserId == null || !sessionUserId.equals(userId)) {
+            Long authenticatedUserId = requireAuthenticatedUserId(request);
+            if (!authenticatedUserId.equals(userId)) {
                 throw new ForbiddenException("You are not allowed to modify another user's course.");
             }
             Course course = courseService.updateCourse(userId, courseId, courseRequest);
             return ResponseEntity.ok(course);
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(401).body(Map.of("error", e.getMessage()));
         } catch (ForbiddenException e) {
             return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
         } catch (UserNotFoundException e) {
@@ -97,14 +127,16 @@ public class CourseController {
     public ResponseEntity<?> deleteCourse(
             @PathVariable Long userId,
             @PathVariable Long courseId,
-            HttpSession session) {
+            HttpServletRequest request) {
         try {
-            Long sessionUserId = (Long) session.getAttribute("userId");
-            if (sessionUserId == null || !sessionUserId.equals(userId)) {
+            Long authenticatedUserId = requireAuthenticatedUserId(request);
+            if (!authenticatedUserId.equals(userId)) {
                 throw new ForbiddenException("You are not allowed to modify another user's course.");
             }
             courseService.deleteCourse(userId, courseId);
             return ResponseEntity.noContent().build();
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(401).body(Map.of("error", e.getMessage()));
         } catch (ForbiddenException e) {
             return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
         } catch (UserNotFoundException e) {

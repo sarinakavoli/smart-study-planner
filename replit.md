@@ -24,10 +24,14 @@ The Vite dev server proxies all `/api` requests to `http://localhost:8080`.
 
 ## Authentication
 
-- `POST /api/auth/login` – Takes `{username, password}`, auto-registers new users, returns `{id, name}`
+- `POST /api/auth/login` – Takes `{username, password}`, returns `{id, name, token}` (signed JWT)
+- `POST /api/auth/register` – Same response shape as login, also issues a JWT
 - Frontend stores user in `localStorage` as `currentUser`
-- All task and category API calls include `?userId=` query param for per-user data isolation
-- `Login.jsx` – Login/register screen shown when no user is in localStorage
+- All protected API requests must include `Authorization: Bearer <token>` header
+- JWT is signed with HMAC-SHA256 using `jwt.secret` from application.properties (24-hour expiry)
+- `JwtAuthFilter` validates the token on every request and sets the caller identity in the request attribute `authenticatedUserId`
+- `SecurityConfig` permits `/api/auth/**` without auth; all other endpoints require a valid JWT
+- The old `X-Requesting-User-Id` header and `HttpSession`-based identity checks have been removed
 
 ## Per-User Data
 

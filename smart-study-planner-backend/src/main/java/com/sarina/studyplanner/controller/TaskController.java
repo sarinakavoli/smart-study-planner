@@ -7,6 +7,7 @@ import com.sarina.studyplanner.exception.ForbiddenException;
 import com.sarina.studyplanner.exception.TaskNotFoundException;
 import com.sarina.studyplanner.exception.UserNotFoundException;
 import com.sarina.studyplanner.service.TaskService;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -23,11 +24,25 @@ public class TaskController {
         this.taskService = taskService;
     }
 
+    private Long requireAuthenticatedUserId(HttpServletRequest request) {
+        Long id = (Long) request.getAttribute("authenticatedUserId");
+        if (id == null) {
+            throw new IllegalStateException("No authenticated user identity found on request.");
+        }
+        return id;
+    }
+
     @PostMapping("/tasks")
-    public ResponseEntity<?> createTask(@RequestBody TaskRequest taskRequest) {
+    public ResponseEntity<?> createTask(
+            @RequestBody TaskRequest taskRequest,
+            HttpServletRequest request) {
         try {
+            Long authenticatedUserId = requireAuthenticatedUserId(request);
+            taskRequest.setUserId(authenticatedUserId);
             Task task = taskService.createTask(taskRequest);
             return ResponseEntity.ok(task);
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(401).body(Map.of("error", e.getMessage()));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (UserNotFoundException e) {
@@ -38,8 +53,18 @@ public class TaskController {
     }
 
     @GetMapping("/tasks")
-    public List<Task> getAllTasks(@RequestParam(required = false) Long userId) {
-        return taskService.getAllTasks(userId);
+    public ResponseEntity<?> getAllTasks(
+            @RequestParam(required = false) Long userId,
+            HttpServletRequest request) {
+        try {
+            Long authenticatedUserId = requireAuthenticatedUserId(request);
+            if (userId != null && !authenticatedUserId.equals(userId)) {
+                return ResponseEntity.status(403).body(Map.of("error", "You can only access your own tasks."));
+            }
+            return ResponseEntity.ok(taskService.getAllTasks(authenticatedUserId));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(401).body(Map.of("error", e.getMessage()));
+        }
     }
 
     @GetMapping("/courses/{courseId}/tasks")
@@ -48,15 +73,34 @@ public class TaskController {
     }
 
     @GetMapping("/tasks/status/{status}")
-    public List<Task> getTasksByStatus(
+    public ResponseEntity<?> getTasksByStatus(
             @PathVariable String status,
-            @RequestParam(required = false) Long userId) {
-        return taskService.getTasksByStatus(userId, status);
+            @RequestParam(required = false) Long userId,
+            HttpServletRequest request) {
+        try {
+            Long authenticatedUserId = requireAuthenticatedUserId(request);
+            if (userId != null && !authenticatedUserId.equals(userId)) {
+                return ResponseEntity.status(403).body(Map.of("error", "You can only access your own tasks."));
+            }
+            return ResponseEntity.ok(taskService.getTasksByStatus(authenticatedUserId, status));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(401).body(Map.of("error", e.getMessage()));
+        }
     }
 
     @GetMapping("/tasks/overdue")
-    public List<Task> getOverdueTasks(@RequestParam(required = false) Long userId) {
-        return taskService.getOverdueTasks(userId);
+    public ResponseEntity<?> getOverdueTasks(
+            @RequestParam(required = false) Long userId,
+            HttpServletRequest request) {
+        try {
+            Long authenticatedUserId = requireAuthenticatedUserId(request);
+            if (userId != null && !authenticatedUserId.equals(userId)) {
+                return ResponseEntity.status(403).body(Map.of("error", "You can only access your own tasks."));
+            }
+            return ResponseEntity.ok(taskService.getOverdueTasks(authenticatedUserId));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(401).body(Map.of("error", e.getMessage()));
+        }
     }
 
     @PutMapping("/tasks/{taskId}/status")
@@ -84,12 +128,16 @@ public class TaskController {
     }
 
     @PutMapping("/tasks/category/move-to-other")
-    public ResponseEntity<?> moveCategoryToOther(@RequestBody Map<String, Object> body) {
+    public ResponseEntity<?> moveCategoryToOther(
+            @RequestBody Map<String, Object> body,
+            HttpServletRequest request) {
         try {
+            Long authenticatedUserId = requireAuthenticatedUserId(request);
             String oldCategory = (String) body.get("oldCategory");
-            Long userId = body.get("userId") != null ? Long.valueOf(body.get("userId").toString()) : null;
-            taskService.moveCategoryToOther(oldCategory, userId);
+            taskService.moveCategoryToOther(oldCategory, authenticatedUserId);
             return ResponseEntity.ok("Category moved to OTHER successfully");
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(401).body(Map.of("error", e.getMessage()));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (UserNotFoundException e) {
@@ -111,14 +159,17 @@ public class TaskController {
     public ResponseEntity<?> updateTaskForUser(
             @PathVariable Long userId,
             @PathVariable Long taskId,
-            @RequestHeader(value = "X-Requesting-User-Id", required = false) Long requestingUserId,
+            HttpServletRequest request,
             @RequestBody TaskRequest taskRequest) {
         try {
-            if (requestingUserId == null || !requestingUserId.equals(userId)) {
+            Long authenticatedUserId = requireAuthenticatedUserId(request);
+            if (!authenticatedUserId.equals(userId)) {
                 throw new ForbiddenException("You are not allowed to modify another user's task.");
             }
             Task task = taskService.updateTaskForUser(userId, taskId, taskRequest);
             return ResponseEntity.ok(task);
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(401).body(Map.of("error", e.getMessage()));
         } catch (ForbiddenException e) {
             return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
         } catch (IllegalArgumentException e) {
@@ -136,13 +187,16 @@ public class TaskController {
     public ResponseEntity<?> deleteTaskForUser(
             @PathVariable Long userId,
             @PathVariable Long taskId,
-            @RequestHeader(value = "X-Requesting-User-Id", required = false) Long requestingUserId) {
+            HttpServletRequest request) {
         try {
-            if (requestingUserId == null || !requestingUserId.equals(userId)) {
+            Long authenticatedUserId = requireAuthenticatedUserId(request);
+            if (!authenticatedUserId.equals(userId)) {
                 throw new ForbiddenException("You are not allowed to modify another user's task.");
             }
             taskService.deleteTaskForUser(userId, taskId);
             return ResponseEntity.noContent().build();
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(401).body(Map.of("error", e.getMessage()));
         } catch (ForbiddenException e) {
             return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
         } catch (UserNotFoundException e) {

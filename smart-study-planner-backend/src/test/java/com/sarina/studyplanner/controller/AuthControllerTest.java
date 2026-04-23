@@ -1,6 +1,7 @@
 package com.sarina.studyplanner.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sarina.studyplanner.config.JwtUtil;
 import com.sarina.studyplanner.entity.User;
 import com.sarina.studyplanner.service.UserService;
 import org.junit.jupiter.api.BeforeEach;
@@ -17,7 +18,9 @@ import java.lang.reflect.Field;
 import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -32,6 +35,9 @@ class AuthControllerTest {
     @Mock
     private UserService userService;
 
+    @Mock
+    private JwtUtil jwtUtil;
+
     @InjectMocks
     private AuthController authController;
 
@@ -39,6 +45,7 @@ class AuthControllerTest {
     void setUp() {
         mockMvc = MockMvcBuilders.standaloneSetup(authController).build();
         objectMapper = new ObjectMapper();
+        lenient().when(jwtUtil.generateToken(anyLong())).thenReturn("test-jwt-token");
     }
 
     private User buildUser(Long id, String name) throws Exception {

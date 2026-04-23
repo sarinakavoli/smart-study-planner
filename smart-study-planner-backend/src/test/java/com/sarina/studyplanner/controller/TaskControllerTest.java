@@ -67,9 +67,10 @@ class TaskControllerTest {
     @Test
     void getAllTasks_returnsOkWithList() throws Exception {
         Task task = buildTask("Read chapter 3", "PENDING");
-        when(taskService.getAllTasks(null)).thenReturn(List.of(task));
+        when(taskService.getAllTasks(1L)).thenReturn(List.of(task));
 
-        mockMvc.perform(get("/api/tasks"))
+        mockMvc.perform(get("/api/tasks")
+                        .requestAttr("authenticatedUserId", 1L))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].title").value("Read chapter 3"));
     }
@@ -79,7 +80,8 @@ class TaskControllerTest {
         Task task = buildTask("User task", "PENDING");
         when(taskService.getAllTasks(5L)).thenReturn(List.of(task));
 
-        mockMvc.perform(get("/api/tasks").param("userId", "5"))
+        mockMvc.perform(get("/api/tasks").param("userId", "5")
+                        .requestAttr("authenticatedUserId", 5L))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].title").value("User task"));
     }
@@ -96,7 +98,8 @@ class TaskControllerTest {
 
         mockMvc.perform(post("/api/tasks")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(body)))
+                        .content(objectMapper.writeValueAsString(body))
+                        .requestAttr("authenticatedUserId", 1L))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.title").value("New task"))
                 .andExpect(jsonPath("$.status").value("PENDING"));
@@ -115,9 +118,10 @@ class TaskControllerTest {
     @Test
     void getTasksByStatus_returnsOk() throws Exception {
         Task task = buildTask("Done task", "DONE");
-        when(taskService.getTasksByStatus(null, "DONE")).thenReturn(List.of(task));
+        when(taskService.getTasksByStatus(1L, "DONE")).thenReturn(List.of(task));
 
-        mockMvc.perform(get("/api/tasks/status/DONE"))
+        mockMvc.perform(get("/api/tasks/status/DONE")
+                        .requestAttr("authenticatedUserId", 1L))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].status").value("DONE"));
     }
@@ -125,9 +129,10 @@ class TaskControllerTest {
     @Test
     void getOverdueTasks_returnsOk() throws Exception {
         Task task = buildTask("Overdue task", "PENDING");
-        when(taskService.getOverdueTasks(null)).thenReturn(List.of(task));
+        when(taskService.getOverdueTasks(1L)).thenReturn(List.of(task));
 
-        mockMvc.perform(get("/api/tasks/overdue"))
+        mockMvc.perform(get("/api/tasks/overdue")
+                        .requestAttr("authenticatedUserId", 1L))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].title").value("Overdue task"));
     }
@@ -174,13 +179,14 @@ class TaskControllerTest {
 
     @Test
     void moveCategoryToOther_returnsOkWithSuccessMessage() throws Exception {
-        doNothing().when(taskService).moveCategoryToOther(eq("MATH"), isNull());
+        doNothing().when(taskService).moveCategoryToOther(eq("MATH"), eq(1L));
 
         Map<String, Object> body = Map.of("oldCategory", "MATH");
 
         mockMvc.perform(put("/api/tasks/category/move-to-other")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(body)))
+                        .content(objectMapper.writeValueAsString(body))
+                        .requestAttr("authenticatedUserId", 1L))
                 .andExpect(status().isOk())
                 .andExpect(content().string("Category moved to OTHER successfully"));
     }
@@ -188,13 +194,14 @@ class TaskControllerTest {
     @Test
     void moveCategoryToOther_withBlankCategory_returns400WithErrorBody() throws Exception {
         doThrow(new IllegalArgumentException("Category is required"))
-                .when(taskService).moveCategoryToOther(eq("   "), isNull());
+                .when(taskService).moveCategoryToOther(eq("   "), eq(1L));
 
         Map<String, Object> body = Map.of("oldCategory", "   ");
 
         mockMvc.perform(put("/api/tasks/category/move-to-other")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(body)))
+                        .content(objectMapper.writeValueAsString(body))
+                        .requestAttr("authenticatedUserId", 1L))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("Category is required"));
     }
@@ -202,13 +209,14 @@ class TaskControllerTest {
     @Test
     void moveCategoryToOther_withMissingCategory_returns400WithErrorBody() throws Exception {
         doThrow(new IllegalArgumentException("Category is required"))
-                .when(taskService).moveCategoryToOther(isNull(), isNull());
+                .when(taskService).moveCategoryToOther(isNull(), eq(1L));
 
         Map<String, Object> body = Map.of();
 
         mockMvc.perform(put("/api/tasks/category/move-to-other")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(body)))
+                        .content(objectMapper.writeValueAsString(body))
+                        .requestAttr("authenticatedUserId", 1L))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("Category is required"));
     }
@@ -259,7 +267,8 @@ class TaskControllerTest {
 
         mockMvc.perform(post("/api/tasks")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(body)))
+                        .content(objectMapper.writeValueAsString(body))
+                        .requestAttr("authenticatedUserId", 99L))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error").value("User not found with id: 99"));
     }
@@ -273,7 +282,8 @@ class TaskControllerTest {
 
         mockMvc.perform(post("/api/tasks")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(body)))
+                        .content(objectMapper.writeValueAsString(body))
+                        .requestAttr("authenticatedUserId", 1L))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("Title is required"));
     }
@@ -301,7 +311,8 @@ class TaskControllerTest {
 
         mockMvc.perform(post("/api/tasks")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(body)))
+                        .content(objectMapper.writeValueAsString(body))
+                        .requestAttr("authenticatedUserId", 1L))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error").value("Course not found with id: 42"));
     }
@@ -325,11 +336,12 @@ class TaskControllerTest {
         doThrow(new UserNotFoundException(99L))
                 .when(taskService).moveCategoryToOther(eq("MATH"), eq(99L));
 
-        Map<String, Object> body = Map.of("oldCategory", "MATH", "userId", 99);
+        Map<String, Object> body = Map.of("oldCategory", "MATH");
 
         mockMvc.perform(put("/api/tasks/category/move-to-other")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(body)))
+                        .content(objectMapper.writeValueAsString(body))
+                        .requestAttr("authenticatedUserId", 99L))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error").value("User not found with id: 99"));
     }

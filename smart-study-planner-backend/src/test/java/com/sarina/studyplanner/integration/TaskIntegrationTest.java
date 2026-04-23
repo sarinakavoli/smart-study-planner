@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -34,10 +35,14 @@ class TaskIntegrationTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private Long userId;
     private Long courseId;
+    private String userToken;
 
     @BeforeEach
     void setUp() throws Exception {
-        mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build();
+        mockMvc = MockMvcBuilders
+                .webAppContextSetup(webApplicationContext)
+                .apply(SecurityMockMvcConfigurers.springSecurity())
+                .build();
 
         String uniqueName = "taskuser_" + System.nanoTime();
         Map<String, String> registerBody = Map.of("username", uniqueName, "password", "testpass99");
@@ -48,6 +53,7 @@ class TaskIntegrationTest {
                 .andReturn();
         Map<?, ?> userResponse = objectMapper.readValue(userResult.getResponse().getContentAsString(), Map.class);
         userId = ((Number) userResponse.get("id")).longValue();
+        userToken = (String) userResponse.get("token");
 
         Map<String, Object> courseBody = Map.of(
                 "courseName", "Operating Systems",
@@ -56,6 +62,7 @@ class TaskIntegrationTest {
         );
         MvcResult courseResult = mockMvc.perform(post("/api/courses")
                         .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + userToken)
                         .content(objectMapper.writeValueAsString(courseBody)))
                 .andExpect(status().isOk())
                 .andReturn();
@@ -76,6 +83,7 @@ class TaskIntegrationTest {
 
         mockMvc.perform(post("/api/tasks")
                         .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + userToken)
                         .content(objectMapper.writeValueAsString(taskBody)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.title").value("Write report"))
@@ -95,10 +103,13 @@ class TaskIntegrationTest {
         );
         mockMvc.perform(post("/api/tasks")
                         .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + userToken)
                         .content(objectMapper.writeValueAsString(taskBody)))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(get("/api/tasks").param("userId", userId.toString()))
+        mockMvc.perform(get("/api/tasks")
+                        .header("Authorization", "Bearer " + userToken)
+                        .param("userId", userId.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray())
                 .andExpect(jsonPath("$[0].title").value("Study for midterm"))
@@ -117,6 +128,7 @@ class TaskIntegrationTest {
 
         mockMvc.perform(post("/api/tasks")
                         .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + userToken)
                         .content(objectMapper.writeValueAsString(taskBody)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.title").value("General task"))
@@ -135,10 +147,13 @@ class TaskIntegrationTest {
         );
         mockMvc.perform(post("/api/tasks")
                         .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + userToken)
                         .content(objectMapper.writeValueAsString(taskBody)))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(get("/api/tasks/status/PENDING").param("userId", userId.toString()))
+        mockMvc.perform(get("/api/tasks/status/PENDING")
+                        .header("Authorization", "Bearer " + userToken)
+                        .param("userId", userId.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray())
                 .andExpect(jsonPath("$[0].status").value("PENDING"));
@@ -156,6 +171,7 @@ class TaskIntegrationTest {
 
         mockMvc.perform(post("/api/tasks")
                         .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + userToken)
                         .content(objectMapper.writeValueAsString(taskBody)))
                 .andExpect(status().isBadRequest());
     }
@@ -173,6 +189,7 @@ class TaskIntegrationTest {
 
         mockMvc.perform(post("/api/tasks")
                         .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + userToken)
                         .content(objectMapper.writeValueAsString(taskBody)))
                 .andExpect(status().isBadRequest());
     }
@@ -189,6 +206,7 @@ class TaskIntegrationTest {
         );
         MvcResult createResult = mockMvc.perform(post("/api/tasks")
                         .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + userToken)
                         .content(objectMapper.writeValueAsString(createBody)))
                 .andExpect(status().isOk())
                 .andReturn();
@@ -205,6 +223,7 @@ class TaskIntegrationTest {
 
         mockMvc.perform(put("/api/tasks/" + taskId)
                         .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + userToken)
                         .content(objectMapper.writeValueAsString(updateBody)))
                 .andExpect(status().isBadRequest());
     }
@@ -221,6 +240,7 @@ class TaskIntegrationTest {
         );
         MvcResult createResult = mockMvc.perform(post("/api/tasks")
                         .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + userToken)
                         .content(objectMapper.writeValueAsString(createBody)))
                 .andExpect(status().isOk())
                 .andReturn();
@@ -238,6 +258,7 @@ class TaskIntegrationTest {
 
         mockMvc.perform(put("/api/tasks/" + taskId)
                         .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + userToken)
                         .content(objectMapper.writeValueAsString(updateBody)))
                 .andExpect(status().isBadRequest());
     }
@@ -252,7 +273,7 @@ class TaskIntegrationTest {
                 .andExpect(status().isOk())
                 .andReturn();
         Map<?, ?> otherResponse = objectMapper.readValue(otherResult.getResponse().getContentAsString(), Map.class);
-        Long otherUserId = ((Number) otherResponse.get("id")).longValue();
+        String otherToken = (String) otherResponse.get("token");
 
         Map<String, Object> taskBody = Map.of(
                 "title", "Owner task",
@@ -264,6 +285,7 @@ class TaskIntegrationTest {
         );
         MvcResult taskResult = mockMvc.perform(post("/api/tasks")
                         .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + userToken)
                         .content(objectMapper.writeValueAsString(taskBody)))
                 .andExpect(status().isOk())
                 .andReturn();
@@ -280,8 +302,33 @@ class TaskIntegrationTest {
 
         mockMvc.perform(put("/api/users/" + userId + "/tasks/" + taskId)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .header("X-Requesting-User-Id", otherUserId)
+                        .header("Authorization", "Bearer " + otherToken)
                         .content(objectMapper.writeValueAsString(updateBody)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").exists());
+    }
+
+    @Test
+    void requestWithoutToken_returns401() throws Exception {
+        mockMvc.perform(get("/api/tasks"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void getTasksWithDifferentUserId_returns403() throws Exception {
+        String otherUsername = "othertaskuser3_" + System.nanoTime();
+        Map<String, String> registerBody = Map.of("username", otherUsername, "password", "testpass99");
+        MvcResult otherResult = mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(registerBody)))
+                .andExpect(status().isOk())
+                .andReturn();
+        Map<?, ?> otherResponse = objectMapper.readValue(otherResult.getResponse().getContentAsString(), Map.class);
+        String otherToken = (String) otherResponse.get("token");
+
+        mockMvc.perform(get("/api/tasks")
+                        .header("Authorization", "Bearer " + otherToken)
+                        .param("userId", userId.toString()))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error").exists());
     }
@@ -296,7 +343,7 @@ class TaskIntegrationTest {
                 .andExpect(status().isOk())
                 .andReturn();
         Map<?, ?> otherResponse = objectMapper.readValue(otherResult.getResponse().getContentAsString(), Map.class);
-        Long otherUserId = ((Number) otherResponse.get("id")).longValue();
+        String otherToken = (String) otherResponse.get("token");
 
         Map<String, Object> taskBody = Map.of(
                 "title", "Protected task",
@@ -308,6 +355,7 @@ class TaskIntegrationTest {
         );
         MvcResult taskResult = mockMvc.perform(post("/api/tasks")
                         .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + userToken)
                         .content(objectMapper.writeValueAsString(taskBody)))
                 .andExpect(status().isOk())
                 .andReturn();
@@ -315,7 +363,7 @@ class TaskIntegrationTest {
         Long taskId = ((Number) taskResponse.get("id")).longValue();
 
         mockMvc.perform(delete("/api/users/" + userId + "/tasks/" + taskId)
-                        .header("X-Requesting-User-Id", otherUserId))
+                        .header("Authorization", "Bearer " + otherToken))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error").exists());
     }
