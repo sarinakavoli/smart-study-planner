@@ -36,6 +36,13 @@
  *   Save serviceAccountKey.json in the scripts/ folder.
  *
  *   node smart-study-planner-frontend/scripts/audit-readable-ids.mjs
+ *
+ * FLAGS
+ * ─────
+ *   --verbose   Print every affected document ID without the 20-item cap.
+ *               For WARN(fields) docs the actual field values (or their
+ *               absence) are shown.  For WARN(attachment) docs every
+ *               mismatched path is listed.
  */
 
 import { readFileSync, existsSync } from "fs";
@@ -46,6 +53,8 @@ import { createRequire } from "module";
 // ── Config ───────────────────────────────────────────────────────────────────
 
 const FIRESTORE_DATABASE = "smart-study";
+
+const VERBOSE = process.argv.includes("--verbose");
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = dirname(__filename);
@@ -141,7 +150,12 @@ async function auditTasks() {
 
     if (missingFields.length > 0) {
       warnMissingField++;
-      warnFieldIds.push({ id: docId, missing: missingFields });
+      warnFieldIds.push({
+        id: docId,
+        missing: missingFields,
+        organizationId: data.organizationId ?? null,
+        readableId: data.readableId ?? null,
+      });
     }
 
     // ── WARN: attachment Storage path mismatch ──────────────────────────────
@@ -165,31 +179,50 @@ async function auditTasks() {
   console.log(`  WARN  (attachment path does not match document ID):     ${warnAttachment}`);
 
   if (failIds.length > 0) {
-    console.log("\n  Documents still using legacy IDs (first 20 shown):");
-    failIds.slice(0, 20).forEach((id) => console.log(`    - ${id}`));
-    if (failIds.length > 20) {
-      console.log(`    … and ${failIds.length - 20} more.`);
+    const shown = VERBOSE ? failIds : failIds.slice(0, 20);
+    console.log(
+      VERBOSE
+        ? "\n  Documents still using legacy IDs (all shown):"
+        : "\n  Documents still using legacy IDs (first 20 shown):"
+    );
+    shown.forEach((id) => console.log(`    - ${id}`));
+    if (!VERBOSE && failIds.length > 20) {
+      console.log(`    … and ${failIds.length - 20} more. (run with --verbose to see all)`);
     }
   }
 
   if (warnFieldIds.length > 0) {
-    console.log("\n  New-format documents with missing fields (first 20 shown):");
-    warnFieldIds.slice(0, 20).forEach(({ id, missing }) =>
-      console.log(`    - ${id}  [missing: ${missing.join(", ")}]`)
+    const shown = VERBOSE ? warnFieldIds : warnFieldIds.slice(0, 20);
+    console.log(
+      VERBOSE
+        ? "\n  New-format documents with missing fields (all shown):"
+        : "\n  New-format documents with missing fields (first 20 shown):"
     );
-    if (warnFieldIds.length > 20) {
-      console.log(`    … and ${warnFieldIds.length - 20} more.`);
+    shown.forEach(({ id, missing, organizationId, readableId }) => {
+      console.log(`    - ${id}  [missing: ${missing.join(", ")}]`);
+      if (VERBOSE) {
+        console.log(`        organizationId : ${organizationId ?? "(absent)"}`);
+        console.log(`        readableId     : ${readableId ?? "(absent)"}`);
+      }
+    });
+    if (!VERBOSE && warnFieldIds.length > 20) {
+      console.log(`    … and ${warnFieldIds.length - 20} more. (run with --verbose to see all)`);
     }
   }
 
   if (warnAttIds.length > 0) {
-    console.log("\n  Tasks with mismatched attachment paths (first 20 shown):");
-    warnAttIds.slice(0, 20).forEach(({ id, attachments }) => {
+    const shown = VERBOSE ? warnAttIds : warnAttIds.slice(0, 20);
+    console.log(
+      VERBOSE
+        ? "\n  Tasks with mismatched attachment paths (all shown):"
+        : "\n  Tasks with mismatched attachment paths (first 20 shown):"
+    );
+    shown.forEach(({ id, attachments }) => {
       console.log(`    - ${id}`);
       attachments.forEach((p) => console.log(`        path: ${p}`));
     });
-    if (warnAttIds.length > 20) {
-      console.log(`    … and ${warnAttIds.length - 20} more.`);
+    if (!VERBOSE && warnAttIds.length > 20) {
+      console.log(`    … and ${warnAttIds.length - 20} more. (run with --verbose to see all)`);
     }
   }
 
@@ -232,7 +265,12 @@ async function auditCategories() {
 
     if (missingFields.length > 0) {
       warnMissingField++;
-      warnFieldIds.push({ id: docId, missing: missingFields });
+      warnFieldIds.push({
+        id: docId,
+        missing: missingFields,
+        organizationId: data.organizationId ?? null,
+        readableId: data.readableId ?? null,
+      });
     }
 
     // ── PASS — new-format ID (WARN dimensions are independent) ─────────────
@@ -245,20 +283,34 @@ async function auditCategories() {
   console.log(`  WARN  (new-format ID but missing fields): ${warnMissingField}`);
 
   if (failIds.length > 0) {
-    console.log("\n  Documents still using legacy IDs (first 20 shown):");
-    failIds.slice(0, 20).forEach((id) => console.log(`    - ${id}`));
-    if (failIds.length > 20) {
-      console.log(`    … and ${failIds.length - 20} more.`);
+    const shown = VERBOSE ? failIds : failIds.slice(0, 20);
+    console.log(
+      VERBOSE
+        ? "\n  Documents still using legacy IDs (all shown):"
+        : "\n  Documents still using legacy IDs (first 20 shown):"
+    );
+    shown.forEach((id) => console.log(`    - ${id}`));
+    if (!VERBOSE && failIds.length > 20) {
+      console.log(`    … and ${failIds.length - 20} more. (run with --verbose to see all)`);
     }
   }
 
   if (warnFieldIds.length > 0) {
-    console.log("\n  New-format documents with missing fields (first 20 shown):");
-    warnFieldIds.slice(0, 20).forEach(({ id, missing }) =>
-      console.log(`    - ${id}  [missing: ${missing.join(", ")}]`)
+    const shown = VERBOSE ? warnFieldIds : warnFieldIds.slice(0, 20);
+    console.log(
+      VERBOSE
+        ? "\n  New-format documents with missing fields (all shown):"
+        : "\n  New-format documents with missing fields (first 20 shown):"
     );
-    if (warnFieldIds.length > 20) {
-      console.log(`    … and ${warnFieldIds.length - 20} more.`);
+    shown.forEach(({ id, missing, organizationId, readableId }) => {
+      console.log(`    - ${id}  [missing: ${missing.join(", ")}]`);
+      if (VERBOSE) {
+        console.log(`        organizationId : ${organizationId ?? "(absent)"}`);
+        console.log(`        readableId     : ${readableId ?? "(absent)"}`);
+      }
+    });
+    if (!VERBOSE && warnFieldIds.length > 20) {
+      console.log(`    … and ${warnFieldIds.length - 20} more. (run with --verbose to see all)`);
     }
   }
 
@@ -271,7 +323,11 @@ async function auditCategories() {
 async function main() {
   console.log("Smart Study Planner — Post-Migration Audit");
   console.log(`Database : ${FIRESTORE_DATABASE}`);
-  console.log(`Run at   : ${new Date().toISOString()}\n`);
+  console.log(`Run at   : ${new Date().toISOString()}`);
+  if (VERBOSE) {
+    console.log("Mode     : verbose (all affected IDs and field values will be shown)");
+  }
+  console.log();
 
   const taskResult     = await auditTasks();
   const categoryResult = await auditCategories();
