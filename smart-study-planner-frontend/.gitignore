@@ -18,6 +18,9 @@ scripts/serviceAccountKey.json
 # Vitest JUnit report output
 test-results
 
+# CI test cache sentinel file
+.test-cache
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
