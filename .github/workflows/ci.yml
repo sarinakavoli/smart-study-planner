@@ -163,7 +163,43 @@ jobs:
         id: frontend-tests
         if: steps.cache-frontend-tests.outputs.cache-hit != 'true'
         working-directory: smart-study-planner-frontend
-        run: npm test
+        run: npm test -- --coverage
+
+      - name: Write coverage summary
+        if: always() && steps.cache-frontend-tests.outputs.cache-hit != 'true'
+        working-directory: smart-study-planner-frontend
+        run: |
+          SUMMARY_FILE="coverage/coverage-summary.json"
+          if [ ! -f "$SUMMARY_FILE" ]; then
+            echo "## Frontend Coverage: no report generated" >> $GITHUB_STEP_SUMMARY
+          else
+            node -e "
+              const fs = require('fs');
+              const data = JSON.parse(fs.readFileSync('$SUMMARY_FILE', 'utf8'));
+              const total = data.total;
+              const pct = k => total[k].pct + '%';
+              const lines = [
+                '## Frontend Test Coverage',
+                '',
+                '| Metric | Coverage |',
+                '| --- | --- |',
+                \`| Statements | \${pct('statements')} |\`,
+                \`| Branches   | \${pct('branches')}   |\`,
+                \`| Functions  | \${pct('functions')}  |\`,
+                \`| Lines      | \${pct('lines')}      |\`,
+              ];
+              fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join('\n') + '\n');
+            "
+          fi
+
+      - name: Upload coverage report
+        if: always() && steps.cache-frontend-tests.outputs.cache-hit != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: smart-study-planner-frontend/coverage/
+          retention-days: 7
+          if-no-files-found: ignore
 
       - name: Build frontend
         if: steps.cache-frontend-tests.outputs.cache-hit != 'true'
