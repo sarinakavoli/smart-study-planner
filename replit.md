@@ -106,6 +106,7 @@ since there is no other source for it. On the first request the backend log will
 - On every login/signup, a `users/<uid>` document is written (with `merge: true`) containing `{ email, organizationId, createdAt }`
 - Existing data is untouched — the new ID strategy applies only to newly created documents
 - `taskService.js` has comments marking exactly where to add `organizationId` filters when real multi-org support is activated
+- `scripts/seed-organizations.mjs` — Admin SDK script that creates personal org docs in the `organizations` collection and refreshes `users/<uid>` docs; supports `--delete` to clean up seed data
 
 ## Firebase Attachments
 
