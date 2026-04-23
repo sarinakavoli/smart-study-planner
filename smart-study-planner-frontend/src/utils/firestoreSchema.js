@@ -122,4 +122,33 @@
 //
 // 5. Deploy new composite indexes that include organizationId as a field.
 //
+//
+// ── FIRESTORE SECURITY RULES — INTENDED ACCESS MODEL ─────────────────────────
+//
+// Rules live in firestore.rules (project root of the frontend package) and are
+// deployed to Firebase via firebase.json.
+//
+// users/<uid>
+//   read, write : request.auth.uid == uid
+//   Rationale   : Each user may only read or write their own profile document.
+//
+// tasks/<taskId>
+//   read, delete: resource.data.userId        == request.auth.uid
+//              && resource.data.organizationId == 'org_' + request.auth.uid
+//   create      : same checks on request.resource.data
+//   update      : both existing and incoming data must satisfy the above
+//   Rationale   : Double-check userId AND personal org so a user cannot read
+//                 tasks owned by someone else in the same org (future-proofing).
+//
+// categories/<categoryId>
+//   Same rule structure as tasks (userId + organizationId must match).
+//
+// organizations/<orgId>
+//   read        : request.auth.uid in resource.data.memberUids
+//   create      : ownerId == request.auth.uid && uid in memberUids
+//   update/delete: resource.data.ownerId == request.auth.uid
+//
+// catch-all
+//   All other paths: allow read, write: if false;
+//
 // ─────────────────────────────────────────────────────────────────────────────
