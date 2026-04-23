@@ -107,7 +107,11 @@ describe("generateTaskId", () => {
 
   it("appends a 10-character nanoid suffix", () => {
     const id = generateTaskId(orgId, userId);
-    const suffix = id.split("_").pop();
+    // nanoid uses the URL-safe alphabet [A-Za-z0-9_-], which includes "_".
+    // Splitting on "_" would truncate the suffix if it contains underscores.
+    // Instead, strip the known prefix and measure what remains.
+    const prefix = `task_${orgId}_${userId}_`;
+    const suffix = id.slice(prefix.length);
     expect(suffix).toHaveLength(10);
   });
 
@@ -147,7 +151,11 @@ describe("generateCategoryId", () => {
 
   it("appends a 10-character nanoid suffix", () => {
     const id = generateCategoryId(orgId, "History");
-    const suffix = id.split("_").pop();
+    // nanoid uses the URL-safe alphabet [A-Za-z0-9_-], which includes "_".
+    // Splitting on "_" would truncate the suffix if it contains underscores.
+    // Instead, strip the known prefix and measure what remains.
+    const prefix = `cat_${orgId}_history_`;
+    const suffix = id.slice(prefix.length);
     expect(suffix).toHaveLength(10);
   });
 
