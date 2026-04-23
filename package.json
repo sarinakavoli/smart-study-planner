@@ -4,6 +4,7 @@
   "description": "Root package.json to satisfy deployment environment Node.js detection. Actual build is handled by Maven.",
   "dependencies": {
     "firebase": "^12.12.0",
-    "firebase-admin": "^13.8.0"
+    "firebase-admin": "^13.8.0",
+    "nanoid": "^5.1.9"
   }
 }
