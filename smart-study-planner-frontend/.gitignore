@@ -15,6 +15,9 @@ dist-ssr
 # Service account key — never commit this
 scripts/serviceAccountKey.json
 
+# Vitest JUnit report output
+test-results
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
