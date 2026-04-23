@@ -245,6 +245,54 @@ jobs:
             node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>console.log(JSON.parse(d).project_id));")
           echo "id=$PROJECT_ID" >> $GITHUB_OUTPUT
 
+      # Pre-deploy guard: run the migration audit before touching security rules.
+      # If any legacy documents remain the audit exits 1 and this step fails,
+      # stopping the workflow before firebase deploy runs.  This prevents the
+      # new security rules (which require organizationId on every document) from
+      # locking users out of unmigrated data.
+      #
+      # Note: The separate `migration-audit` job (downstream of the deploy job)
+      # provides a post-deploy safety net — it catches rules deployed through
+      # another path (e.g., Firebase Console) while legacy documents still exist.
+      # This step is the pre-deploy hard block; the migration-audit job is the
+      # post-deploy detector.
+      - name: Security-rules deploy guard — audit for legacy documents
+        env:
+          GCP_SERVICE_ACCOUNT_JSON: ${{ secrets.GCP_SERVICE_ACCOUNT_JSON }}
+        run: |
+          echo "════════════════════════════════════════════════════════"
+          echo "Security-rules deploy guard: checking for legacy Firestore documents …"
+          echo "════════════════════════════════════════════════════════"
+          if [ -z "$GCP_SERVICE_ACCOUNT_JSON" ]; then
+            echo "ERROR: GCP_SERVICE_ACCOUNT_JSON secret is not set." >&2
+            echo "Cannot verify migration state. Aborting deploy to prevent locking users out of unmigrated data." >&2
+            echo "## Security-rules deploy guard: FAILED — credentials missing" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+          if ! node smart-study-planner-frontend/scripts/audit-readable-ids.mjs; then
+            echo "" >&2
+            echo "════════════════════════════════════════════════════════" >&2
+            echo "DEPLOY BLOCKED — legacy documents detected" >&2
+            echo "════════════════════════════════════════════════════════" >&2
+            echo "" >&2
+            echo "One or more Firestore documents still use legacy auto-IDs." >&2
+            echo "Deploying the security rules at this point would lock users" >&2
+            echo "out of their data because the rules require organizationId" >&2
+            echo "on every task and category document." >&2
+            echo "" >&2
+            echo "Run the migration first:" >&2
+            echo "  node smart-study-planner-frontend/scripts/migrate-to-readable-ids.mjs" >&2
+            echo "Then verify with:" >&2
+            echo "  node smart-study-planner-frontend/scripts/audit-readable-ids.mjs" >&2
+            echo "See smart-study-planner-frontend/scripts/RUNBOOK-security-rules-rollout.md for the full procedure." >&2
+            echo "## Security-rules deploy guard: BLOCKED — legacy documents remain" >> $GITHUB_STEP_SUMMARY
+            echo "Deploy was aborted. Run migrate-to-readable-ids.mjs and push again." >> $GITHUB_STEP_SUMMARY
+            echo "See \`smart-study-planner-frontend/scripts/RUNBOOK-security-rules-rollout.md\` for the full remediation procedure." >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+          echo "Audit passed — no legacy documents detected. Proceeding with Firestore rules deploy."
+          echo "## Security-rules deploy guard: passed" >> $GITHUB_STEP_SUMMARY
+
       - name: Deploy Firestore rules and indexes
         working-directory: smart-study-planner-frontend
         run: npx --yes firebase-tools deploy --only firestore --project "${{ steps.project.outputs.id }}"
