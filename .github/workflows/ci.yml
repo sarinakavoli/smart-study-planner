@@ -160,6 +160,7 @@ jobs:
         run: npm run lint
 
       - name: Run frontend tests
+        id: frontend-tests
         if: steps.cache-frontend-tests.outputs.cache-hit != 'true'
         working-directory: smart-study-planner-frontend
         run: npm test
@@ -185,6 +186,15 @@ jobs:
             echo "## Frontend Check: ran from scratch (cache miss)" >> $GITHUB_STEP_SUMMARY
             echo "No matching cache entry found. Lint, tests, and build were executed." >> $GITHUB_STEP_SUMMARY
           fi
+
+      - name: Upload frontend test report on failure
+        if: steps.frontend-tests.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-test-report
+          path: smart-study-planner-frontend/test-results/junit.xml
+          retention-days: 7
+          if-no-files-found: ignore
 
       - name: Upload frontend build artifact
         if: steps.cache-frontend-tests.outputs.cache-hit != 'true'
