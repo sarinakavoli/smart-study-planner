@@ -387,3 +387,24 @@ jobs:
             echo "## Migration Audit: FAILED" >> $GITHUB_STEP_SUMMARY
             echo "One or more documents still use legacy auto-IDs. Run migrate-to-readable-ids.mjs to complete the migration before merging." >> $GITHUB_STEP_SUMMARY
           fi
+
+      - name: Notify Slack on audit failure
+        if: failure()
+        continue-on-error: true
+        uses: slackapi/slack-github-action@v2.1.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": ":x: *Migration Audit Failed* on `${{ github.repository }}`",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": ":x: *Migration Audit Failed*\n\nOne or more Firestore documents still use legacy auto-IDs after the latest deploy to `main`. The security rules may lock users out of unmigrated data.\n\n*Run:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View failed run>\n*Commit:* <${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|`${{ github.sha }}`> by ${{ github.actor }}\n\nRun `migrate-to-readable-ids.mjs` to complete the migration, then push again."
+                  }
+                }
+              ]
+            }
