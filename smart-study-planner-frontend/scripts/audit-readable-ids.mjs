@@ -45,7 +45,7 @@
  *               mismatched path is listed.
  */
 
-import { readFileSync, existsSync } from "fs";
+import { readFileSync, existsSync, appendFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { createRequire } from "module";
@@ -70,12 +70,20 @@ if (envJson) {
 } else {
   const keyPath = join(__dirname, "serviceAccountKey.json");
   if (!existsSync(keyPath)) {
-    console.error(
-      "ERROR: No service account credentials found.\n" +
-      "Either set GCP_SERVICE_ACCOUNT_JSON as a Replit Secret, or save your\n" +
-      "Firebase service account key as scripts/serviceAccountKey.json.\n"
+    console.warn(
+      "WARNING: GCP_SERVICE_ACCOUNT_JSON is not set and scripts/serviceAccountKey.json was not found.\n" +
+      "Skipping audit — no Firebase credentials are available in this environment.\n" +
+      "Set GCP_SERVICE_ACCOUNT_JSON (e.g. as a repository secret) to enable the audit.\n"
     );
-    process.exit(1);
+    if (process.env.GITHUB_STEP_SUMMARY) {
+      appendFileSync(
+        process.env.GITHUB_STEP_SUMMARY,
+        "## Migration Audit: skipped\n" +
+        "GCP_SERVICE_ACCOUNT_JSON is not configured in this environment. " +
+        "Set the secret to enable post-deploy Firestore auditing.\n"
+      );
+    }
+    process.exit(0);
   }
   serviceAccount = JSON.parse(readFileSync(keyPath, "utf8"));
   console.log(`Using service account from ${keyPath}\n`);
