@@ -30,11 +30,14 @@
  *                      automatically, then seed for those UIDs.
  *                      Requires GCP_SERVICE_ACCOUNT_JSON to be set.
  *                      Cannot be combined with --users.
- *   --dry-run          Preview what would be inserted (count, user IDs, sample
- *                      document IDs) without writing anything to Firestore.
+ *   --dry-run          Preview what would happen without writing or deleting
+ *                      anything in Firestore.
  *                      Does not require GCP_SERVICE_ACCOUNT_JSON to be set.
- *                      Sample IDs assume counters start at 001; actual IDs may
- *                      use higher counters if matching docs already exist.
+ *                      When combined with --delete or --undo-last, previews
+ *                      which documents would be deleted (user scope, filter).
+ *                      When combined with insert flags, sample IDs assume
+ *                      counters start at 001; actual IDs may use higher
+ *                      counters if matching docs already exist.
  *                      Takes precedence over --undo-last, --delete, and --reset
  *                      when combined with those flags.
  *                      Note: --email addresses are not resolved in dry-run mode;
@@ -43,7 +46,12 @@
  *                      seeding run (identified by the run ID saved in
  *                      scripts/.last-seed-run-categories.json). Leaves all
  *                      other seed data and real user data untouched.
+ *                      When combined with --email, --users, or .seed-users,
+ *                      deletes only the matching run documents belonging to
+ *                      those users.
  *   --delete           Delete only documents where seedData == true.
+ *                      When combined with --email or --users (or .seed-users),
+ *                      deletes only seed documents belonging to those users.
  *   --reset            Delete ALL documents in the categories collection (full wipe).
  *                      Use this to start completely fresh before reseeding.
  *   --skip-verify      Skip the post-insert seed-user verification step.
@@ -90,6 +98,18 @@
  *
  *   # Only remove seeded documents (leaves real user categories untouched):
  *   node smart-study-planner-frontend/scripts/seed-categories.mjs --delete
+ *
+ *   # Remove seeded documents for a single user only (scoped delete):
+ *   node smart-study-planner-frontend/scripts/seed-categories.mjs --email=you@example.com --delete
+ *
+ *   # Remove seeded documents for a specific UID only (scoped delete):
+ *   node smart-study-planner-frontend/scripts/seed-categories.mjs --users=uid123 --delete
+ *
+ *   # Preview which documents would be deleted for a specific user (no writes):
+ *   node smart-study-planner-frontend/scripts/seed-categories.mjs --email=you@example.com --delete --dry-run
+ *
+ *   # Undo the last run for a specific user only:
+ *   node smart-study-planner-frontend/scripts/seed-categories.mjs --email=you@example.com --undo-last
  *
  *   # Seed and skip the post-insert Auth verification (e.g. in CI):
  *   node smart-study-planner-frontend/scripts/seed-categories.mjs --skip-verify
@@ -229,6 +249,12 @@ if (countArg) {
 
 // --users=uid1,uid2,...  → override USER_IDS with raw UIDs
 const usersArg = args.find((a) => a.startsWith("--users="));
+
+// Tracks whether the user list was explicitly provided (vs. falling back to
+// the built-in placeholder IDs). When true, --delete and --undo-last will
+// filter by userId so only the specified accounts are affected.
+let userFilterActive = false;
+
 if (usersArg) {
   const ids = usersArg.slice("--users=".length).split(",").map((s) => s.trim()).filter(Boolean);
   if (ids.length === 0) {
@@ -236,6 +262,7 @@ if (usersArg) {
     process.exit(1);
   }
   USER_IDS = ids;
+  userFilterActive = true;
 }
 
 // --email=a@b.com,...  → resolve email addresses to UIDs after SDK init
@@ -253,6 +280,7 @@ if (emailArg) {
     process.exit(1);
   }
   EMAIL_ENTRIES = entries;
+  userFilterActive = true;
   // In dry-run mode show the emails as-is (cannot resolve without credentials)
   if (dryRun) {
     USER_IDS = entries;
@@ -267,6 +295,7 @@ if (!usersArg && !emailArg) {
   if (fileEntries) {
     console.log(`  Loading users from scripts/.seed-users (${fileEntries.length} entry/entries) …`);
     SEED_FILE_ENTRIES = fileEntries;
+    userFilterActive = true;
     // In dry-run mode use entries as-is (emails won't be resolved)
     if (dryRun) {
       USER_IDS = fileEntries;
@@ -329,6 +358,46 @@ if (dryRun) {
 // ── Dry-run: preview planned inserts without touching Firestore ───────────────
 
 async function dryRunCategories() {
+  // When combined with --delete or --undo-last, show a deletion preview
+  // instead of the usual insert preview.
+  if (args.includes("--delete")) {
+    console.log(`DRY RUN — no data will be deleted from Firestore.\n`);
+    console.log(`  Operation  : --delete (remove seed documents where seedData == true)`);
+    console.log(`  Collection : ${COLLECTION}`);
+    if (userFilterActive) {
+      console.log(`  User scope : ${USER_IDS.join(", ")}`);
+      console.log(`  Filter     : seedData == true AND userId IN [listed users]`);
+    } else {
+      console.log(`  User scope : ALL users (no --email, --users, or .seed-users filter)`);
+      console.log(`  Filter     : seedData == true`);
+    }
+    console.log(`\n  (Remove --dry-run to execute the delete.)`);
+    return;
+  }
+
+  if (args.includes("--undo-last")) {
+    console.log(`DRY RUN — no data will be deleted from Firestore.\n`);
+    console.log(`  Operation  : --undo-last`);
+    console.log(`  Collection : ${COLLECTION}`);
+    const manifest = loadManifest();
+    if (manifest) {
+      console.log(`  Run ID     : ${manifest.runId}`);
+      console.log(`  Seeded at  : ${manifest.timestamp}`);
+      console.log(`  Run users  : ${manifest.users.join(", ")}`);
+    } else {
+      console.log(`  Run ID     : (no manifest found at ${MANIFEST_PATH} — nothing to undo)`);
+    }
+    if (userFilterActive) {
+      console.log(`  User scope : ${USER_IDS.join(", ")}`);
+      console.log(`  Filter     : seedRunId == <run-id> AND userId IN [listed users]`);
+    } else {
+      console.log(`  User scope : ALL users (no --email, --users, or .seed-users filter)`);
+      console.log(`  Filter     : seedRunId == <run-id>`);
+    }
+    console.log(`\n  (Remove --dry-run to execute the undo.)`);
+    return;
+  }
+
   console.log(`DRY RUN — no data will be written to Firestore.\n`);
   console.log(`  Collection : ${COLLECTION}`);
   console.log(`  Count      : ${TOTAL_RECORDS.toLocaleString()} documents`);
@@ -384,6 +453,39 @@ async function dryRunCategories() {
 
 // ── Undo last: delete only the most recent run's documents ────────────────────
 
+/**
+ * Fetches all documents matching seedRunId == runId, optionally also filtered
+ * by userId when userFilterActive is true (chunks USER_IDS into groups of 10
+ * to satisfy Firestore's 'in' operator limit).
+ */
+async function fetchUndoLastDocs(runId) {
+  if (!userFilterActive) {
+    const snap = await db
+      .collection(COLLECTION)
+      .where("seedRunId", "==", runId)
+      .get();
+    return snap.docs;
+  }
+
+  // Deduplicate so a repeated UID doesn't cause the same document to be
+  // returned by two overlapping chunk queries.
+  const uniqueIds = [...new Set(USER_IDS)];
+  const chunks = [];
+  for (let i = 0; i < uniqueIds.length; i += 10) {
+    chunks.push(uniqueIds.slice(i, i + 10));
+  }
+  const snaps = await Promise.all(
+    chunks.map((chunk) =>
+      db
+        .collection(COLLECTION)
+        .where("seedRunId", "==", runId)
+        .where("userId", "in", chunk)
+        .get()
+    )
+  );
+  return snaps.flatMap((s) => s.docs);
+}
+
 async function undoLastRun() {
   const manifest = loadManifest();
   if (!manifest) {
@@ -399,14 +501,14 @@ async function undoLastRun() {
   console.log(`Undo last run: removing documents from run "${runId}"`);
   console.log(`  Seeded at : ${timestamp}`);
   console.log(`  Users     : ${users.join(", ")}`);
+  if (userFilterActive) {
+    console.log(`  Scoped to : ${USER_IDS.join(", ")} (only these users' documents will be removed)`);
+  }
   console.log(`  Expected  : ~${count} document(s)\n`);
 
-  const snap = await db
-    .collection(COLLECTION)
-    .where("seedRunId", "==", runId)
-    .get();
+  const docs = await fetchUndoLastDocs(runId);
+  const total = docs.length;
 
-  const total = snap.size;
   if (total === 0) {
     console.log("  No documents found for this run (already deleted?).");
     return;
@@ -416,7 +518,7 @@ async function undoLastRun() {
 
   let deleted = 0;
   while (deleted < total) {
-    const chunk = snap.docs.slice(deleted, deleted + BATCH_SIZE);
+    const chunk = docs.slice(deleted, deleted + BATCH_SIZE);
     const batch = db.batch();
     chunk.forEach((d) => batch.delete(d.ref));
     await batch.commit();
@@ -425,6 +527,9 @@ async function undoLastRun() {
   }
 
   console.log(`\n✓ Done. ${deleted} document(s) from run "${runId}" removed.`);
+  if (userFilterActive) {
+    console.log(`  Documents for other users in this run are untouched.`);
+  }
   console.log("  Other seed data and real user data are untouched.");
 }
 
@@ -454,14 +559,40 @@ async function resetCollection() {
 // ── Delete: remove only seedData == true documents ────────────────────────────
 
 async function deleteSeedData() {
-  console.log(`Delete mode: removing all documents where seedData == true …`);
-  const snap = await db.collection(COLLECTION).where("seedData", "==", true).get();
-  const total = snap.size;
+  let allDocs;
+
+  if (userFilterActive) {
+    console.log(`Delete mode: removing seed documents for user(s): ${USER_IDS.join(", ")} …`);
+
+    // Deduplicate and chunk: Firestore 'in' queries support up to 10 values,
+    // and deduplication prevents the same document appearing in multiple chunks.
+    const uniqueIds = [...new Set(USER_IDS)];
+    const chunks = [];
+    for (let i = 0; i < uniqueIds.length; i += 10) {
+      chunks.push(uniqueIds.slice(i, i + 10));
+    }
+    const snaps = await Promise.all(
+      chunks.map((chunk) =>
+        db
+          .collection(COLLECTION)
+          .where("seedData", "==", true)
+          .where("userId", "in", chunk)
+          .get()
+      )
+    );
+    allDocs = snaps.flatMap((s) => s.docs);
+  } else {
+    console.log(`Delete mode: removing all documents where seedData == true …`);
+    const snap = await db.collection(COLLECTION).where("seedData", "==", true).get();
+    allDocs = snap.docs;
+  }
+
+  const total = allDocs.length;
   console.log(`Found ${total} seed documents. Deleting in batches of ${BATCH_SIZE} …`);
 
   let deleted = 0;
   while (deleted < total) {
-    const chunk = snap.docs.slice(deleted, deleted + BATCH_SIZE);
+    const chunk = allDocs.slice(deleted, deleted + BATCH_SIZE);
     const batch = db.batch();
     chunk.forEach((d) => batch.delete(d.ref));
     await batch.commit();
