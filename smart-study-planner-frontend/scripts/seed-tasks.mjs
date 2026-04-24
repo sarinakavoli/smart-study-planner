@@ -2,11 +2,13 @@
  * seed-tasks.mjs
  *
  * Inserts fake task documents into your Firestore "tasks" collection using
- * the new readable-ID schema introduced in Task #112.
+ * the human-readable ID schema.
  *
- * Every seeded document now includes:
- *   - A human-readable document ID:  task_<orgId>_<userId>_<nanoid10>
- *   - organizationId field          (matches the personal org: org_<uid>)
+ * Every seeded document includes:
+ *   - A human-readable document ID:
+ *       task_<orgId>_<userId>_<nanoid(10)>
+ *       e.g. task_org_user_test_001_user_test_001_V3kD9pQrLm
+ *   - organizationId field          (= "org_<uid>")
  *   - readableId field              (copy of the document ID for debugging)
  *   - seedData: true                (so you can delete only seed data later)
  *
@@ -37,14 +39,14 @@
 
 import { initializeApp, cert } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
-import { randomBytes } from "crypto";
+import { nanoid } from "nanoid";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
 const TOTAL_RECORDS = 10_000;
-const BATCH_SIZE    = 250;          // 250 docs × 2 ops (set) = safe under Firestore 500 op limit
+const BATCH_SIZE    = 250;
 const COLLECTION    = "tasks";
-const DB_NAME       = "smart-study"; // your named Firestore database
+const DB_NAME       = "smart-study";
 
 // Fake data pools — edit freely to match your real data
 const CATEGORIES = ["Math", "Science", "History", "English", "Computer Science", "Art"];
@@ -73,22 +75,15 @@ const USER_IDS = [
 // These mirror src/utils/firestoreIds.js exactly.
 // They are inlined here so the script runs without any frontend build tooling.
 
-const URL_SAFE_ALPHABET =
-  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-";
-
-/** Generates a URL-safe random string of `size` characters. */
-function nanoid(size = 10) {
-  return Array.from(randomBytes(size))
-    .map((b) => URL_SAFE_ALPHABET[b % URL_SAFE_ALPHABET.length])
-    .join("");
-}
-
-/** Returns the personal org ID for a given UID. Must match personalOrgId() in firestoreIds.js. */
+/** Returns the personal org ID for a given UID (used for organizationId field). */
 function personalOrgId(uid) {
   return `org_${uid}`;
 }
 
-/** Generates a readable unique task document ID. Must match generateTaskId() in firestoreIds.js. */
+/**
+ * Generates a human-readable, globally unique task document ID.
+ * Format: task_<orgId>_<userId>_<nanoid(10)>
+ */
 function generateTaskId(orgId, userId) {
   return `task_${orgId}_${userId}_${nanoid(10)}`;
 }
@@ -108,20 +103,22 @@ function dateOffset(days) {
 
 /** Generates one fake task document + its readable ID. */
 function fakeTask(index) {
-  const userId    = pick(USER_IDS);
-  const orgId     = personalOrgId(userId);
-  const taskId    = generateTaskId(orgId, userId);
-  const dayOffset = Math.floor(Math.random() * 60) - 30; // -30 to +30 days
-  const title     = pick(TITLES).replace("{n}", index + 1);
+  const userId       = pick(USER_IDS);
+  const orgId        = personalOrgId(userId);
+  const categoryName = pick(CATEGORIES);
+  const dayOffset    = Math.floor(Math.random() * 60) - 30;
+  const dueDate      = dateOffset(dayOffset);
+  const taskId       = generateTaskId(orgId, userId);
+  const title        = pick(TITLES).replace("{n}", index + 1);
 
   return {
-    id: taskId,   // used to set the Firestore doc ID; not stored as a field
+    id: taskId,
     data: {
       title,
       description: `Auto-generated task ${index + 1} for load testing.`,
-      category:    pick(CATEGORIES),
+      category:    categoryName,
       status:      pick(STATUSES),
-      dueDate:     dateOffset(dayOffset),
+      dueDate,
       userId,
       organizationId: orgId,
       readableId:     taskId,
@@ -230,7 +227,7 @@ async function insertTasks() {
 
   console.log(`\n✓ Done! ${inserted.toLocaleString()} tasks written to Firestore.`);
   console.log(`\n  Every document now has:`);
-  console.log(`    - A readable ID:    task_org_<userId>_<userId>_<10chars>`);
+  console.log(`    - A readable ID:    task_<orgId>_<userId>_<nanoid(10)>`);
   console.log(`    - organizationId:   org_<userId>`);
   console.log(`    - readableId:       (same as document ID)`);
   console.log(`    - seedData: true    (so you can clean up later)\n`);

@@ -2,29 +2,29 @@
  * migrate-to-readable-ids.mjs
  *
  * One-off migration: re-creates existing task and category documents that use
- * Firestore auto-IDs under the new human-readable ID format introduced in
- * Task #112, and deletes the old documents afterwards.
+ * Firestore auto-IDs under the new human-readable ID format, and deletes the
+ * old documents afterwards.
  *
- * NEW ID FORMATS (produced by this migration)
- * ────────────────────────────────────────────
- *   Tasks      : task_<orgId>_<userId>_<sha256suffix(oldId)>
- *   Categories : cat_<orgId>_<slug>_<sha256suffix(oldId)>
+ * NEW ID FORMATS
+ * ──────────────
+ *   Categories : cat_<orgId>_<categorySlug>_<hash>
+ *     Examples : cat_org_abc123_work_A1B2C3D4E5
  *
- * NOTE ON ID SUFFIX
- * ─────────────────
- * The production app generates IDs with a random nanoid(10) suffix. This
- * migration uses a deterministic 10-char SHA-256 hash of the old document ID
- * instead. This ensures that re-runs always produce the same new document ID
- * for a given legacy document, making Storage moves and Firestore writes fully
- * idempotent across partial failures. The format (prefix + suffix) is
- * otherwise identical to production IDs.
+ *   Tasks      : task_<orgId>_<userId>_<hash>
+ *     Examples : task_org_abc123_abc123_A1B2C3D4E5
+ *
+ *   orgId = "org_<uid>" (the personal org ID, same as the organizationId field).
+ *   hash  = first 10 chars of base64url(SHA-256(oldDocId)) — deterministic
+ *           across reruns, effectively collision-free in practice.
  *
  * IDEMPOTENCY
  * ───────────
  * Documents whose ID already starts with "task_" or "cat_" are silently
- * skipped. Re-running after a partial failure is safe: already-migrated docs
- * are skipped, and Storage files at the deterministic destination path are
- * detected and their URL recovered without re-copying.
+ * skipped. Re-running after a partial failure is safe: the new ID is derived
+ * deterministically from the old document ID via SHA-256 (first 10 chars of
+ * base64url). The same old document always maps to the same new ID, so rerun
+ * is a no-op for already-migrated docs and correctly retries any that were
+ * left in the old format due to a batch failure.
  *
  * ATTACHMENT HANDLING
  * ───────────────────
@@ -59,8 +59,6 @@
  * ───────────
  *   • Always do a dry run first to review what will be migrated.
  *   • Back up Firestore before the live run (Firebase Console → Export).
- *   • The script processes one collection at a time so you can Ctrl+C safely
- *     between phases; re-running will skip already-migrated documents.
  *   • Run the optional audit script afterwards to verify all docs migrated.
  */
 
@@ -81,45 +79,38 @@ function slugify(text) {
     .slice(0, 30);
 }
 
-/** Returns the personal org ID for a user. */
+/** Returns the personal org ID for a user (used for organizationId field). */
 function personalOrgId(uid) {
   return `org_${uid}`;
 }
 
 /**
- * Returns a 10-character URL-safe suffix derived deterministically from a
- * legacy Firestore document ID.
- *
- * WHY DETERMINISTIC?
- * During migration a random nanoid would produce a different new ID on every
- * run.  If Storage files are moved to tasks/<newId>/… but the subsequent
- * Firestore batch commit fails, the next re-run generates a different newId
- * and the "check if destination exists" recovery logic looks in the wrong
- * Storage path — leaving the file stranded and the attachment metadata stale.
- *
- * By deriving the suffix from a SHA-256 hash of the old doc ID, the same
- * legacy document always maps to the same new document ID across all runs,
- * making both the Firestore and Storage operations fully idempotent.
- *
- * The base64url encoding uses the alphabet A-Za-z0-9-_ (URL-safe and
- * compatible with Firestore document ID rules). SHA-256 collision probability
- * is negligible for any realistic dataset.
- *
- * @param {string} oldDocId  Legacy Firestore auto-ID
- * @returns {string}  10 URL-safe characters
+ * Returns a 10-character base64url-encoded SHA-256 hash of the given string.
+ * Used to derive a deterministic, stable suffix from the old document ID so
+ * that the migration is fully idempotent: the same old doc always maps to the
+ * same new ID, even across partial-failure reruns where storage files may have
+ * already been moved to the destination path.
  */
-function deterministicSuffix(oldDocId) {
-  return createHash("sha256").update(oldDocId).digest("base64url").slice(0, 10);
+function stableHash(input) {
+  return createHash("sha256").update(input).digest("base64url").slice(0, 10);
 }
 
-/** Migration-only task ID using a deterministic suffix for idempotency. */
+/**
+ * Generates a deterministic category ID from the old document ID.
+ * Format: cat_<orgId>_<categorySlug>_<stableHash(oldDocId)>
+ * Stable across reruns: same oldDocId always produces the same new ID.
+ */
+function migrationCategoryId(orgId, categoryName, oldDocId) {
+  return `cat_${orgId}_${slugify(categoryName)}_${stableHash(oldDocId)}`;
+}
+
+/**
+ * Generates a deterministic task ID from the old document ID.
+ * Format: task_<orgId>_<userId>_<stableHash(oldDocId)>
+ * Stable across reruns: same oldDocId always produces the same new ID.
+ */
 function migrationTaskId(orgId, userId, oldDocId) {
-  return `task_${orgId}_${userId}_${deterministicSuffix(oldDocId)}`;
-}
-
-/** Migration-only category ID using a deterministic suffix for idempotency. */
-function migrationCategoryId(orgId, name, oldDocId) {
-  return `cat_${orgId}_${slugify(name)}_${deterministicSuffix(oldDocId)}`;
+  return `task_${orgId}_${userId}_${stableHash(oldDocId)}`;
 }
 
 // ── Config ──────────────────────────────────────────────────────────────────
@@ -188,7 +179,6 @@ const bucket = admin.storage().bucket();
 
 /**
  * Constructs a Firebase Storage download URL from a bucket path and token.
- * Format: https://firebasestorage.googleapis.com/v0/b/<bucket>/o/<path>?alt=media&token=<token>
  */
 function buildDownloadUrl(bucketName, storagePath, token) {
   const encodedPath = encodeURIComponent(storagePath);
@@ -201,13 +191,6 @@ function buildDownloadUrl(bucketName, storagePath, token) {
 /**
  * Moves a Storage file from oldPath to newPath.
  * Returns the new download URL, or null if the file does not exist.
- *
- * Strategy:
- *   1. Copy the file to the new path (preserves metadata & content type).
- *   2. Read the download token from the new file's metadata.
- *   3. If no token exists, generate one and patch metadata.
- *   4. Delete the original file.
- *   5. Return the constructed download URL.
  */
 async function moveStorageFile(oldPath, newPath, dryRun) {
   const srcFile  = bucket.file(oldPath);
@@ -222,10 +205,6 @@ async function moveStorageFile(oldPath, newPath, dryRun) {
   }
 
   if (!srcExists) {
-    // The source is gone. This can happen when a previous run moved the file
-    // successfully but the subsequent Firestore batch commit failed, leaving
-    // the old doc intact. Check whether the destination already exists so we
-    // can recover the URL and remain idempotent.
     let destExists;
     try {
       [destExists] = await destFile.exists();
@@ -242,7 +221,6 @@ async function moveStorageFile(oldPath, newPath, dryRun) {
         if (token) {
           return buildDownloadUrl(STORAGE_BUCKET, newPath, token);
         }
-        // Token missing — regenerate it
         const newToken = randomUUID();
         await destFile.setMetadata({ metadata: { firebaseStorageDownloadTokens: newToken } });
         return buildDownloadUrl(STORAGE_BUCKET, newPath, newToken);
@@ -262,23 +240,18 @@ async function moveStorageFile(oldPath, newPath, dryRun) {
   }
 
   try {
-    // Copy to new location
     await srcFile.copy(destFile);
 
-    // Read metadata of the new file to get (or set) the download token
     const [meta] = await destFile.getMetadata();
-    let token =
-      meta.metadata && meta.metadata.firebaseStorageDownloadTokens;
+    let token = meta.metadata && meta.metadata.firebaseStorageDownloadTokens;
 
     if (!token) {
-      // Generate a UUID-like token and patch the metadata
       token = randomUUID();
       await destFile.setMetadata({
         metadata: { firebaseStorageDownloadTokens: token },
       });
     }
 
-    // Delete the original file
     await srcFile.delete();
 
     return buildDownloadUrl(STORAGE_BUCKET, newPath, token);
@@ -299,8 +272,8 @@ async function migrateTasks() {
   console.log(`Total task documents found: ${snapshot.size}`);
 
   const legacy = snapshot.docs.filter((d) => !d.id.startsWith("task_"));
-  const alreadyMigrated = snapshot.size - legacy.length;
-  console.log(`Already in new format:      ${alreadyMigrated}`);
+  const alreadyMigratedCount = snapshot.size - legacy.length;
+  console.log(`Already in new format:      ${alreadyMigratedCount}`);
   console.log(`Needs migration:            ${legacy.length}\n`);
 
   if (legacy.length === 0) {
@@ -312,25 +285,19 @@ async function migrateTasks() {
   let skipped  = 0;
   let errors   = 0;
 
-  // Process in batches to respect Firestore write limits.
-  // Each document needs 2 ops (set + delete), so chunk size <= 250 keeps us
-  // under Firestore's hard cap of 500 operations per batch.
   for (let i = 0; i < legacy.length; i += BATCH_SIZE) {
-    const chunk = legacy.slice(i, i + BATCH_SIZE);
-    const batch = db.batch();
-    const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+    const chunk      = legacy.slice(i, i + BATCH_SIZE);
+    const batch      = db.batch();
+    const batchNum   = Math.floor(i / BATCH_SIZE) + 1;
     const totalBatches = Math.ceil(legacy.length / BATCH_SIZE);
     console.log(`Batch ${batchNum}/${totalBatches} (${chunk.length} tasks)...`);
 
-    // Track how many docs were successfully queued in this batch so we only
-    // credit them as migrated after the commit succeeds.
     let batchQueued = 0;
 
     for (const docSnap of chunk) {
       const oldId = docSnap.id;
       const data  = docSnap.data();
 
-      // Derive org and generate new ID
       const userId = data.userId;
       if (!userId) {
         console.warn(`  SKIP: task ${oldId} has no userId — cannot generate new ID`);
@@ -338,10 +305,8 @@ async function migrateTasks() {
         continue;
       }
 
-      const orgId  = data.organizationId || personalOrgId(userId);
-      // Use a deterministic suffix (SHA-256 of oldId) so re-runs always resolve
-      // to the same destination ID and Storage paths remain consistent.
-      const newId  = migrationTaskId(orgId, userId, oldId);
+      const orgId = data.organizationId || personalOrgId(userId);
+      const newId = migrationTaskId(orgId, userId, oldId);
 
       console.log(`  ${oldId}`);
       console.log(`    → ${newId}`);
@@ -362,9 +327,6 @@ async function migrateTasks() {
               updatedAttachments.push({ ...att, path: newPath, url: newUrl });
               console.log(`    attachment moved: ${att.path} → ${newPath}`);
             } else {
-              // Storage move failed — the task MUST NOT be migrated with a
-              // stale attachment path pointing to the old doc ID. Skip the
-              // entire task so the old doc stays intact and can be retried.
               console.error(
                 `  ERROR: could not move attachment ${att.path} for task ${oldId}` +
                 ` — skipping this task (will retry on next run)`
@@ -373,7 +335,6 @@ async function migrateTasks() {
               break;
             }
           } else {
-            // Path does not reference old ID — leave unchanged
             updatedAttachments.push(att);
           }
         }
@@ -410,15 +371,13 @@ async function migrateTasks() {
     if (!DRY_RUN) {
       try {
         await batch.commit();
-        // Only credit the docs as migrated once the commit is confirmed.
         migrated += batchQueued;
         console.log(`  Batch ${batchNum} committed (${batchQueued} tasks).\n`);
       } catch (err) {
         console.error(`  ERROR committing batch ${batchNum}: ${err.message}`);
-        errors += batchQueued; // the whole batch failed
+        errors += batchQueued;
       }
     } else {
-      // In dry-run mode there is no commit, so count queued docs as "would migrate"
       migrated += batchQueued;
     }
   }
@@ -438,8 +397,8 @@ async function migrateCategories() {
   console.log(`Total category documents found: ${snapshot.size}`);
 
   const legacy = snapshot.docs.filter((d) => !d.id.startsWith("cat_"));
-  const alreadyMigrated = snapshot.size - legacy.length;
-  console.log(`Already in new format:          ${alreadyMigrated}`);
+  const alreadyMigratedCount = snapshot.size - legacy.length;
+  console.log(`Already in new format:          ${alreadyMigratedCount}`);
   console.log(`Needs migration:                ${legacy.length}\n`);
 
   if (legacy.length === 0) {
@@ -452,9 +411,9 @@ async function migrateCategories() {
   let errors   = 0;
 
   for (let i = 0; i < legacy.length; i += BATCH_SIZE) {
-    const chunk = legacy.slice(i, i + BATCH_SIZE);
-    const batch = db.batch();
-    const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+    const chunk        = legacy.slice(i, i + BATCH_SIZE);
+    const batch        = db.batch();
+    const batchNum     = Math.floor(i / BATCH_SIZE) + 1;
     const totalBatches = Math.ceil(legacy.length / BATCH_SIZE);
     console.log(`Batch ${batchNum}/${totalBatches} (${chunk.length} categories)...`);
 
@@ -471,10 +430,9 @@ async function migrateCategories() {
         continue;
       }
 
-      const name   = data.name || "uncategorized";
-      const orgId  = data.organizationId || personalOrgId(userId);
-      // Deterministic suffix (SHA-256 of oldId) ensures re-runs produce the same newId.
-      const newId  = migrationCategoryId(orgId, name, oldId);
+      const name  = data.name || "uncategorized";
+      const orgId = data.organizationId || personalOrgId(userId);
+      const newId = migrationCategoryId(orgId, name, oldId);
 
       console.log(`  ${oldId}`);
       console.log(`    → ${newId}`);
@@ -503,12 +461,11 @@ async function migrateCategories() {
     if (!DRY_RUN) {
       try {
         await batch.commit();
-        // Only credit docs as migrated after commit succeeds.
         migrated += batchQueued;
         console.log(`  Batch ${batchNum} committed (${batchQueued} categories).\n`);
       } catch (err) {
         console.error(`  ERROR committing batch ${batchNum}: ${err.message}`);
-        errors += batchQueued; // the whole batch failed
+        errors += batchQueued;
       }
     } else {
       migrated += batchQueued;

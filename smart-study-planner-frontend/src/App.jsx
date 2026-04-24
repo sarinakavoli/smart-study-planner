@@ -741,13 +741,13 @@ function App() {
       if (editingTaskId) {
         await updateDoc(doc(db, "tasks", editingTaskId), payload);
       } else {
-        const newTaskId = generateTaskId(orgId, currentUser.uid);
-        await setDoc(doc(db, "tasks", newTaskId), {
+        const generatedId = generateTaskId(orgId, currentUser.uid);
+        await setDoc(doc(db, "tasks", generatedId), {
           ...payload,
-          readableId: newTaskId,
+          readableId: generatedId,
           attachments: [],
         });
-        taskId = newTaskId;
+        taskId = generatedId;
       }
 
       let attachmentUploadFailed = false;
