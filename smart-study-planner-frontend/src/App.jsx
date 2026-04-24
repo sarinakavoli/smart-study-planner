@@ -103,20 +103,31 @@ function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
+        console.log("[auth] onAuthStateChanged fired — uid:", firebaseUser.uid, "email:", firebaseUser.email);
+
         const userRef = doc(db, "users", firebaseUser.uid);
+        let resolvedOrgId = null;
 
+        // ── Step 1: read existing user document ──────────────────────────────
+        let existingData = null;
         try {
+          console.log("[auth] Step 1 — reading users/", firebaseUser.uid);
           const userSnap = await getDoc(userRef);
-          const existingData = userSnap.exists() ? userSnap.data() : null;
+          existingData = userSnap.exists() ? userSnap.data() : null;
+          console.log("[auth] Step 1 — user doc exists:", userSnap.exists(), "| organizationId:", existingData?.organizationId ?? "(none)");
+        } catch (err) {
+          console.error("[auth] Step 1 FAILED — could not read user doc:", err.code, err.message);
+        }
 
-          let resolvedOrgId = existingData?.organizationId ?? null;
+        resolvedOrgId = existingData?.organizationId ?? null;
 
-          if (!resolvedOrgId) {
-            // First login / signup: create the default organization document
-            // and write the full user profile for the first time.
-            resolvedOrgId = personalOrgId(firebaseUser.uid);
+        if (!resolvedOrgId) {
+          // ── Step 2: generate org ID and create organization document ────────
+          resolvedOrgId = personalOrgId(firebaseUser.uid);
+          console.log("[auth] Step 2 — no organizationId found, creating org:", resolvedOrgId);
+
+          try {
             const orgRef = doc(db, "organizations", resolvedOrgId);
-
             await setDoc(orgRef, {
               id: resolvedOrgId,
               name: `${firebaseUser.email}'s Workspace`,
@@ -125,7 +136,14 @@ function App() {
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp(),
             });
+            console.log("[auth] Step 2 — organizations/", resolvedOrgId, "created OK");
+          } catch (err) {
+            console.error("[auth] Step 2 FAILED — could not create org doc:", err.code, err.message, err);
+          }
 
+          // ── Step 3: write full user document for the first time ─────────────
+          console.log("[auth] Step 3 — writing users/", firebaseUser.uid, "for the first time");
+          try {
             await setDoc(userRef, {
               uid: firebaseUser.uid,
               email: firebaseUser.email,
@@ -135,9 +153,14 @@ function App() {
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp(),
             });
-          } else {
-            // Returning user: refresh mutable fields only.
-            // organizationId / organizationIds / createdAt are preserved.
+            console.log("[auth] Step 3 — users/", firebaseUser.uid, "written OK");
+          } catch (err) {
+            console.error("[auth] Step 3 FAILED — could not write user doc:", err.code, err.message, err);
+          }
+        } else {
+          // ── Step 2 (returning user): refresh mutable fields only ────────────
+          console.log("[auth] Step 2 — returning user, merging email/displayName/updatedAt into users/", firebaseUser.uid);
+          try {
             await setDoc(
               userRef,
               {
@@ -148,13 +171,16 @@ function App() {
               },
               { merge: true }
             );
+            console.log("[auth] Step 2 — users/", firebaseUser.uid, "merge-updated OK");
+          } catch (err) {
+            console.error("[auth] Step 2 FAILED — could not merge-update user doc:", err.code, err.message, err);
           }
-
-          setOrganizationId(resolvedOrgId);
-        } catch (profileErr) {
-          console.error("Could not write user profile doc:", profileErr);
         }
+
+        console.log("[auth] Setup complete — resolvedOrgId:", resolvedOrgId);
+        setOrganizationId(resolvedOrgId);
       } else {
+        console.log("[auth] onAuthStateChanged fired — user signed out");
         setOrganizationId(null);
       }
       setCurrentUser(firebaseUser ?? null);

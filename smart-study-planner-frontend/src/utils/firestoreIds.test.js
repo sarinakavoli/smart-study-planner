@@ -64,18 +64,23 @@ describe("slugify", () => {
 // ── personalOrgId ────────────────────────────────────────────────────────────
 
 describe("personalOrgId", () => {
-  it("returns org_<uid>", () => {
-    expect(personalOrgId("abc123")).toBe("org_abc123");
-    expect(personalOrgId("user_test_001")).toBe("org_user_test_001");
+  it("returns org_<shortUserId>_default using the first 6 characters of the uid", () => {
+    expect(personalOrgId("abc123XYZ")).toBe("org_abc123_default");
+    expect(personalOrgId("AvU4Op9xKqZ")).toBe("org_AvU4Op_default");
   });
 
-  it("always starts with 'org_'", () => {
+  it("always starts with 'org_' and ends with '_default'", () => {
     expect(personalOrgId("anything")).toMatch(/^org_/);
+    expect(personalOrgId("anything")).toMatch(/_default$/);
   });
 
-  it("includes the uid verbatim after the prefix", () => {
-    const uid = "XYZ-uid-789";
-    expect(personalOrgId(uid)).toBe(`org_${uid}`);
+  it("uses exactly the first 6 characters of the uid as the short user ID", () => {
+    const uid = "ABCDEF123456";
+    expect(personalOrgId(uid)).toBe("org_ABCDEF_default");
+  });
+
+  it("works when uid is shorter than 6 characters", () => {
+    expect(personalOrgId("ab")).toBe("org_ab_default");
   });
 });
 
