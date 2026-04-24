@@ -180,6 +180,20 @@ export async function verifySeedUsersOrExit(db, auth, collectionName) {
 }
 
 /**
+ * Convenience wrapper: runs verifyAllCollections and exits the process with
+ * code 1 if any seeded userId is missing from Firebase Auth.
+ *
+ * @param {FirebaseFirestore.Firestore}            db
+ * @param {import("firebase-admin/auth").Auth}     auth
+ * @param {string[]}                               collectionsToCheck
+ * @returns {Promise<void>}
+ */
+export async function verifyAllCollectionsOrExit(db, auth, collectionsToCheck) {
+  const allPass = await verifyAllCollections(db, auth, collectionsToCheck);
+  if (!allPass) process.exit(1);
+}
+
+/**
  * Scans every collection in `collectionsToCheck` for seeded documents,
  * checks every unique userId against Firebase Auth, and prints the combined
  * PASS / FAIL / MISMATCH report.

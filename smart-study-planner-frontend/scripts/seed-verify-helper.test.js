@@ -5,6 +5,7 @@ import {
   verifySeedUsers,
   verifySeedUsersOrExit,
   verifyAllCollections,
+  verifyAllCollectionsOrExit,
 } from "./seed-verify-helper.mjs";
 
 // ── Mock builders ─────────────────────────────────────────────────────────────
@@ -758,5 +759,84 @@ describe("verifyAllCollections", () => {
     await expect(
       verifyAllCollections(db, auth, ["categories", "tasks"])
     ).rejects.toThrow("network failure");
+  });
+});
+
+// ── verifyAllCollectionsOrExit ────────────────────────────────────────────────
+
+describe("verifyAllCollectionsOrExit", () => {
+  let exitSpy;
+  let stdoutSpy;
+  let consoleSpy;
+
+  beforeEach(() => {
+    exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+      throw new Error("process.exit called");
+    });
+    stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => {});
+    consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    exitSpy.mockRestore();
+    stdoutSpy.mockRestore();
+    consoleSpy.mockRestore();
+  });
+
+  it("calls process.exit(1) when any seeded userId is missing from Firebase Auth", async () => {
+    const db = makeDbMulti({
+      categories: [[{ userId: "uid-ghost", seedData: true }]],
+      tasks:      [[{ userId: "uid-ghost", seedData: true }]],
+    });
+    const auth = makeAuth({}, ["uid-ghost"]);
+
+    await expect(
+      verifyAllCollectionsOrExit(db, auth, ["categories", "tasks"])
+    ).rejects.toThrow("process.exit called");
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it("calls process.exit(1) even when only some userIds are missing", async () => {
+    const db = makeDbMulti({
+      categories: [
+        [
+          { userId: "uid-alice", seedData: true },
+          { userId: "uid-ghost", seedData: true },
+        ],
+      ],
+      tasks: [[{ userId: "uid-alice", seedData: true }]],
+    });
+    const auth = makeAuth(
+      { "uid-alice": { email: "alice@example.com" } },
+      ["uid-ghost"]
+    );
+
+    await expect(
+      verifyAllCollectionsOrExit(db, auth, ["categories", "tasks"])
+    ).rejects.toThrow("process.exit called");
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it("does NOT call process.exit when all seeded userIds exist in Firebase Auth", async () => {
+    const db = makeDbMulti({
+      categories: [[{ userId: "uid-alice", seedData: true }]],
+      tasks:      [[{ userId: "uid-alice", seedData: true }]],
+    });
+    const auth = makeAuth({ "uid-alice": { email: "alice@example.com" } });
+
+    await verifyAllCollectionsOrExit(db, auth, ["categories", "tasks"]);
+
+    expect(exitSpy).not.toHaveBeenCalled();
+  });
+
+  it("does NOT call process.exit when there are no seeded documents in any collection", async () => {
+    const db = makeDbMulti({ categories: [[]], tasks: [[]] });
+    const auth = makeAuth();
+
+    await verifyAllCollectionsOrExit(db, auth, ["categories", "tasks"]);
+
+    expect(exitSpy).not.toHaveBeenCalled();
   });
 });

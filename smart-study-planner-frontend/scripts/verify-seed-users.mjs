@@ -105,7 +105,7 @@ import { getAuth } from "firebase-admin/auth";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { join, dirname } from "path";
-import { verifyAllCollections } from "./seed-verify-helper.mjs";
+import { verifyAllCollectionsOrExit } from "./seed-verify-helper.mjs";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -213,5 +213,4 @@ const auth = getAuth();
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-const allPass = await verifyAllCollections(db, auth, collectionsToCheck);
-process.exit(allPass ? 0 : 1);
+await verifyAllCollectionsOrExit(db, auth, collectionsToCheck);
