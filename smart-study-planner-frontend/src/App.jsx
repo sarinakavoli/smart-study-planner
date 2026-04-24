@@ -224,6 +224,7 @@ function App() {
         try {
           const userIndexId = readableUserId(firebaseUser.uid, firebaseUser.email);
           const userIndexRef = doc(db, "userIndex", userIndexId);
+          console.log("[auth] creating userIndex/", userIndexId);
           await setDoc(
             userIndexRef,
             {
@@ -236,9 +237,9 @@ function App() {
             },
             { merge: true }
           );
-          console.log("[auth] Step 5 — userIndex/", userIndexId, "written OK");
+          console.log("[auth] userIndex created OK");
         } catch (err) {
-          console.error("[auth] Step 5 FAILED — could not write userIndex:", err.code, err.message);
+          console.error("[auth] userIndex failed:", err.code, err.message);
         }
 
         console.log("[auth] Setup complete — resolvedOrgId:", resolvedOrgId);
