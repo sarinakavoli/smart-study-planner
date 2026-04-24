@@ -134,6 +134,7 @@ const DRY_RUN_SAMPLE_SIZE = 5;
 // Path to the manifest file that records the last run ID.
 const __dirname     = dirname(fileURLToPath(import.meta.url));
 const MANIFEST_PATH = join(__dirname, ".last-seed-run-tasks.json");
+const SEED_COUNTS_PATH = join(__dirname, ".seed-counts.json");
 
 // Fake data pools — edit freely to match your real data
 const CATEGORIES = ["Math", "Science", "History", "English", "Computer Science", "Art"];
@@ -197,6 +198,21 @@ function loadManifest() {
   } catch {
     return null;
   }
+}
+
+/**
+ * Updates scripts/.seed-counts.json with the count for this collection.
+ * Creates the file if it does not already exist; merges with existing entries.
+ */
+function updateSeedCounts(collection, count) {
+  let existing = {};
+  try {
+    existing = JSON.parse(readFileSync(SEED_COUNTS_PATH, "utf8"));
+  } catch {
+    // file doesn't exist yet — start fresh
+  }
+  existing[collection] = { count, updatedAt: new Date().toISOString() };
+  writeFileSync(SEED_COUNTS_PATH, JSON.stringify(existing, null, 2));
 }
 
 // ── CLI flag parsing ──────────────────────────────────────────────────────────
@@ -654,6 +670,9 @@ async function insertTasks() {
 
   // Save manifest so --undo-last can target this run
   saveManifest(seedRunId, inserted, USER_IDS);
+
+  // Update shared count metadata so dry-run reports stay accurate
+  updateSeedCounts(COLLECTION, inserted);
 
   console.log(`\n✓ Done! ${inserted.toLocaleString()} tasks written to Firestore.`);
   console.log(`\n  Every document now has:`);
