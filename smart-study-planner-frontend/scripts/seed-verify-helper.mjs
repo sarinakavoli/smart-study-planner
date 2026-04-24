@@ -166,8 +166,63 @@ export async function verifySeedUsers(db, auth, collectionName) {
 }
 
 /**
+ * Builds a mock Firestore whose single collection page contains one document
+ * per entry in `seededUids`.  Used when SEED_VERIFY_MOCK_JSON is set.
+ *
+ * @param {string[]} seededUids
+ */
+function buildMockDb(seededUids) {
+  const docs = seededUids.map((uid) => ({
+    data: () => ({ userId: uid, seedData: true }),
+  }));
+  let fetched = false;
+  const makeQueryObj = () => ({
+    get: async () => {
+      if (fetched) return { empty: true, docs: [], size: 0 };
+      fetched = true;
+      return { empty: docs.length === 0, docs, size: docs.length };
+    },
+    startAfter: () => makeQueryObj(),
+  });
+  return {
+    collection: () => ({ where: () => ({ limit: () => makeQueryObj() }) }),
+  };
+}
+
+/**
+ * Builds a mock Firebase Auth instance.  UIDs listed in `missingUids` throw
+ * auth/user-not-found; all others return a synthetic UserRecord.
+ * Used when SEED_VERIFY_MOCK_JSON is set.
+ *
+ * @param {string[]} missingUids
+ */
+function buildMockAuth(missingUids) {
+  return {
+    getUser: async (uid) => {
+      if (missingUids.includes(uid)) {
+        const err = new Error("There is no user record for the provided identifier.");
+        err.code = "auth/user-not-found";
+        throw err;
+      }
+      return { uid, email: `${uid}@example.com` };
+    },
+  };
+}
+
+/**
  * Convenience wrapper: runs verifySeedUsers and exits the process with code 1
  * if any seeded userId is missing from Firebase Auth.
+ *
+ * When the SEED_VERIFY_MOCK_JSON environment variable is set the real `db`
+ * and `auth` arguments are ignored and replaced with in-process mocks built
+ * from the JSON value.  Expected shape:
+ *
+ *   { "users": ["uid1", "uid2"], "missing": ["uid2"] }
+ *
+ * where `users` lists UIDs that appear as seeded documents in the mock
+ * Firestore collection and `missing` lists the subset that are absent from
+ * mock Firebase Auth.  This allows end-to-end exit-code tests to spawn the
+ * actual seed scripts without real GCP credentials.
  *
  * @param {FirebaseFirestore.Firestore} db
  * @param {import("firebase-admin/auth").Auth} auth
@@ -175,6 +230,12 @@ export async function verifySeedUsers(db, auth, collectionName) {
  * @returns {Promise<void>}
  */
 export async function verifySeedUsersOrExit(db, auth, collectionName) {
+  const mockJson = process.env.SEED_VERIFY_MOCK_JSON;
+  if (mockJson) {
+    const { users: seededUids = [], missing: missingUids = [] } = JSON.parse(mockJson);
+    db   = buildMockDb(seededUids);
+    auth = buildMockAuth(missingUids);
+  }
   const allPass = await verifySeedUsers(db, auth, collectionName);
   if (!allPass) process.exit(1);
 }

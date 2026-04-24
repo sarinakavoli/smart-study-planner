@@ -309,7 +309,7 @@ if (!usersArg && !emailArg) {
 let db;
 let auth;
 
-if (!dryRun) {
+if (!dryRun && !process.env.SEED_VERIFY_MOCK_JSON) {
   const { initializeApp, cert } = await import("firebase-admin/app");
   const { getFirestore } = await import("firebase-admin/firestore");
   const { getAuth } = await import("firebase-admin/auth");
@@ -589,6 +589,14 @@ async function fetchMaxCounter(categorySlug, titleSlug) {
 }
 
 async function insertTasks() {
+  if (process.env.SEED_VERIFY_MOCK_JSON) {
+    console.log("(Mock mode: skipping Firestore writes, running post-insert verification only.)");
+    if (!skipVerify) {
+      await verifySeedUsersOrExit(db, auth, COLLECTION);
+    }
+    return;
+  }
+
   // Generate a unique run ID for this seeding session.
   // Stored on every document so --undo-last can target exactly this run.
   const seedRunId = `run_${new Date().toISOString().replace(/[:.]/g, "-")}`;
