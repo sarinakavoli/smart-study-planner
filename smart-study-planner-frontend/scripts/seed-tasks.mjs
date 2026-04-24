@@ -2,12 +2,12 @@
  * seed-tasks.mjs
  *
  * Inserts fake task documents into your Firestore "tasks" collection using
- * the human-readable ID schema.
+ * the current human-readable ID schema.
  *
  * Every seeded document includes:
  *   - A human-readable document ID:
- *       task_<orgId>_<userId>_<nanoid(10)>
- *       e.g. task_org_user_test_001_user_test_001_V3kD9pQrLm
+ *       task_<categorySlug>_<titleSlug>_<NNN>
+ *       e.g. task_math_read-chapter_001
  *   - organizationId field          (= "org_<uid>")
  *   - readableId field              (copy of the document ID for debugging)
  *   - seedData: true                (so you can delete only seed data later)
@@ -39,7 +39,6 @@
 
 import { initializeApp, cert } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
-import { nanoid } from "nanoid";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -72,8 +71,24 @@ const USER_IDS = [
 ];
 
 // ── ID helpers ────────────────────────────────────────────────────────────────
-// These mirror src/utils/firestoreIds.js exactly.
-// They are inlined here so the script runs without any frontend build tooling.
+// These helpers are inlined so the script runs without any frontend build
+// tooling. NOTE: src/utils/firestoreIds.js uses a different task ID format
+// (it includes a short user prefix and a random alphanumeric suffix). The
+// seed script intentionally uses the simpler task_<catSlug>_<titleSlug>_<NNN>
+// format that matches the audit regex in audit-readable-ids.mjs.
+
+/**
+ * Converts arbitrary text into a lowercase, URL-safe slug.
+ * Only keeps letters, digits, and hyphens; collapses repeated hyphens;
+ * trims leading/trailing hyphens; truncates to 30 characters.
+ */
+function slugify(text) {
+  return String(text)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 30);
+}
 
 /** Returns the personal org ID for a given UID (used for organizationId field). */
 function personalOrgId(uid) {
@@ -81,11 +96,12 @@ function personalOrgId(uid) {
 }
 
 /**
- * Generates a human-readable, globally unique task document ID.
- * Format: task_<orgId>_<userId>_<nanoid(10)>
+ * Builds a task document ID from pre-slugified segments and a numeric counter.
+ * Format: task_<categorySlug>_<titleSlug>_<NNN>
+ * Counter is zero-padded to at least 3 digits.
  */
-function generateTaskId(orgId, userId) {
-  return `task_${orgId}_${userId}_${nanoid(10)}`;
+function buildTaskId(categorySlug, titleSlug, counter) {
+  return `task_${categorySlug}_${titleSlug}_${String(counter).padStart(3, "0")}`;
 }
 
 // ── Data helpers ──────────────────────────────────────────────────────────────
@@ -99,34 +115,6 @@ function dateOffset(days) {
   const d = new Date();
   d.setDate(d.getDate() + days);
   return d.toISOString().split("T")[0];
-}
-
-/** Generates one fake task document + its readable ID. */
-function fakeTask(index) {
-  const userId       = pick(USER_IDS);
-  const orgId        = personalOrgId(userId);
-  const categoryName = pick(CATEGORIES);
-  const dayOffset    = Math.floor(Math.random() * 60) - 30;
-  const dueDate      = dateOffset(dayOffset);
-  const taskId       = generateTaskId(orgId, userId);
-  const title        = pick(TITLES).replace("{n}", index + 1);
-
-  return {
-    id: taskId,
-    data: {
-      title,
-      description: `Auto-generated task ${index + 1} for load testing.`,
-      category:    categoryName,
-      status:      pick(STATUSES),
-      dueDate,
-      userId,
-      organizationId: orgId,
-      readableId:     taskId,
-      attachments:    [],
-      seedData:       true,
-      createdAt:      new Date().toISOString(),
-    },
-  };
 }
 
 // ── Bootstrap Admin SDK ───────────────────────────────────────────────────────
@@ -202,10 +190,75 @@ async function deleteSeedData() {
 
 // ── Insert: write TOTAL_RECORDS tasks with the new schema ─────────────────────
 
+/**
+ * Queries Firestore for the maximum existing numeric counter among all task
+ * documents whose IDs start with `task_<categorySlug>_<titleSlug>_`.
+ * Returns 0 if no such documents exist yet.
+ */
+async function fetchMaxCounter(categorySlug, titleSlug) {
+  const prefix = `task_${categorySlug}_${titleSlug}_`;
+  const snap = await db
+    .collection(COLLECTION)
+    .orderBy("__name__")
+    .startAt(prefix)
+    .endBefore(prefix + "\uffff")
+    .get();
+
+  let max = 0;
+  for (const doc of snap.docs) {
+    const suffix = doc.id.slice(prefix.length);
+    const n = parseInt(suffix, 10);
+    if (!isNaN(n) && n > max) max = n;
+  }
+  return max;
+}
+
 async function insertTasks() {
   console.log(`Inserting ${TOTAL_RECORDS.toLocaleString()} fake tasks into "${COLLECTION}" …`);
-  console.log("  Each document will use the new readable-ID schema.\n");
+  console.log("  Each document will use the current readable-ID schema.\n");
 
+  // ── Step 1: plan all tasks (choose category + title template for each record)
+  // titleTemplate is the raw template string (e.g. "Read chapter {n}").
+  // displayTitle substitutes the global index for the display field.
+  // The slug is derived from the template only (without {n}), so all tasks
+  // sharing the same template and category are in the same counter group.
+  // This keeps the number of unique groups bounded at
+  // CATEGORIES.length × TITLES.length (at most 48) instead of TOTAL_RECORDS.
+  const planned = [];
+  for (let i = 0; i < TOTAL_RECORDS; i++) {
+    const userId        = pick(USER_IDS);
+    const categoryName  = pick(CATEGORIES);
+    const titleTemplate = pick(TITLES);
+    const displayTitle  = titleTemplate.replace("{n}", i + 1);
+    const dayOffset     = Math.floor(Math.random() * 60) - 30;
+    planned.push({ userId, categoryName, titleTemplate, displayTitle, dayOffset });
+  }
+
+  // ── Step 2: collect unique (categorySlug, titleSlug) pairs ──────────────────
+  // Slug is based on the template (without the numeric suffix) so that all
+  // instances of the same template land in the same counter group.
+  const uniqueGroups = new Map(); // key: "catSlug|titleSlug" → { categorySlug, titleSlug }
+  for (const task of planned) {
+    const categorySlug = slugify(task.categoryName);
+    const titleSlug    = slugify(task.titleTemplate.replace(/\s*\{n\}/, ""));
+    const key          = `${categorySlug}|${titleSlug}`;
+    if (!uniqueGroups.has(key)) {
+      uniqueGroups.set(key, { categorySlug, titleSlug });
+    }
+  }
+
+  // ── Step 3: query Firestore for the max existing counter per group ──────────
+  // Queries are run in parallel (Promise.all) since groups are independent.
+  console.log(`  Querying existing counters for ${uniqueGroups.size} unique (category, title) group(s) …`);
+  const groupCounters = new Map(); // key: "catSlug|titleSlug" → next counter to assign
+  await Promise.all(
+    Array.from(uniqueGroups.entries()).map(async ([key, { categorySlug, titleSlug }]) => {
+      const maxExisting = await fetchMaxCounter(categorySlug, titleSlug);
+      groupCounters.set(key, maxExisting + 1);
+    })
+  );
+
+  // ── Step 4: assign IDs and insert in batches ────────────────────────────────
   let inserted = 0;
 
   while (inserted < TOTAL_RECORDS) {
@@ -213,9 +266,31 @@ async function insertTasks() {
     const count = Math.min(BATCH_SIZE, TOTAL_RECORDS - inserted);
 
     for (let i = 0; i < count; i++) {
-      const task = fakeTask(inserted + i);
-      const ref  = db.collection(COLLECTION).doc(task.id);
-      batch.set(ref, task.data);
+      const { userId, categoryName, titleTemplate, displayTitle, dayOffset } = planned[inserted + i];
+      const categorySlug = slugify(categoryName);
+      const titleSlug    = slugify(titleTemplate.replace(/\s*\{n\}/, ""));
+      const key          = `${categorySlug}|${titleSlug}`;
+
+      const counter = groupCounters.get(key);
+      groupCounters.set(key, counter + 1);
+
+      const taskId = buildTaskId(categorySlug, titleSlug, counter);
+      const orgId  = personalOrgId(userId);
+
+      const ref = db.collection(COLLECTION).doc(taskId);
+      batch.set(ref, {
+        title:          displayTitle,
+        description:    `Auto-generated task ${inserted + i + 1} for load testing.`,
+        category:       categoryName,
+        status:         pick(STATUSES),
+        dueDate:        dateOffset(dayOffset),
+        userId,
+        organizationId: orgId,
+        readableId:     taskId,
+        attachments:    [],
+        seedData:       true,
+        createdAt:      new Date().toISOString(),
+      });
     }
 
     await batch.commit();
@@ -227,7 +302,7 @@ async function insertTasks() {
 
   console.log(`\n✓ Done! ${inserted.toLocaleString()} tasks written to Firestore.`);
   console.log(`\n  Every document now has:`);
-  console.log(`    - A readable ID:    task_<orgId>_<userId>_<nanoid(10)>`);
+  console.log(`    - A readable ID:    task_<categorySlug>_<titleSlug>_<NNN>`);
   console.log(`    - organizationId:   org_<userId>`);
   console.log(`    - readableId:       (same as document ID)`);
   console.log(`    - seedData: true    (so you can clean up later)\n`);
