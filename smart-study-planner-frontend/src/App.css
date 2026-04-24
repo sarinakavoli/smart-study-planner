@@ -282,7 +282,7 @@ body {
 }
 
 .org-context {
-  margin: 10px 0 6px;
+  margin: 10px 0 12px;
   padding: 8px 10px;
   border-radius: 8px;
   background: var(--bg-soft);
@@ -301,53 +301,14 @@ body {
   font-size: 12px;
   color: var(--text-main);
   font-weight: 600;
-  margin: 0;
+  margin: 0 0 4px;
   word-break: break-all;
 }
 
-.org-members {
-  margin: 6px 0 10px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-}
-
-.org-members-label {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-soft);
-  margin: 0 0 6px;
-}
-
-.org-members-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.org-member-item {
+.org-context-members {
   font-size: 11px;
-  color: var(--text-main);
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  word-break: break-all;
-}
-
-.org-owner-badge {
-  font-size: 9px;
-  background: var(--bg-soft-2);
   color: var(--text-soft);
-  border-radius: 4px;
-  padding: 1px 5px;
-  flex-shrink: 0;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  margin: 0;
 }
 
 .react-calendar {

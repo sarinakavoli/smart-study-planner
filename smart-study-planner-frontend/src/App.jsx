@@ -1456,24 +1456,9 @@ function App() {
           <div className="org-context">
             <p className="org-context-label">Workspace</p>
             <p className="org-context-name">{organizationName}</p>
-          </div>
-        )}
-
-        {orgMembers.length > 0 && (
-          <div className="org-members">
-            <p className="org-members-label">
-              Members{orgOwnerEmail ? ` · owner: ${orgOwnerEmail}` : ""}
-            </p>
-            <ul className="org-members-list">
-              {orgMembers.map((email) => (
-                <li key={email} className="org-member-item">
-                  {email}
-                  {email === orgOwnerEmail && (
-                    <span className="org-owner-badge">owner</span>
-                  )}
-                </li>
-              ))}
-            </ul>
+            {orgMembers.length > 0 && (
+              <p className="org-context-members">Members: {orgMembers.length}</p>
+            )}
           </div>
         )}
 
