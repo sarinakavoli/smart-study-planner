@@ -178,3 +178,145 @@ export async function verifySeedUsersOrExit(db, auth, collectionName) {
   const allPass = await verifySeedUsers(db, auth, collectionName);
   if (!allPass) process.exit(1);
 }
+
+/**
+ * Scans every collection in `collectionsToCheck` for seeded documents,
+ * checks every unique userId against Firebase Auth, and prints the combined
+ * PASS / FAIL / MISMATCH report.
+ *
+ * @param {FirebaseFirestore.Firestore}            db
+ * @param {import("firebase-admin/auth").Auth}     auth
+ * @param {string[]}                               collectionsToCheck
+ * @returns {Promise<boolean>}  true if all IDs match, false if any are missing.
+ */
+export async function verifyAllCollections(db, auth, collectionsToCheck) {
+  console.log("=".repeat(60));
+  console.log("  Seed-user verification smoke test");
+  console.log("=".repeat(60));
+  console.log(`  Collections checked: ${collectionsToCheck.join(", ")}`);
+  console.log();
+
+  const combinedCounts = new Map();
+  const perCollection  = {};
+
+  for (const col of collectionsToCheck) {
+    process.stdout.write(`  Scanning "${col}" for seeded documents …`);
+    const counts = await collectSeedUserIds(db, col);
+    perCollection[col] = counts;
+
+    let totalInCol = 0;
+    for (const [uid, count] of counts) {
+      combinedCounts.set(uid, (combinedCounts.get(uid) ?? 0) + count);
+      totalInCol += count;
+    }
+
+    console.log(
+      ` found ${totalInCol.toLocaleString()} docs across ${counts.size} unique userId(s).`
+    );
+  }
+
+  console.log();
+
+  if (combinedCounts.size === 0) {
+    console.log("  No seeded documents found (seedData == true). Nothing to verify.");
+    console.log();
+    console.log("  If you expected seeded data, run the seed scripts first:");
+    console.log("    node smart-study-planner-frontend/scripts/seed-categories.mjs");
+    console.log("    node smart-study-planner-frontend/scripts/seed-tasks.mjs");
+    return true;
+  }
+
+  console.log(`  Checking ${combinedCounts.size} unique userId(s) against Firebase Auth …`);
+  console.log();
+
+  const found    = [];
+  const notFound = [];
+
+  for (const [uid, totalDocs] of combinedCounts) {
+    const user = await lookupAuthUser(auth, uid);
+    if (user) {
+      found.push({ uid, email: user.email ?? "(no email)", totalDocs });
+    } else {
+      notFound.push({ uid, totalDocs });
+    }
+  }
+
+  if (found.length > 0) {
+    console.log(`  PASS — ${found.length} userId(s) exist in Firebase Auth:`);
+    console.log("  (Seeded data for these users WILL appear in the app)");
+    console.log();
+    for (const { uid, email, totalDocs } of found) {
+      const breakdown = collectionsToCheck
+        .map((col) => {
+          const count = perCollection[col].get(uid) ?? 0;
+          return count > 0 ? `${count.toLocaleString()} ${col}` : null;
+        })
+        .filter(Boolean)
+        .join(", ");
+
+      console.log(`    [OK] ${uid}`);
+      console.log(`         Auth email : ${email}`);
+      console.log(`         Seeded docs: ${breakdown}`);
+      console.log();
+    }
+  }
+
+  if (notFound.length > 0) {
+    console.log(`  FAIL — ${notFound.length} userId(s) NOT found in Firebase Auth:`);
+    console.log("  (Seeded data for these IDs will NOT appear in the app)");
+    console.log();
+    for (const { uid, totalDocs } of notFound) {
+      const breakdown = collectionsToCheck
+        .map((col) => {
+          const count = perCollection[col].get(uid) ?? 0;
+          return count > 0 ? `${count.toLocaleString()} ${col}` : null;
+        })
+        .filter(Boolean)
+        .join(", ");
+
+      console.log(`    [MISSING] ${uid}`);
+      console.log(`              Seeded docs: ${breakdown}`);
+      console.log();
+    }
+
+    console.log("  HOW TO FIX");
+    console.log("  ──────────");
+    console.log("  Option A — pass your email address (no UID look-up needed):");
+    console.log("     node smart-study-planner-frontend/scripts/seed-categories.mjs \\");
+    console.log("       --email=you@example.com");
+    console.log("     node smart-study-planner-frontend/scripts/seed-tasks.mjs \\");
+    console.log("       --email=you@example.com");
+    console.log();
+    console.log("  Option B — add your email to scripts/.seed-users so every run");
+    console.log("  picks it up automatically (copy .seed-users.example to get started).");
+    console.log();
+    console.log("  Option C — pass the raw UID (Firebase console → Authentication →");
+    console.log("  Users → copy the UID column):");
+    console.log("     node smart-study-planner-frontend/scripts/seed-categories.mjs \\");
+    console.log("       --users=<real-uid-1>,<real-uid-2>");
+    console.log("     node smart-study-planner-frontend/scripts/seed-tasks.mjs \\");
+    console.log("       --users=<real-uid-1>,<real-uid-2>");
+    console.log();
+    console.log("  (Optional) Delete old mismatched seed data first:");
+    console.log("     node smart-study-planner-frontend/scripts/seed-categories.mjs --delete");
+    console.log("     node smart-study-planner-frontend/scripts/seed-tasks.mjs --delete");
+    console.log();
+  }
+
+  console.log("=".repeat(60));
+  if (notFound.length === 0) {
+    console.log("  Result: ALL PASS — seeded data matches real Auth accounts.");
+    console.log("=".repeat(60));
+    return true;
+  } else {
+    const passCount = found.length;
+    const failCount = notFound.length;
+    console.log(
+      `  Result: ${failCount} MISMATCH(ES) detected` +
+      (passCount > 0 ? `, ${passCount} OK.` : ".")
+    );
+    console.log("  Seeded data for mismatched IDs will NOT appear in the app.");
+    console.log("=".repeat(60));
+    return false;
+  }
+}

@@ -1,74 +1,86 @@
 /**
  * verify-seed-users-report.test.js
  *
- * Tests for the PASS / FAIL / MISMATCH report formatting produced by the
- * runVerification() function exported from verify-seed-users.mjs.
+ * Tests for the PASS / FAIL / MISMATCH report formatting produced by
+ * verifyAllCollections() in seed-verify-helper.mjs.
  *
- * The module is tested with mocked firebase-admin modules and a mocked
- * seed-verify-helper so no real Firebase credentials or network calls are
- * needed.  Three scenarios are covered:
+ * All Firebase interactions are replaced with lightweight in-memory mocks so
+ * no real credentials or network calls are needed.  Three scenarios are covered:
  *
- *   A) All UIDs found in Auth   → "ALL PASS" summary, return true, exit 0
- *   B) Some UIDs missing        → "MISMATCH" summary, return false, exit 1
- *   C) No seeded docs found     → "Nothing to verify" message, return true, exit 0
+ *   A) All UIDs found in Auth   → "ALL PASS" summary, returns true
+ *   B) Some UIDs missing        → "MISMATCH" summary, returns false
+ *   C) No seeded docs found     → "Nothing to verify" message, returns true
  */
 
-import { vi, describe, it, expect, beforeEach, afterEach, afterAll } from "vitest";
+import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
+import { verifyAllCollections } from "./seed-verify-helper.mjs";
 
-// ── Hoisted setup ─────────────────────────────────────────────────────────────
-// vi.hoisted runs before static imports, letting us set env vars and spy on
-// process.exit before verify-seed-users.mjs evaluates its module-level code.
+// ── Mock builders ─────────────────────────────────────────────────────────────
 
-const { exitSpy } = vi.hoisted(() => {
-  process.env.GCP_SERVICE_ACCOUNT_JSON = '{"type":"service_account","project_id":"test-proj"}';
-  const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {});
-  return { exitSpy };
-});
+/**
+ * Builds a mock Firestore that routes collection queries to per-collection
+ * page arrays so multiple collections can be scanned independently.
+ *
+ * @param {Record<string, Array<Array<object>>>} collectionToPages
+ */
+function makeDbMulti(collectionToPages) {
+  const pageIndexes = {};
 
-// ── Module mocks ──────────────────────────────────────────────────────────────
-// Mock firebase-admin/* so the Firebase SDK is never initialised.
+  return {
+    collection: vi.fn((colName) => {
+      if (!(colName in pageIndexes)) pageIndexes[colName] = 0;
+      const pages = collectionToPages[colName] ?? [[]];
 
-vi.mock("firebase-admin/app", () => ({
-  initializeApp: vi.fn(),
-  cert: vi.fn((sa) => sa),
-  getApps: vi.fn(() => []),
-}));
+      const makeQueryObj = () => ({
+        get: vi.fn(async () => {
+          const page = pages[pageIndexes[colName]] ?? [];
+          pageIndexes[colName]++;
+          const docs = page.map((d) => ({ data: () => d }));
+          return { empty: docs.length === 0, docs, size: docs.length };
+        }),
+        startAfter: vi.fn(function () { return makeQueryObj(); }),
+      });
 
-vi.mock("firebase-admin/firestore", () => ({
-  getFirestore: vi.fn(() => ({})),
-}));
+      return {
+        where: vi.fn(() => ({
+          limit: vi.fn(() => makeQueryObj()),
+        })),
+      };
+    }),
+  };
+}
 
-vi.mock("firebase-admin/auth", () => ({
-  getAuth: vi.fn(() => ({})),
-}));
-
-// Mock the helper so collectSeedUserIds and lookupAuthUser are fully controlled.
-// Default: empty collection (no docs) so module-level code exits cleanly on import.
-vi.mock("./seed-verify-helper.mjs", () => ({
-  collectSeedUserIds: vi.fn(async () => new Map()),
-  lookupAuthUser:     vi.fn(async () => null),
-}));
-
-// ── Imports (evaluated after mocks are applied) ───────────────────────────────
-
-import { runVerification }               from "./verify-seed-users.mjs";
-import { collectSeedUserIds, lookupAuthUser } from "./seed-verify-helper.mjs";
+/**
+ * Builds a minimal mock Firebase Auth instance.
+ * @param {Record<string, {email?: string}>} uidToUser  Maps uid → UserRecord shape.
+ * @param {string[]} missingUids                         UIDs that should throw auth/user-not-found.
+ */
+function makeAuth(uidToUser = {}, missingUids = []) {
+  return {
+    getUser: vi.fn(async (uid) => {
+      if (missingUids.includes(uid)) {
+        const err = new Error("There is no user record for the provided identifier.");
+        err.code = "auth/user-not-found";
+        throw err;
+      }
+      if (Object.prototype.hasOwnProperty.call(uidToUser, uid)) {
+        return uidToUser[uid];
+      }
+      const err = new Error("Unexpected UID: " + uid);
+      err.code = "auth/user-not-found";
+      throw err;
+    }),
+  };
+}
 
 // ── Shared console / stdout suppression ───────────────────────────────────────
 
 let consoleSpy;
 let stdoutSpy;
 
-afterAll(() => {
-  exitSpy.mockRestore();
-});
-
 beforeEach(() => {
   consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
   stdoutSpy  = vi.spyOn(process.stdout, "write").mockImplementation(() => {});
-  exitSpy.mockClear();
-  vi.mocked(collectSeedUserIds).mockReset();
-  vi.mocked(lookupAuthUser).mockReset();
 });
 
 afterEach(() => {
@@ -78,32 +90,45 @@ afterEach(() => {
 
 // ── Scenario A: all UIDs found in Auth (PASS output, ALL PASS summary) ────────
 
-describe("runVerification: PASS report — all UIDs found in Auth", () => {
-  beforeEach(() => {
-    vi.mocked(collectSeedUserIds).mockImplementation(async (_db, col) => {
-      if (col === "categories") return new Map([["uid-alice", 3], ["uid-bob", 2]]);
-      if (col === "tasks")      return new Map([["uid-alice", 5], ["uid-bob", 1]]);
-      return new Map();
-    });
-    vi.mocked(lookupAuthUser).mockImplementation(async (_auth, uid) => {
-      if (uid === "uid-alice") return { email: "alice@example.com" };
-      if (uid === "uid-bob")   return { email: "bob@example.com" };
-      return null;
-    });
-  });
-
+describe("verifyAllCollections: PASS report — all UIDs found in Auth", () => {
   it("returns true when all seeded UIDs are found in Auth", async () => {
-    expect(await runVerification({}, {}, ["categories", "tasks"])).toBe(true);
+    const db = makeDbMulti({
+      categories: [[{ userId: "uid-alice", seedData: true }, { userId: "uid-bob", seedData: true }]],
+      tasks:      [[{ userId: "uid-alice", seedData: true }, { userId: "uid-bob", seedData: true }]],
+    });
+    const auth = makeAuth({
+      "uid-alice": { email: "alice@example.com" },
+      "uid-bob":   { email: "bob@example.com" },
+    });
+
+    expect(await verifyAllCollections(db, auth, ["categories", "tasks"])).toBe(true);
   });
 
   it("prints 'ALL PASS' in the summary line", async () => {
-    await runVerification({}, {}, ["categories", "tasks"]);
+    const db = makeDbMulti({
+      categories: [[{ userId: "uid-alice", seedData: true }]],
+      tasks:      [[{ userId: "uid-alice", seedData: true }]],
+    });
+    const auth = makeAuth({ "uid-alice": { email: "alice@example.com" } });
+
+    await verifyAllCollections(db, auth, ["categories", "tasks"]);
+
     const logged = consoleSpy.mock.calls.flat().join("\n");
     expect(logged).toMatch(/ALL PASS/);
   });
 
   it("prints a PASS section listing all found UIDs", async () => {
-    await runVerification({}, {}, ["categories", "tasks"]);
+    const db = makeDbMulti({
+      categories: [[{ userId: "uid-alice", seedData: true }, { userId: "uid-bob", seedData: true }]],
+      tasks:      [[{ userId: "uid-alice", seedData: true }]],
+    });
+    const auth = makeAuth({
+      "uid-alice": { email: "alice@example.com" },
+      "uid-bob":   { email: "bob@example.com" },
+    });
+
+    await verifyAllCollections(db, auth, ["categories", "tasks"]);
+
     const logged = consoleSpy.mock.calls.flat().join("\n");
     expect(logged).toMatch(/PASS/);
     expect(logged).toMatch(/uid-alice/);
@@ -111,97 +136,178 @@ describe("runVerification: PASS report — all UIDs found in Auth", () => {
   });
 
   it("prints the Auth email for each found UID", async () => {
-    await runVerification({}, {}, ["categories", "tasks"]);
+    const db = makeDbMulti({
+      categories: [[{ userId: "uid-alice", seedData: true }, { userId: "uid-bob", seedData: true }]],
+      tasks:      [[{ userId: "uid-alice", seedData: true }]],
+    });
+    const auth = makeAuth({
+      "uid-alice": { email: "alice@example.com" },
+      "uid-bob":   { email: "bob@example.com" },
+    });
+
+    await verifyAllCollections(db, auth, ["categories", "tasks"]);
+
     const logged = consoleSpy.mock.calls.flat().join("\n");
     expect(logged).toMatch(/alice@example\.com/);
     expect(logged).toMatch(/bob@example\.com/);
   });
 
   it("prints per-collection document breakdown for found UIDs", async () => {
-    await runVerification({}, {}, ["categories", "tasks"]);
+    const db = makeDbMulti({
+      categories: [[{ userId: "uid-alice", seedData: true }]],
+      tasks:      [[{ userId: "uid-alice", seedData: true }]],
+    });
+    const auth = makeAuth({ "uid-alice": { email: "alice@example.com" } });
+
+    await verifyAllCollections(db, auth, ["categories", "tasks"]);
+
     const logged = consoleSpy.mock.calls.flat().join("\n");
     expect(logged).toMatch(/categories/);
     expect(logged).toMatch(/tasks/);
   });
 
   it("does not print FAIL or MISMATCH when all UIDs are found", async () => {
-    await runVerification({}, {}, ["categories", "tasks"]);
+    const db = makeDbMulti({
+      categories: [[{ userId: "uid-alice", seedData: true }]],
+      tasks:      [[{ userId: "uid-alice", seedData: true }]],
+    });
+    const auth = makeAuth({ "uid-alice": { email: "alice@example.com" } });
+
+    await verifyAllCollections(db, auth, ["categories", "tasks"]);
+
     const logged = consoleSpy.mock.calls.flat().join("\n");
     expect(logged).not.toMatch(/\bFAIL\b/);
     expect(logged).not.toMatch(/MISMATCH/);
   });
 
   it("works for a single-collection run as well", async () => {
-    vi.mocked(collectSeedUserIds).mockResolvedValue(new Map([["uid-alice", 3]]));
-    vi.mocked(lookupAuthUser).mockResolvedValue({ email: "alice@example.com" });
-    const result = await runVerification({}, {}, ["categories"]);
+    const db = makeDbMulti({ categories: [[{ userId: "uid-alice", seedData: true }]] });
+    const auth = makeAuth({ "uid-alice": { email: "alice@example.com" } });
+
+    const result = await verifyAllCollections(db, auth, ["categories"]);
+
     expect(result).toBe(true);
     const logged = consoleSpy.mock.calls.flat().join("\n");
     expect(logged).toMatch(/ALL PASS/);
   });
 
   it("looks up each unique UID exactly once even if it appears in multiple collections", async () => {
-    await runVerification({}, {}, ["categories", "tasks"]);
-    expect(vi.mocked(lookupAuthUser)).toHaveBeenCalledTimes(2);
+    const db = makeDbMulti({
+      categories: [[{ userId: "uid-alice", seedData: true }, { userId: "uid-bob", seedData: true }]],
+      tasks:      [[{ userId: "uid-alice", seedData: true }, { userId: "uid-bob", seedData: true }]],
+    });
+    const auth = makeAuth({
+      "uid-alice": { email: "alice@example.com" },
+      "uid-bob":   { email: "bob@example.com" },
+    });
+
+    await verifyAllCollections(db, auth, ["categories", "tasks"]);
+
+    expect(auth.getUser).toHaveBeenCalledTimes(2);
   });
 });
 
-// ── Scenario B: some UIDs missing from Auth (MISMATCH output, exit 1) ─────────
+// ── Scenario B: some UIDs missing from Auth (MISMATCH output) ────────────────
 
-describe("runVerification: MISMATCH report — some UIDs missing from Auth", () => {
-  beforeEach(() => {
-    vi.mocked(collectSeedUserIds).mockImplementation(async (_db, col) => {
-      if (col === "categories") return new Map([["uid-alice", 2], ["uid-ghost", 1]]);
-      if (col === "tasks")      return new Map([["uid-ghost", 3]]);
-      return new Map();
-    });
-    vi.mocked(lookupAuthUser).mockImplementation(async (_auth, uid) => {
-      if (uid === "uid-alice") return { email: "alice@example.com" };
-      return null;
-    });
-  });
-
+describe("verifyAllCollections: MISMATCH report — some UIDs missing from Auth", () => {
   it("returns false when at least one seeded UID is missing from Auth", async () => {
-    expect(await runVerification({}, {}, ["categories", "tasks"])).toBe(false);
+    const db = makeDbMulti({
+      categories: [[{ userId: "uid-alice", seedData: true }, { userId: "uid-ghost", seedData: true }]],
+      tasks:      [[{ userId: "uid-ghost", seedData: true }]],
+    });
+    const auth = makeAuth(
+      { "uid-alice": { email: "alice@example.com" } },
+      ["uid-ghost"]
+    );
+
+    expect(await verifyAllCollections(db, auth, ["categories", "tasks"])).toBe(false);
   });
 
   it("prints 'MISMATCH' in the summary line", async () => {
-    await runVerification({}, {}, ["categories", "tasks"]);
+    const db = makeDbMulti({
+      categories: [[{ userId: "uid-ghost", seedData: true }]],
+      tasks:      [[{ userId: "uid-ghost", seedData: true }]],
+    });
+    const auth = makeAuth({}, ["uid-ghost"]);
+
+    await verifyAllCollections(db, auth, ["categories", "tasks"]);
+
     const logged = consoleSpy.mock.calls.flat().join("\n");
     expect(logged).toMatch(/MISMATCH/);
   });
 
   it("prints a FAIL section listing missing UIDs", async () => {
-    await runVerification({}, {}, ["categories", "tasks"]);
+    const db = makeDbMulti({
+      categories: [[{ userId: "uid-alice", seedData: true }, { userId: "uid-ghost", seedData: true }]],
+      tasks:      [[{ userId: "uid-ghost", seedData: true }]],
+    });
+    const auth = makeAuth(
+      { "uid-alice": { email: "alice@example.com" } },
+      ["uid-ghost"]
+    );
+
+    await verifyAllCollections(db, auth, ["categories", "tasks"]);
+
     const logged = consoleSpy.mock.calls.flat().join("\n");
     expect(logged).toMatch(/FAIL/);
     expect(logged).toMatch(/uid-ghost/);
   });
 
   it("still prints a PASS section for UIDs that ARE found", async () => {
-    await runVerification({}, {}, ["categories", "tasks"]);
+    const db = makeDbMulti({
+      categories: [[{ userId: "uid-alice", seedData: true }, { userId: "uid-ghost", seedData: true }]],
+      tasks:      [[{ userId: "uid-alice", seedData: true }]],
+    });
+    const auth = makeAuth(
+      { "uid-alice": { email: "alice@example.com" } },
+      ["uid-ghost"]
+    );
+
+    await verifyAllCollections(db, auth, ["categories", "tasks"]);
+
     const logged = consoleSpy.mock.calls.flat().join("\n");
     expect(logged).toMatch(/PASS/);
     expect(logged).toMatch(/uid-alice/);
   });
 
   it("includes the mismatch count and OK count in the result line", async () => {
-    await runVerification({}, {}, ["categories", "tasks"]);
+    const db = makeDbMulti({
+      categories: [[{ userId: "uid-alice", seedData: true }, { userId: "uid-ghost", seedData: true }]],
+      tasks:      [[{ userId: "uid-alice", seedData: true }]],
+    });
+    const auth = makeAuth(
+      { "uid-alice": { email: "alice@example.com" } },
+      ["uid-ghost"]
+    );
+
+    await verifyAllCollections(db, auth, ["categories", "tasks"]);
+
     const logged = consoleSpy.mock.calls.flat().join("\n");
     expect(logged).toMatch(/1 MISMATCH/);
     expect(logged).toMatch(/1 OK/);
   });
 
   it("includes HOW TO FIX guidance", async () => {
-    await runVerification({}, {}, ["categories", "tasks"]);
+    const db = makeDbMulti({
+      categories: [[{ userId: "uid-ghost", seedData: true }]],
+      tasks:      [[{ userId: "uid-ghost", seedData: true }]],
+    });
+    const auth = makeAuth({}, ["uid-ghost"]);
+
+    await verifyAllCollections(db, auth, ["categories", "tasks"]);
+
     const logged = consoleSpy.mock.calls.flat().join("\n");
     expect(logged).toMatch(/HOW TO FIX/);
   });
 
   it("returns false and shows MISMATCH when ALL UIDs are missing", async () => {
-    vi.mocked(collectSeedUserIds).mockResolvedValue(new Map([["uid-ghost", 2]]));
-    vi.mocked(lookupAuthUser).mockResolvedValue(null);
-    const result = await runVerification({}, {}, ["categories"]);
+    const db = makeDbMulti({
+      categories: [[{ userId: "uid-ghost", seedData: true }]],
+    });
+    const auth = makeAuth({}, ["uid-ghost"]);
+
+    const result = await verifyAllCollections(db, auth, ["categories"]);
+
     expect(result).toBe(false);
     const logged = consoleSpy.mock.calls.flat().join("\n");
     expect(logged).toMatch(/MISMATCH/);
@@ -209,48 +315,73 @@ describe("runVerification: MISMATCH report — some UIDs missing from Auth", () 
   });
 
   it("prints [MISSING] marker for each UID absent from Auth", async () => {
-    await runVerification({}, {}, ["categories", "tasks"]);
+    const db = makeDbMulti({
+      categories: [[{ userId: "uid-ghost", seedData: true }]],
+      tasks:      [[{ userId: "uid-ghost", seedData: true }]],
+    });
+    const auth = makeAuth({}, ["uid-ghost"]);
+
+    await verifyAllCollections(db, auth, ["categories", "tasks"]);
+
     const logged = consoleSpy.mock.calls.flat().join("\n");
     expect(logged).toMatch(/\[MISSING\]/);
   });
 });
 
-// ── Scenario C: no seeded documents found (empty-data message, exit 0) ─────────
+// ── Scenario C: no seeded documents found ────────────────────────────────────
 
-describe("runVerification: empty-data report — no seeded documents found", () => {
-  beforeEach(() => {
-    vi.mocked(collectSeedUserIds).mockResolvedValue(new Map());
-  });
-
+describe("verifyAllCollections: empty-data report — no seeded documents found", () => {
   it("returns true when there are no seeded documents in any collection", async () => {
-    expect(await runVerification({}, {}, ["categories", "tasks"])).toBe(true);
+    const db = makeDbMulti({ categories: [[]], tasks: [[]] });
+    const auth = makeAuth();
+
+    expect(await verifyAllCollections(db, auth, ["categories", "tasks"])).toBe(true);
   });
 
   it("prints 'Nothing to verify' when no seeded docs are found", async () => {
-    await runVerification({}, {}, ["categories", "tasks"]);
+    const db = makeDbMulti({ categories: [[]], tasks: [[]] });
+    const auth = makeAuth();
+
+    await verifyAllCollections(db, auth, ["categories", "tasks"]);
+
     const logged = consoleSpy.mock.calls.flat().join("\n");
     expect(logged).toMatch(/Nothing to verify/);
   });
 
-  it("does not call lookupAuthUser when there are no seeded documents", async () => {
-    await runVerification({}, {}, ["categories", "tasks"]);
-    expect(vi.mocked(lookupAuthUser)).not.toHaveBeenCalled();
+  it("does not call auth.getUser when there are no seeded documents", async () => {
+    const db = makeDbMulti({ categories: [[]], tasks: [[]] });
+    const auth = makeAuth();
+
+    await verifyAllCollections(db, auth, ["categories", "tasks"]);
+
+    expect(auth.getUser).not.toHaveBeenCalled();
   });
 
   it("does not print PASS or FAIL report sections when collection is empty", async () => {
-    await runVerification({}, {}, ["categories", "tasks"]);
+    const db = makeDbMulti({ categories: [[]], tasks: [[]] });
+    const auth = makeAuth();
+
+    await verifyAllCollections(db, auth, ["categories", "tasks"]);
+
     const logged = consoleSpy.mock.calls.flat().join("\n");
     expect(logged).not.toMatch(/PASS — \d/);
     expect(logged).not.toMatch(/FAIL — \d/);
   });
 
   it("does not print MISMATCH when collection is empty", async () => {
-    await runVerification({}, {}, ["categories", "tasks"]);
+    const db = makeDbMulti({ categories: [[]], tasks: [[]] });
+    const auth = makeAuth();
+
+    await verifyAllCollections(db, auth, ["categories", "tasks"]);
+
     const logged = consoleSpy.mock.calls.flat().join("\n");
     expect(logged).not.toMatch(/MISMATCH/);
   });
 
   it("returns true even when an empty single-collection run is requested", async () => {
-    expect(await runVerification({}, {}, ["categories"])).toBe(true);
+    const db = makeDbMulti({ categories: [[]] });
+    const auth = makeAuth();
+
+    expect(await verifyAllCollections(db, auth, ["categories"])).toBe(true);
   });
 });

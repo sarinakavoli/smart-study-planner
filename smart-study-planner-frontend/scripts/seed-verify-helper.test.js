@@ -4,6 +4,7 @@ import {
   lookupAuthUser,
   verifySeedUsers,
   verifySeedUsersOrExit,
+  verifyAllCollections,
 } from "./seed-verify-helper.mjs";
 
 // ── Mock builders ─────────────────────────────────────────────────────────────
@@ -478,5 +479,284 @@ describe("verifySeedUsersOrExit", () => {
     await verifySeedUsersOrExit(db, auth, "categories");
 
     expect(exitSpy).not.toHaveBeenCalled();
+  });
+});
+
+// ── verifyAllCollections ──────────────────────────────────────────────────────
+
+/**
+ * Builds a mock Firestore that routes collection queries to per-collection
+ * page arrays, so multiple collections can be scanned independently.
+ *
+ * @param {Record<string, Array<Array<object>>>} collectionToPages
+ *   Maps collectionName → array of pages (each page is an array of doc-data objects).
+ */
+function makeDbMulti(collectionToPages) {
+  const pageIndexes = {};
+
+  return {
+    collection: vi.fn((colName) => {
+      if (!(colName in pageIndexes)) pageIndexes[colName] = 0;
+      const pages = collectionToPages[colName] ?? [[]];
+
+      const makeQueryObj = () => ({
+        get: vi.fn(async () => {
+          const page = pages[pageIndexes[colName]] ?? [];
+          pageIndexes[colName]++;
+          const docs = page.map((d) => ({ data: () => d }));
+          return { empty: docs.length === 0, docs, size: docs.length };
+        }),
+        startAfter: vi.fn(function () { return makeQueryObj(); }),
+      });
+
+      return {
+        where: vi.fn(() => ({
+          limit: vi.fn(() => makeQueryObj()),
+        })),
+      };
+    }),
+  };
+}
+
+describe("verifyAllCollections", () => {
+  let stdoutSpy;
+  let consoleSpy;
+
+  beforeEach(() => {
+    stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => {});
+    consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    stdoutSpy.mockRestore();
+    consoleSpy.mockRestore();
+  });
+
+  it("returns true when no collection has any seeded documents", async () => {
+    const db = makeDbMulti({ categories: [[]], tasks: [[]] });
+    const auth = makeAuth();
+
+    const result = await verifyAllCollections(db, auth, ["categories", "tasks"]);
+
+    expect(result).toBe(true);
+  });
+
+  it("returns true when all seeded userIds exist in Firebase Auth", async () => {
+    const db = makeDbMulti({
+      categories: [[{ userId: "uid-alice", seedData: true }]],
+      tasks:      [[{ userId: "uid-alice", seedData: true }]],
+    });
+    const auth = makeAuth({ "uid-alice": { email: "alice@example.com" } });
+
+    const result = await verifyAllCollections(db, auth, ["categories", "tasks"]);
+
+    expect(result).toBe(true);
+  });
+
+  it("returns false when any seeded userId is missing from Firebase Auth", async () => {
+    const db = makeDbMulti({
+      categories: [[{ userId: "uid-ghost", seedData: true }]],
+      tasks:      [[{ userId: "uid-alice", seedData: true }]],
+    });
+    const auth = makeAuth(
+      { "uid-alice": { email: "alice@example.com" } },
+      ["uid-ghost"]
+    );
+
+    const result = await verifyAllCollections(db, auth, ["categories", "tasks"]);
+
+    expect(result).toBe(false);
+  });
+
+  it("returns false when all seeded userIds are missing from Firebase Auth", async () => {
+    const db = makeDbMulti({
+      categories: [[{ userId: "uid-ghost", seedData: true }]],
+      tasks:      [[{ userId: "uid-ghost", seedData: true }]],
+    });
+    const auth = makeAuth({}, ["uid-ghost"]);
+
+    const result = await verifyAllCollections(db, auth, ["categories", "tasks"]);
+
+    expect(result).toBe(false);
+  });
+
+  it("combines doc counts for the same userId appearing in multiple collections", async () => {
+    const db = makeDbMulti({
+      categories: [[{ userId: "uid-alice", seedData: true }, { userId: "uid-alice", seedData: true }]],
+      tasks:      [[{ userId: "uid-alice", seedData: true }]],
+    });
+    const auth = makeAuth({ "uid-alice": { email: "alice@example.com" } });
+
+    await verifyAllCollections(db, auth, ["categories", "tasks"]);
+
+    expect(auth.getUser).toHaveBeenCalledTimes(1);
+    expect(auth.getUser).toHaveBeenCalledWith("uid-alice");
+  });
+
+  it("works correctly when only a single collection is requested", async () => {
+    const db = makeDbMulti({
+      categories: [[{ userId: "uid-alice", seedData: true }]],
+    });
+    const auth = makeAuth({ "uid-alice": { email: "alice@example.com" } });
+
+    const result = await verifyAllCollections(db, auth, ["categories"]);
+
+    expect(result).toBe(true);
+    expect(db.collection).toHaveBeenCalledWith("categories");
+    expect(db.collection).not.toHaveBeenCalledWith("tasks");
+  });
+
+  it("prints 'Nothing to verify' when no seeded docs are found across all collections", async () => {
+    const db = makeDbMulti({ categories: [[]], tasks: [[]] });
+    const auth = makeAuth();
+
+    await verifyAllCollections(db, auth, ["categories", "tasks"]);
+
+    const logged = consoleSpy.mock.calls.flat().join("\n");
+    expect(logged).toMatch(/Nothing to verify/);
+  });
+
+  it("prints PASS when all userIds are found in Auth", async () => {
+    const db = makeDbMulti({
+      categories: [[{ userId: "uid-alice", seedData: true }]],
+      tasks:      [[{ userId: "uid-alice", seedData: true }]],
+    });
+    const auth = makeAuth({ "uid-alice": { email: "alice@example.com" } });
+
+    await verifyAllCollections(db, auth, ["categories", "tasks"]);
+
+    const logged = consoleSpy.mock.calls.flat().join("\n");
+    expect(logged).toMatch(/PASS/);
+    expect(logged).toMatch(/uid-alice/);
+  });
+
+  it("prints FAIL and MISSING when a userId is absent from Auth", async () => {
+    const db = makeDbMulti({
+      categories: [[{ userId: "uid-ghost", seedData: true }]],
+      tasks:      [[{ userId: "uid-ghost", seedData: true }]],
+    });
+    const auth = makeAuth({}, ["uid-ghost"]);
+
+    await verifyAllCollections(db, auth, ["categories", "tasks"]);
+
+    const logged = consoleSpy.mock.calls.flat().join("\n");
+    expect(logged).toMatch(/FAIL/);
+    expect(logged).toMatch(/MISSING/);
+    expect(logged).toMatch(/uid-ghost/);
+  });
+
+  it("prints 'ALL PASS' in the result line when there are no mismatches", async () => {
+    const db = makeDbMulti({
+      categories: [[{ userId: "uid-alice", seedData: true }]],
+      tasks:      [[{ userId: "uid-alice", seedData: true }]],
+    });
+    const auth = makeAuth({ "uid-alice": { email: "alice@example.com" } });
+
+    await verifyAllCollections(db, auth, ["categories", "tasks"]);
+
+    const logged = consoleSpy.mock.calls.flat().join("\n");
+    expect(logged).toMatch(/ALL PASS/);
+  });
+
+  it("prints MISMATCH in the result line when any userId is missing", async () => {
+    const db = makeDbMulti({
+      categories: [[{ userId: "uid-ghost", seedData: true }]],
+      tasks:      [[{ userId: "uid-ghost", seedData: true }]],
+    });
+    const auth = makeAuth({}, ["uid-ghost"]);
+
+    await verifyAllCollections(db, auth, ["categories", "tasks"]);
+
+    const logged = consoleSpy.mock.calls.flat().join("\n");
+    expect(logged).toMatch(/MISMATCH/);
+  });
+
+  it("prints HOW TO FIX instructions when there are mismatches", async () => {
+    const db = makeDbMulti({
+      categories: [[{ userId: "uid-ghost", seedData: true }]],
+      tasks:      [[{ userId: "uid-ghost", seedData: true }]],
+    });
+    const auth = makeAuth({}, ["uid-ghost"]);
+
+    await verifyAllCollections(db, auth, ["categories", "tasks"]);
+
+    const logged = consoleSpy.mock.calls.flat().join("\n");
+    expect(logged).toMatch(/HOW TO FIX/);
+  });
+
+  it("prints the Auth email for found users", async () => {
+    const db = makeDbMulti({
+      categories: [[{ userId: "uid-alice", seedData: true }]],
+      tasks:      [[{ userId: "uid-alice", seedData: true }]],
+    });
+    const auth = makeAuth({ "uid-alice": { email: "alice@example.com" } });
+
+    await verifyAllCollections(db, auth, ["categories", "tasks"]);
+
+    const logged = consoleSpy.mock.calls.flat().join("\n");
+    expect(logged).toMatch(/alice@example\.com/);
+  });
+
+  it("uses '(no email)' when the Auth user record has no email", async () => {
+    const db = makeDbMulti({
+      categories: [[{ userId: "uid-noemail", seedData: true }]],
+      tasks:      [[{ userId: "uid-noemail", seedData: true }]],
+    });
+    const auth = makeAuth({ "uid-noemail": {} });
+
+    await verifyAllCollections(db, auth, ["categories", "tasks"]);
+
+    const logged = consoleSpy.mock.calls.flat().join("\n");
+    expect(logged).toMatch(/\(no email\)/);
+  });
+
+  it("reports correct PASS and FAIL counts in the result line", async () => {
+    const db = makeDbMulti({
+      categories: [
+        [
+          { userId: "uid-alice", seedData: true },
+          { userId: "uid-ghost", seedData: true },
+        ],
+      ],
+      tasks: [[{ userId: "uid-alice", seedData: true }]],
+    });
+    const auth = makeAuth(
+      { "uid-alice": { email: "alice@example.com" } },
+      ["uid-ghost"]
+    );
+
+    await verifyAllCollections(db, auth, ["categories", "tasks"]);
+
+    const logged = consoleSpy.mock.calls.flat().join("\n");
+    expect(logged).toMatch(/1 MISMATCH/);
+    expect(logged).toMatch(/1 OK/);
+  });
+
+  it("uses process.stdout.write for each collection's scanning progress line", async () => {
+    const db = makeDbMulti({
+      categories: [[{ userId: "uid-alice", seedData: true }]],
+      tasks:      [[{ userId: "uid-alice", seedData: true }]],
+    });
+    const auth = makeAuth({ "uid-alice": { email: "alice@example.com" } });
+
+    await verifyAllCollections(db, auth, ["categories", "tasks"]);
+
+    const written = stdoutSpy.mock.calls.flat().join("\n");
+    expect(written).toMatch(/Scanning.*categories/);
+    expect(written).toMatch(/Scanning.*tasks/);
+  });
+
+  it("re-throws unexpected Auth errors", async () => {
+    const db = makeDbMulti({
+      categories: [[{ userId: "uid-alice", seedData: true }]],
+      tasks:      [[{ userId: "uid-alice", seedData: true }]],
+    });
+    const auth = {
+      getUser: vi.fn().mockRejectedValue(new Error("network failure")),
+    };
+
+    await expect(
+      verifyAllCollections(db, auth, ["categories", "tasks"])
+    ).rejects.toThrow("network failure");
   });
 });
