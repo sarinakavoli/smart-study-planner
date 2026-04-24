@@ -41,7 +41,6 @@ export function personalOrgId(uid) {
  * Generates a human-readable document ID for a task.
  * Format: task_<shortUserId>_<categorySlug>_<titleSlug>_<random4>
  *
- * @param {import("firebase/firestore").Firestore} _db - Firestore instance (unused, kept for call-site compatibility)
  * @param {string} userId   - Firebase Auth UID of the current user
  * @param {string} category - Task category name (will be slugified)
  * @param {string} title    - Task title (will be slugified)
@@ -49,7 +48,7 @@ export function personalOrgId(uid) {
  */
 const alphanumeric = customAlphabet("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", 4);
 
-export function generateTaskId(_db, userId, category, title) {
+export function generateTaskId(userId, category, title) {
   const shortUserId = String(userId).slice(0, 6);
   const categorySlug = slugify(category);
   const titleSlug = slugify(title);
