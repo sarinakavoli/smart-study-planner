@@ -32,6 +32,40 @@
  *   --collection=NAME  Only check the named collection (categories or tasks).
  *   --dry-run          Preview which collections would be scanned without
  *                      contacting Firebase. Exits 0. No credentials required.
+ *                      When this flag is used, the script also reads a metadata
+ *                      file to display estimated document counts from the last
+ *                      recorded seed run (see SEED_COUNTS_FILE below).
+ *
+ * ENVIRONMENT VARIABLES
+ * ─────────────────────
+ *   SEED_COUNTS_FILE   Path to the JSON metadata file that stores document
+ *                      counts written by the seed scripts after each run.
+ *                      Used during --dry-run to display estimated counts
+ *                      without contacting Firebase.
+ *
+ *                      Default: scripts/.seed-counts.json
+ *                               (i.e. the .seed-counts.json file that lives
+ *                               next to verify-seed-users.mjs)
+ *
+ *                      Expected JSON shape:
+ *                        {
+ *                          "categories": <number>,
+ *                          "tasks":      <number>
+ *                        }
+ *
+ *                      Each key is a collection name; the value is the count
+ *                      of seed documents written in the most recent run. You
+ *                      can create or edit this file manually if you want
+ *                      --dry-run to show specific counts, for example:
+ *
+ *                        echo '{"categories":12,"tasks":36}' \
+ *                          > smart-study-planner-frontend/scripts/.seed-counts.json
+ *
+ *                      Or point the script at a custom file:
+ *
+ *                        SEED_COUNTS_FILE=/tmp/my-counts.json \
+ *                          node smart-study-planner-frontend/scripts/verify-seed-users.mjs \
+ *                          --dry-run
  *
  * EXIT CODE
  * ─────────
