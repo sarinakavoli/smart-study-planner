@@ -690,6 +690,35 @@ describe(".seed-users file: broken content causes exit 1 with ERROR message", ()
     const { stderr } = run(CATEGORIES_SCRIPT, ["--dry-run"], env);
     expect(stderr).toMatch(/"users"/i);
   });
+
+  it("exits 1 and prints ERROR when users array contains a number", () => {
+    const env = writeBadSeedUsers(JSON.stringify({ users: [123] }));
+    const { exitCode, stderr } = run(CATEGORIES_SCRIPT, ["--dry-run"], env);
+    expect(exitCode).toBe(1);
+    expect(stderr).toMatch(/ERROR.*non-empty strings/i);
+  });
+
+  it("exits 1 and prints ERROR when users array contains null", () => {
+    const env = writeBadSeedUsers(JSON.stringify({ users: [null] }));
+    const { exitCode, stderr } = run(CATEGORIES_SCRIPT, ["--dry-run"], env);
+    expect(exitCode).toBe(1);
+    expect(stderr).toMatch(/ERROR.*non-empty strings/i);
+  });
+
+  it("exits 1 and prints ERROR when users array contains an empty string", () => {
+    const env = writeBadSeedUsers(JSON.stringify({ users: [""] }));
+    const { exitCode, stderr } = run(CATEGORIES_SCRIPT, ["--dry-run"], env);
+    expect(exitCode).toBe(1);
+    expect(stderr).toMatch(/ERROR.*non-empty strings/i);
+  });
+
+  it("exits 1 and reports the count of invalid entries for a mixed array", () => {
+    const env = writeBadSeedUsers(JSON.stringify({ users: [123, null, "", "valid-uid"] }));
+    const { exitCode, stderr } = run(CATEGORIES_SCRIPT, ["--dry-run"], env);
+    expect(exitCode).toBe(1);
+    expect(stderr).toMatch(/ERROR.*non-empty strings/i);
+    expect(stderr).toMatch(/3 invalid/i);
+  });
 });
 
 // ── .seed-users file path tests ───────────────────────────────────────────────
