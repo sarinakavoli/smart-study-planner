@@ -175,23 +175,23 @@ describe("buildCategoryId", () => {
 
 describe("buildTaskId", () => {
   it("builds the correct ID from typical inputs", () => {
-    expect(buildTaskId("math-101", "homework", 1)).toBe("task_math-101_homework_001");
+    expect(buildTaskId("math-101", "homework", 1)).toBe("task_math-101_homework_0001");
   });
 
-  it("zero-pads the counter to at least 3 digits", () => {
-    expect(buildTaskId("cat", "title", 1)).toMatch(/_001$/);
+  it("zero-pads the counter to exactly 4 digits", () => {
+    expect(buildTaskId("cat", "title", 1)).toMatch(/_0001$/);
   });
 
-  it("does not pad counter when it already has 3 digits", () => {
-    expect(buildTaskId("cat", "title", 999)).toBe("task_cat_title_999");
+  it("does not pad counter when it already has 4 digits", () => {
+    expect(buildTaskId("cat", "title", 9999)).toBe("task_cat_title_9999");
   });
 
-  it("does not truncate counters larger than 3 digits", () => {
-    expect(buildTaskId("cat", "title", 5000)).toBe("task_cat_title_5000");
+  it("does not truncate counters larger than 4 digits", () => {
+    expect(buildTaskId("cat", "title", 10000)).toBe("task_cat_title_10000");
   });
 
   it("uses counter = 0 with zero-padding", () => {
-    expect(buildTaskId("cat", "title", 0)).toBe("task_cat_title_000");
+    expect(buildTaskId("cat", "title", 0)).toBe("task_cat_title_0000");
   });
 
   it("always starts with 'task_'", () => {
@@ -200,7 +200,7 @@ describe("buildTaskId", () => {
 
   it("matches the expected task ID format", () => {
     const id = buildTaskId("science-lab", "report", 42);
-    expect(id).toMatch(/^task_[a-z0-9][a-z0-9-]*_[a-z0-9][a-z0-9-]*_\d+$/);
+    expect(id).toMatch(/^task_[a-z0-9][a-z0-9-]*_[a-z0-9][a-z0-9-]*_[a-z0-9]{4}$/);
   });
 
   it("includes both categorySlug and titleSlug in the output", () => {
@@ -210,6 +210,6 @@ describe("buildTaskId", () => {
   });
 
   it("handles numeric-only slugs", () => {
-    expect(buildTaskId("123", "456", 9)).toBe("task_123_456_009");
+    expect(buildTaskId("123", "456", 9)).toBe("task_123_456_0009");
   });
 });

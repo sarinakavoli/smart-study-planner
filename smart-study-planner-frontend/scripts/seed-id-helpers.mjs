@@ -74,9 +74,21 @@ export function buildCategoryId(shortUserId, catSlug, random4) {
 
 /**
  * Builds a task document ID from pre-slugified segments and a numeric counter.
- * Format: task_<categorySlug>_<titleSlug>_<NNN>
- * Counter is zero-padded to at least 3 digits.
+ * Format: task_<categorySlug>_<titleSlug>_<NNNN>
+ * Counter is zero-padded to exactly 4 digits.
+ *
+ * Satisfies the audit regex:
+ *   /^task_[a-z0-9][a-z0-9-]*_[a-z0-9][a-z0-9-]*_[a-z0-9]{4}$/
+ * (digits are a subset of [a-z0-9] and the fixed 4-digit width matches {4})
+ *
+ * @param {string} categorySlug - Pre-slugified category name
+ * @param {string} titleSlug    - Pre-slugified task title
+ * @param {number} counter      - Numeric counter (zero-padded to 4 digits).
+ *                               Counters > 9999 produce IDs longer than 4 chars
+ *                               and will not satisfy the 4-char audit regex; seed
+ *                               batches stay well within this limit in practice.
+ * @returns {string}  e.g. "task_math_read-chapter_0001"
  */
 export function buildTaskId(categorySlug, titleSlug, counter) {
-  return `task_${categorySlug}_${titleSlug}_${String(counter).padStart(3, "0")}`;
+  return `task_${categorySlug}_${titleSlug}_${String(counter).padStart(4, "0")}`;
 }

@@ -33,14 +33,14 @@
  *
  * REFINED FORMAT REGEX
  * ────────────────────
- *   Tasks      : task_<categorySlug>_<titleSlug>_<NNN>
- *     Regex    : /^task_[a-z0-9][a-z0-9-]*_[a-z0-9][a-z0-9-]*_\d+$/
+ *   Tasks      : task_<categorySlug>_<titleSlug>_<shortRandom>
+ *     Regex    : /^task_[a-z0-9][a-z0-9-]*_[a-z0-9][a-z0-9-]*_[a-z0-9]{4}$/
  *
- *   Categories : cat_<orgSlug>_<catSlug>_<counter>
- *     Regex    : /^cat_[a-z0-9][a-z0-9-]*_[a-z0-9][a-z0-9-]*_\d+$/
+ *   Categories : cat_<orgSlug>_<catSlug>_<shortRandom>
+ *     Regex    : /^cat_[a-z0-9][a-z0-9-]*_[a-z0-9][a-z0-9-]*_[a-z0-9]{4}$/
  *
  *   All slug segments are lowercase alphanumeric + hyphens (no underscores,
- *   no uppercase).  The counter is one or more digits.
+ *   no uppercase).  The suffix is a 4-character lowercase alphanumeric string.
  *
  * EXIT CODES
  * ──────────
@@ -90,16 +90,21 @@ const __dirname  = dirname(__filename);
 // ── Strict refined-format regexes ─────────────────────────────────────────────
 
 /**
- * Valid refined task ID: task_<categorySlug>_<titleSlug>_<NNN>
+ * Valid refined task ID: task_<categorySlug>_<titleSlug>_<NNNN>
  * Both slug segments: lowercase alphanumeric + hyphens, start with [a-z0-9].
- * Counter: one or more digits (zero-padded to 3 digits by generateTaskId).
+ * Suffix: exactly 4 lowercase alphanumeric characters.
+ * Seed-script IDs use a zero-padded 4-digit counter (0001–9999); app-generated
+ * IDs use a 4-char alphanumeric random suffix — both satisfy this regex.
+ * NOTE: Documents seeded before this change used a 3-digit suffix (001–999).
+ * Those IDs will be flagged as MALFORMED and require re-seeding to migrate.
  */
-const TASK_ID_REGEX = /^task_[a-z0-9][a-z0-9-]*_[a-z0-9][a-z0-9-]*_\d+$/;
+const TASK_ID_REGEX = /^task_[a-z0-9][a-z0-9-]*_[a-z0-9][a-z0-9-]*_[a-z0-9]{4}$/;
 
 /**
- * Valid refined category ID: cat_<orgSlug>_<catSlug>_<counter>
+ * Valid refined category ID: cat_<orgSlug>_<catSlug>_<shortRandom>
+ * Suffix: 4 lowercase alphanumeric characters (from randomSuffix()).
  */
-const CAT_ID_REGEX = /^cat_[a-z0-9][a-z0-9-]*_[a-z0-9][a-z0-9-]*_\d+$/;
+const CAT_ID_REGEX = /^cat_[a-z0-9][a-z0-9-]*_[a-z0-9][a-z0-9-]*_[a-z0-9]{4}$/;
 
 // ── log() helper ──────────────────────────────────────────────────────────────
 
@@ -171,7 +176,7 @@ db.settings({ databaseId: FIRESTORE_DATABASE });
  *   "malformed"  — Does NOT pass the regex AND has the right prefix but not deprecated.
  *   "legacy"     — Does NOT pass the regex AND lacks the expected prefix.
  *
- * The regex is checked first so a valid new-format ID (e.g. task_org_math_001
+ * The regex is checked first so a valid new-format ID (e.g. task_org_math_0001
  * for a category named "org") is never wrongly flagged as deprecated.
  *
  * @param {string} docId
@@ -496,21 +501,21 @@ async function main() {
       log(
         `✗ FAIL: ${legacyTotal} document(s) still use legacy auto-IDs. ` +
         "These documents must be re-created with IDs matching the refined format " +
-        "(task_<categorySlug>_<titleSlug>_<NNN> / cat_<orgSlug>_<catSlug>_<N>)."
+        "(task_<categorySlug>_<titleSlug>_<NNNN> / cat_<orgSlug>_<catSlug>_<xxxx>)."
       );
     }
     if (deprecatedTotal > 0) {
       log(
         `✗ FAIL: ${deprecatedTotal} document(s) use the deprecated task_org_/cat_org_ ` +
         "format. These documents must be re-created with IDs matching the refined format " +
-        "(task_<categorySlug>_<titleSlug>_<NNN> / cat_<orgSlug>_<catSlug>_<N>)."
+        "(task_<categorySlug>_<titleSlug>_<NNNN> / cat_<orgSlug>_<catSlug>_<xxxx>)."
       );
     }
     if (malformedTotal > 0) {
       log(
         `✗ FAIL: ${malformedTotal} document(s) have a task_/cat_ prefix but do not ` +
         "match the refined ID structure. These documents must be re-created with " +
-        "IDs matching the format task_<categorySlug>_<titleSlug>_<NNN> / cat_<orgSlug>_<catSlug>_<N>."
+        "IDs matching the format task_<categorySlug>_<titleSlug>_<NNNN> / cat_<orgSlug>_<catSlug>_<xxxx>."
       );
     }
     if (totalWarnField > 0) {

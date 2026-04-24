@@ -6,8 +6,8 @@
  *
  * Every seeded document includes:
  *   - A human-readable document ID:
- *       task_<categorySlug>_<titleSlug>_<NNN>
- *       e.g. task_math_read-chapter_001
+ *       task_<categorySlug>_<titleSlug>_<NNNN>
+ *       e.g. task_math_read-chapter_0001
  *   - organizationId field          (= "org_<uid>")
  *   - readableId field              (copy of the document ID for debugging)
  *   - seedData: true                (so you can delete only seed data later)
@@ -36,7 +36,7 @@
  *                      When combined with --delete or --undo-last, previews
  *                      which documents would be deleted (user scope, filter).
  *                      When combined with insert flags, sample IDs assume
- *                      counters start at 001; actual IDs may use higher
+ *                      counters start at 0001; actual IDs may use higher
  *                      counters if matching docs already exist.
  *                      Takes precedence over --undo-last, --delete, and --reset
  *                      when combined with those flags.
@@ -448,7 +448,7 @@ async function dryRunTasks() {
   console.log(`  Unique (category, title) groups : ${uniqueGroups.size}`);
   console.log(`  Sample document IDs (first ${sampleIds.length}):`);
   sampleIds.forEach((id) => console.log(`    ${id}`));
-  console.log(`\n  NOTE: Sample IDs above assume counters start at 001. If matching documents`);
+  console.log(`\n  NOTE: Sample IDs above assume counters start at 0001. If matching documents`);
   console.log(`        already exist in Firestore the real IDs will use higher counter values.`);
   console.log(`\n  Flags:`);
   console.log(`    --skip-verify  Skip the post-insert Auth verification step.`);
@@ -697,7 +697,7 @@ async function insertTasks() {
 
   console.log(`\n✓ Done! ${inserted.toLocaleString()} tasks written to Firestore.`);
   console.log(`\n  Every document now has:`);
-  console.log(`    - A readable ID:    task_<categorySlug>_<titleSlug>_<NNN>`);
+  console.log(`    - A readable ID:    task_<categorySlug>_<titleSlug>_<NNNN>`);
   console.log(`    - organizationId:   org_<userId>`);
   console.log(`    - readableId:       (same as document ID)`);
   console.log(`    - seedData: true    (so you can clean up later)`);

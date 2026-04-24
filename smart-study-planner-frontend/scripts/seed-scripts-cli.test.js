@@ -358,9 +358,9 @@ describe("seed-tasks.mjs --dry-run", () => {
     expect(stdout).toMatch(/10[,.]?000/);
   });
 
-  it("shows sample document IDs in task_<cat>_<title>_<NNN> format", () => {
+  it("shows sample document IDs in task_<cat>_<title>_<random> format", () => {
     const { stdout } = run(TASKS_SCRIPT, ["--dry-run"]);
-    expect(stdout).toMatch(/task_[a-z0-9][a-z0-9-]*_[a-z0-9][a-z0-9-]*_\d+/);
+    expect(stdout).toMatch(/task_[a-z0-9][a-z0-9-]*_[a-z0-9][a-z0-9-]*_[a-z0-9]{4}/);
   });
 
   it("does not write to Firestore", () => {
@@ -595,7 +595,7 @@ describe("seed-tasks.mjs --dry-run --skip-verify", () => {
 
   it("shows sample document IDs when --skip-verify is combined with --dry-run", () => {
     const { stdout } = run(TASKS_SCRIPT, ["--dry-run", "--skip-verify"]);
-    expect(stdout).toMatch(/task_[a-z0-9][a-z0-9-]*_[a-z0-9][a-z0-9-]*_\d+/);
+    expect(stdout).toMatch(/task_[a-z0-9][a-z0-9-]*_[a-z0-9][a-z0-9-]*_[a-z0-9]{4}/);
   });
 });
 
