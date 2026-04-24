@@ -64,6 +64,8 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
   const [attachmentFiles, setAttachmentFiles] = useState([]);
+  const [pendingConfirmFile, setPendingConfirmFile] = useState(null);
+  const [fileUploadStatuses, setFileUploadStatuses] = useState({});
   const fileInputRef = useRef(null);
 
   const [editingAttachment, setEditingAttachment] = useState(null);
@@ -462,6 +464,8 @@ function App() {
     setCustomCategory("");
     setEditingTaskId(null);
     setAttachmentFiles([]);
+    setPendingConfirmFile(null);
+    setFileUploadStatuses({});
   };
 
   const sanitizeFileName = (fileName) => {
@@ -596,19 +600,29 @@ function App() {
     const newFiles = Array.from(event.target.files || []);
     if (newFiles.length === 0) return;
 
-    setAttachmentFiles((prev) => {
-      const existingKeys = new Set(
-        prev.map((f) => `${f.name}-${f.size}-${f.lastModified}`)
-      );
-      const toAdd = newFiles.filter(
-        (f) => !existingKeys.has(`${f.name}-${f.size}-${f.lastModified}`)
-      );
-      return [...prev, ...toAdd];
-    });
+    setPendingConfirmFile(newFiles[0]);
 
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
+  };
+
+  const handleConfirmUpload = () => {
+    if (!pendingConfirmFile) return;
+    const key = `${pendingConfirmFile.name}-${pendingConfirmFile.size}-${pendingConfirmFile.lastModified}`;
+    setAttachmentFiles((prev) => {
+      const existingKeys = new Set(
+        prev.map((f) => `${f.name}-${f.size}-${f.lastModified}`)
+      );
+      if (existingKeys.has(key)) return prev;
+      return [...prev, pendingConfirmFile];
+    });
+    setFileUploadStatuses((prev) => ({ ...prev, [key]: "pending" }));
+    setPendingConfirmFile(null);
+  };
+
+  const handleCancelPendingFile = () => {
+    setPendingConfirmFile(null);
   };
 
   const removeSelectedAttachmentFile = (fileIndex) => {
@@ -936,20 +950,33 @@ function App() {
       let attachmentUploadFailed = false;
 
       if (attachmentFiles.length > 0) {
-        try {
-          await uploadTaskAttachments(taskId, attachmentFiles);
-        } catch (uploadErr) {
-          console.error(uploadErr);
-          attachmentUploadFailed = true;
+        const uploadingMap = {};
+        attachmentFiles.forEach((f) => {
+          uploadingMap[`${f.name}-${f.size}-${f.lastModified}`] = "uploading";
+        });
+        setFileUploadStatuses(uploadingMap);
+
+        for (const file of attachmentFiles) {
+          const key = `${file.name}-${file.size}-${file.lastModified}`;
+          try {
+            await uploadTaskAttachments(taskId, [file]);
+            setFileUploadStatuses((prev) => ({ ...prev, [key]: "complete" }));
+          } catch (uploadErr) {
+            console.error(uploadErr);
+            setFileUploadStatuses((prev) => ({ ...prev, [key]: "failed" }));
+            attachmentUploadFailed = true;
+          }
         }
       }
 
-      resetForm();
-      setActiveView("ALL_TASKS");
+      if (!attachmentUploadFailed) {
+        resetForm();
+        setActiveView("ALL_TASKS");
+      }
       loadTasks();
       loadCategories();
       if (attachmentUploadFailed) {
-        setError("The task was saved, but one or more attachments could not be uploaded.");
+        setError("The task was saved, but one or more files could not be uploaded. Files marked \u201CUpload failed\u201D are shown below.");
       }
     } catch (err) {
       console.error(err);
@@ -1866,7 +1893,8 @@ function App() {
                   </div>
 
                   {(editingTask?.attachments || []).length === 0 &&
-                    attachmentFiles.length === 0 && (
+                    attachmentFiles.length === 0 &&
+                    !pendingConfirmFile && (
                       <p className="no-attachments-hint">
                         No attachments yet.
                       </p>
@@ -1928,25 +1956,79 @@ function App() {
                     );
                   })}
 
-                  {attachmentFiles.map((file, index) => (
+                  {pendingConfirmFile && (
+                    <div className="attachment-confirm-panel">
+                      <div className="attachment-confirm-header">
+                        <span className="attachment-badge selected">Selected file</span>
+                        <span className="attachment-confirm-title">Review before uploading</span>
+                      </div>
+                      <div className="attachment-confirm-details">
+                        <div className="attachment-confirm-row">
+                          <span className="attachment-confirm-label">File name</span>
+                          <span className="attachment-confirm-value">{pendingConfirmFile.name}</span>
+                        </div>
+                        <div className="attachment-confirm-row">
+                          <span className="attachment-confirm-label">File size</span>
+                          <span className="attachment-confirm-value">{formatFileSize(pendingConfirmFile.size)}</span>
+                        </div>
+                        <div className="attachment-confirm-row">
+                          <span className="attachment-confirm-label">File type</span>
+                          <span className="attachment-confirm-value">{pendingConfirmFile.type || "Unknown"}</span>
+                        </div>
+                        <div className="attachment-confirm-row">
+                          <span className="attachment-confirm-label">Attach to</span>
+                          <span className="attachment-confirm-value attachment-confirm-task">
+                            {newTask.title.trim() || editingTask?.title || "Untitled task"}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="attachment-confirm-actions">
+                        <button
+                          type="button"
+                          className="attachment-confirm-btn"
+                          onClick={handleConfirmUpload}
+                        >
+                          Confirm Upload
+                        </button>
+                        <button
+                          type="button"
+                          className="attachment-cancel-btn"
+                          onClick={handleCancelPendingFile}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {attachmentFiles.map((file, index) => {
+                    const key = `${file.name}-${file.size}-${file.lastModified}`;
+                    const status = fileUploadStatuses[key] || "pending";
+                    return (
                     <div
-                      key={`${file.name}-${file.size}-${file.lastModified}`}
+                      key={key}
                       className="attachment-row"
                     >
-                      <span className="attachment-badge pending">Pending</span>
+                      {status === "pending" && <span className="attachment-badge pending">Pending</span>}
+                      {status === "uploading" && <span className="attachment-badge uploading">Uploading...</span>}
+                      {status === "complete" && <span className="attachment-badge complete">Upload complete</span>}
+                      {status === "failed" && <span className="attachment-badge failed">Upload failed</span>}
                       <span className="attachment-name">{file.name}</span>
                       <span className="attachment-size">
                         {formatFileSize(file.size)}
                       </span>
-                      <button
-                        type="button"
-                        className="attachment-delete-btn"
-                        onClick={() => removeSelectedAttachmentFile(index)}
-                      >
-                        Remove
-                      </button>
+                      {(status === "pending" || status === "failed") && (
+                        <button
+                          type="button"
+                          className="attachment-delete-btn"
+                          onClick={() => removeSelectedAttachmentFile(index)}
+                        >
+                          Remove
+                        </button>
+                      )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 <button type="submit" className="main-btn" disabled={loading}>

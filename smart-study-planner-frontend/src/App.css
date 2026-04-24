@@ -830,3 +830,119 @@ body {
   display: flex;
   justify-content: flex-end;
 }
+
+.attachment-badge.selected {
+  background: rgba(167, 139, 250, 0.15);
+  color: #a78bfa;
+}
+
+.attachment-badge.uploading {
+  background: rgba(96, 165, 250, 0.12);
+  color: #60a5fa;
+}
+
+.attachment-badge.complete {
+  background: rgba(52, 211, 153, 0.15);
+  color: #34d399;
+}
+
+.attachment-badge.failed {
+  background: rgba(248, 113, 113, 0.15);
+  color: #f87171;
+}
+
+.attachment-confirm-panel {
+  margin-top: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-card);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.attachment-confirm-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.attachment-confirm-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.attachment-confirm-details {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.attachment-confirm-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.attachment-confirm-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-soft);
+  min-width: 72px;
+  flex-shrink: 0;
+}
+
+.attachment-confirm-value {
+  color: var(--text-main);
+  word-break: break-all;
+  flex: 1;
+}
+
+.attachment-confirm-task {
+  font-weight: 600;
+  color: #60a5fa;
+}
+
+.attachment-confirm-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.attachment-confirm-btn {
+  padding: 6px 14px;
+  border-radius: 7px;
+  border: none;
+  background: #6366f1;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.attachment-confirm-btn:hover {
+  background: #4f46e5;
+}
+
+.attachment-cancel-btn {
+  padding: 6px 12px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-soft);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.attachment-cancel-btn:hover {
+  background: var(--bg-soft);
+  color: var(--text-main);
+}
