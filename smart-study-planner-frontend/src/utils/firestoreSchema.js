@@ -29,18 +29,25 @@
 //
 // ── COLLECTION: users ────────────────────────────────────────────────────────
 //
-// Document ID: <Firebase Auth UID>
+// Document ID: <Firebase Auth UID>  (full UID, never the short user ID)
 //
 // Fields:
-//   email          string   User's email address
-//   organizationId string   ID of the org this user currently belongs to
-//                           (defaults to personalOrgId(uid) = "org_<uid>")
-//   createdAt      string   ISO-8601 timestamp (set on first login/signup)
+//   uid            string    Full Firebase Auth UID (mirrors the document ID)
+//   email          string    User's email address
+//   displayName    string|null  Display name from Firebase Auth (null if not set)
+//   organizationId string    ID of the org this user currently belongs to
+//                            (defaults to personalOrgId(uid) = "org_<uid>")
+//   createdAt      string    ISO-8601 timestamp from Firebase Auth metadata
+//                            (set once on first login/signup)
+//   updatedAt      Timestamp Firestore server timestamp, refreshed on every login
 //
 // Notes:
 //   - Written (with merge: true) on every login so it is always up-to-date
+//   - updatedAt uses serverTimestamp() so it reflects the last login time
 //   - When multi-org support is added, organizationId will point to a real
 //     organization document instead of the personal org placeholder
+//   - The short user ID (used in readable task IDs) is NOT used here; the
+//     document ID is always the full Firebase Auth UID
 //
 //
 // ── COLLECTION: categories ───────────────────────────────────────────────────

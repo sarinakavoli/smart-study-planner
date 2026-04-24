@@ -14,6 +14,7 @@ import {
   query,
   where,
   arrayUnion,
+  serverTimestamp,
 } from "firebase/firestore";
 import {
   personalOrgId,
@@ -113,9 +114,12 @@ function App() {
           await setDoc(
             doc(db, "users", firebaseUser.uid),
             {
+              uid: firebaseUser.uid,
               email: firebaseUser.email,
+              displayName: firebaseUser.displayName ?? null,
               organizationId: orgId,
               createdAt,
+              updatedAt: serverTimestamp(),
             },
             { merge: true }
           );
