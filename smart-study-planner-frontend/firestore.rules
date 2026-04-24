@@ -48,6 +48,17 @@ service cloud.firestore {
                     && request.resource.data.organizationId == ('org_' + request.auth.uid);
     }
 
+    // ── task_counters collection ─────────────────────────────────────────────
+    // Stores one atomic counter document per user × category × title slug.
+    // Document IDs are formatted as "org_<uid>_<categorySlug>_<titleSlug>".
+    // A user may only read or write a counter document whose ID begins with
+    // their own personal org prefix ("org_<uid>_"), preventing cross-user
+    // tampering with another user's sequential counters.
+    match /task_counters/{counterId} {
+      allow read, write: if request.auth != null
+                         && counterId.matches('org_' + request.auth.uid + '_.*');
+    }
+
     // ── organizations collection ─────────────────────────────────────────────
     // A user may read an organization document only if their UID is listed in
     // the memberUids array (which includes the owner for personal orgs).
