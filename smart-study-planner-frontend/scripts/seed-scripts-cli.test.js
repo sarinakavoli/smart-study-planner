@@ -158,12 +158,17 @@ describe("seed-categories.mjs --dry-run --delete", () => {
     expect(stdout).toMatch(/--delete/);
   });
 
-  it("reports ALL users when no user filter is active", () => {
+  it("reports ALL users when no user filter is active (userFilterActive=false)", () => {
     const { stdout } = run(CATEGORIES_SCRIPT, ["--dry-run", "--delete"]);
     expect(stdout).toMatch(/ALL users/i);
   });
 
-  it("shows scoped user when --users is combined with --delete", () => {
+  it("shows filter as 'seedData == true' only when no user scope is active", () => {
+    const { stdout } = run(CATEGORIES_SCRIPT, ["--dry-run", "--delete"]);
+    expect(stdout).toMatch(/Filter\s*:\s*seedData == true$/m);
+  });
+
+  it("shows scoped user when --users is combined with --delete (userFilterActive=true)", () => {
     const { exitCode, stdout } = run(CATEGORIES_SCRIPT, [
       "--dry-run",
       "--delete",
@@ -171,6 +176,47 @@ describe("seed-categories.mjs --dry-run --delete", () => {
     ]);
     expect(exitCode).toBe(0);
     expect(stdout).toMatch(/uid_xyz/);
+  });
+
+  it("shows 'userId IN' filter when --users is provided (scoped delete)", () => {
+    const { stdout } = run(CATEGORIES_SCRIPT, [
+      "--dry-run",
+      "--delete",
+      "--users=uid_xyz",
+    ]);
+    expect(stdout).toMatch(/seedData == true AND userId IN/);
+  });
+
+  it("shows scoped filter when --email is combined with --delete (userFilterActive=true)", () => {
+    const { exitCode, stdout } = run(CATEGORIES_SCRIPT, [
+      "--dry-run",
+      "--delete",
+      "--email=test@example.com",
+    ]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/test@example\.com/);
+    expect(stdout).toMatch(/seedData == true AND userId IN/);
+  });
+
+  it("does not show ALL-users scope when --email activates the user filter", () => {
+    const { stdout } = run(CATEGORIES_SCRIPT, [
+      "--dry-run",
+      "--delete",
+      "--email=test@example.com",
+    ]);
+    expect(stdout).not.toMatch(/ALL users/i);
+  });
+
+  it("shows multiple users when multiple --users are provided", () => {
+    const { exitCode, stdout } = run(CATEGORIES_SCRIPT, [
+      "--dry-run",
+      "--delete",
+      "--users=uid_a,uid_b",
+    ]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/uid_a/);
+    expect(stdout).toMatch(/uid_b/);
+    expect(stdout).toMatch(/seedData == true AND userId IN/);
   });
 });
 
@@ -185,6 +231,52 @@ describe("seed-categories.mjs --dry-run --undo-last", () => {
   it("mentions that no manifest was found when none exists", () => {
     const { stdout } = run(CATEGORIES_SCRIPT, ["--dry-run", "--undo-last"]);
     expect(stdout).toMatch(/no manifest found|Run ID/i);
+  });
+
+  it("shows 'ALL users' filter when no user scope is active (userFilterActive=false)", () => {
+    const { stdout } = run(CATEGORIES_SCRIPT, ["--dry-run", "--undo-last"]);
+    expect(stdout).toMatch(/ALL users/i);
+    expect(stdout).toMatch(/Filter\s*:\s*seedRunId == <run-id>$/m);
+  });
+
+  it("shows scoped filter with 'userId IN' when --users is provided (userFilterActive=true)", () => {
+    const { exitCode, stdout } = run(CATEGORIES_SCRIPT, [
+      "--dry-run",
+      "--undo-last",
+      "--users=uid_scoped",
+    ]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/uid_scoped/);
+    expect(stdout).toMatch(/seedRunId == <run-id> AND userId IN/);
+  });
+
+  it("does not show ALL-users scope when --users activates the user filter for undo-last", () => {
+    const { stdout } = run(CATEGORIES_SCRIPT, [
+      "--dry-run",
+      "--undo-last",
+      "--users=uid_scoped",
+    ]);
+    expect(stdout).not.toMatch(/ALL users/i);
+  });
+
+  it("shows scoped filter when --email is combined with --undo-last (userFilterActive=true)", () => {
+    const { exitCode, stdout } = run(CATEGORIES_SCRIPT, [
+      "--dry-run",
+      "--undo-last",
+      "--email=test@example.com",
+    ]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/test@example\.com/);
+    expect(stdout).toMatch(/seedRunId == <run-id> AND userId IN/);
+  });
+
+  it("does not show ALL-users scope when --email activates the user filter for undo-last", () => {
+    const { stdout } = run(CATEGORIES_SCRIPT, [
+      "--dry-run",
+      "--undo-last",
+      "--email=test@example.com",
+    ]);
+    expect(stdout).not.toMatch(/ALL users/i);
   });
 });
 
@@ -362,12 +454,17 @@ describe("seed-tasks.mjs --dry-run --delete", () => {
     expect(stdout).toMatch(/--delete/);
   });
 
-  it("reports ALL users when no user filter is active", () => {
+  it("reports ALL users when no user filter is active (userFilterActive=false)", () => {
     const { stdout } = run(TASKS_SCRIPT, ["--dry-run", "--delete"]);
     expect(stdout).toMatch(/ALL users/i);
   });
 
-  it("shows scoped user when --users is combined with --delete", () => {
+  it("shows filter as 'seedData == true' only when no user scope is active", () => {
+    const { stdout } = run(TASKS_SCRIPT, ["--dry-run", "--delete"]);
+    expect(stdout).toMatch(/Filter\s*:\s*seedData == true$/m);
+  });
+
+  it("shows scoped user when --users is combined with --delete (userFilterActive=true)", () => {
     const { exitCode, stdout } = run(TASKS_SCRIPT, [
       "--dry-run",
       "--delete",
@@ -375,6 +472,47 @@ describe("seed-tasks.mjs --dry-run --delete", () => {
     ]);
     expect(exitCode).toBe(0);
     expect(stdout).toMatch(/uid_xyz/);
+  });
+
+  it("shows 'userId IN' filter when --users is provided (scoped delete)", () => {
+    const { stdout } = run(TASKS_SCRIPT, [
+      "--dry-run",
+      "--delete",
+      "--users=uid_xyz",
+    ]);
+    expect(stdout).toMatch(/seedData == true AND userId IN/);
+  });
+
+  it("shows scoped filter when --email is combined with --delete (userFilterActive=true)", () => {
+    const { exitCode, stdout } = run(TASKS_SCRIPT, [
+      "--dry-run",
+      "--delete",
+      "--email=dev@example.com",
+    ]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/dev@example\.com/);
+    expect(stdout).toMatch(/seedData == true AND userId IN/);
+  });
+
+  it("does not show ALL-users scope when --email activates the user filter", () => {
+    const { stdout } = run(TASKS_SCRIPT, [
+      "--dry-run",
+      "--delete",
+      "--email=dev@example.com",
+    ]);
+    expect(stdout).not.toMatch(/ALL users/i);
+  });
+
+  it("shows multiple users when multiple --users are provided", () => {
+    const { exitCode, stdout } = run(TASKS_SCRIPT, [
+      "--dry-run",
+      "--delete",
+      "--users=uid_a,uid_b",
+    ]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/uid_a/);
+    expect(stdout).toMatch(/uid_b/);
+    expect(stdout).toMatch(/seedData == true AND userId IN/);
   });
 });
 
@@ -389,6 +527,52 @@ describe("seed-tasks.mjs --dry-run --undo-last", () => {
   it("mentions that no manifest was found when none exists", () => {
     const { stdout } = run(TASKS_SCRIPT, ["--dry-run", "--undo-last"]);
     expect(stdout).toMatch(/no manifest found|Run ID/i);
+  });
+
+  it("shows 'ALL users' filter when no user scope is active (userFilterActive=false)", () => {
+    const { stdout } = run(TASKS_SCRIPT, ["--dry-run", "--undo-last"]);
+    expect(stdout).toMatch(/ALL users/i);
+    expect(stdout).toMatch(/Filter\s*:\s*seedRunId == <run-id>$/m);
+  });
+
+  it("shows scoped filter with 'userId IN' when --users is provided (userFilterActive=true)", () => {
+    const { exitCode, stdout } = run(TASKS_SCRIPT, [
+      "--dry-run",
+      "--undo-last",
+      "--users=uid_scoped",
+    ]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/uid_scoped/);
+    expect(stdout).toMatch(/seedRunId == <run-id> AND userId IN/);
+  });
+
+  it("does not show ALL-users scope when --users activates the user filter for undo-last", () => {
+    const { stdout } = run(TASKS_SCRIPT, [
+      "--dry-run",
+      "--undo-last",
+      "--users=uid_scoped",
+    ]);
+    expect(stdout).not.toMatch(/ALL users/i);
+  });
+
+  it("shows scoped filter when --email is combined with --undo-last (userFilterActive=true)", () => {
+    const { exitCode, stdout } = run(TASKS_SCRIPT, [
+      "--dry-run",
+      "--undo-last",
+      "--email=dev@example.com",
+    ]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/dev@example\.com/);
+    expect(stdout).toMatch(/seedRunId == <run-id> AND userId IN/);
+  });
+
+  it("does not show ALL-users scope when --email activates the user filter for undo-last", () => {
+    const { stdout } = run(TASKS_SCRIPT, [
+      "--dry-run",
+      "--undo-last",
+      "--email=dev@example.com",
+    ]);
+    expect(stdout).not.toMatch(/ALL users/i);
   });
 });
 

@@ -120,6 +120,7 @@ import { fileURLToPath } from "url";
 import { join, dirname } from "path";
 import { verifySeedUsers } from "./seed-verify-helper.mjs";
 import { loadSeedUsersFile, resolveMixedEntries } from "./seed-user-resolver.mjs";
+import { fetchDeleteDocs, fetchUndoLastDocs } from "./seed-firestore-helpers.mjs";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -462,35 +463,11 @@ async function dryRunTasks() {
 
 /**
  * Fetches all documents matching seedRunId == runId, optionally also filtered
- * by userId when userFilterActive is true (chunks USER_IDS into groups of 10
- * to satisfy Firestore's 'in' operator limit).
+ * by userId when userFilterActive is true. Delegates to the shared helper in
+ * seed-firestore-helpers.mjs so the query logic can be unit-tested.
  */
-async function fetchUndoLastDocs(runId) {
-  if (!userFilterActive) {
-    const snap = await db
-      .collection(COLLECTION)
-      .where("seedRunId", "==", runId)
-      .get();
-    return snap.docs;
-  }
-
-  // Deduplicate so a repeated UID doesn't cause the same document to be
-  // returned by two overlapping chunk queries.
-  const uniqueIds = [...new Set(USER_IDS)];
-  const chunks = [];
-  for (let i = 0; i < uniqueIds.length; i += 10) {
-    chunks.push(uniqueIds.slice(i, i + 10));
-  }
-  const snaps = await Promise.all(
-    chunks.map((chunk) =>
-      db
-        .collection(COLLECTION)
-        .where("seedRunId", "==", runId)
-        .where("userId", "in", chunk)
-        .get()
-    )
-  );
-  return snaps.flatMap((s) => s.docs);
+async function fetchUndoLastDocsLocal(runId) {
+  return fetchUndoLastDocs(db, COLLECTION, runId, userFilterActive, USER_IDS);
 }
 
 async function undoLastRun() {
@@ -513,7 +490,7 @@ async function undoLastRun() {
   }
   console.log(`  Expected  : ~${count} document(s)\n`);
 
-  const docs = await fetchUndoLastDocs(runId);
+  const docs = await fetchUndoLastDocsLocal(runId);
   const total = docs.length;
 
   if (total === 0) {
@@ -566,33 +543,13 @@ async function resetCollection() {
 // ── Delete: remove only seedData == true documents ────────────────────────────
 
 async function deleteSeedData() {
-  let allDocs;
-
   if (userFilterActive) {
     console.log(`Delete mode: removing seed documents for user(s): ${USER_IDS.join(", ")} …`);
-
-    // Deduplicate and chunk: Firestore 'in' queries support up to 10 values,
-    // and deduplication prevents the same document appearing in multiple chunks.
-    const uniqueIds = [...new Set(USER_IDS)];
-    const chunks = [];
-    for (let i = 0; i < uniqueIds.length; i += 10) {
-      chunks.push(uniqueIds.slice(i, i + 10));
-    }
-    const snaps = await Promise.all(
-      chunks.map((chunk) =>
-        db
-          .collection(COLLECTION)
-          .where("seedData", "==", true)
-          .where("userId", "in", chunk)
-          .get()
-      )
-    );
-    allDocs = snaps.flatMap((s) => s.docs);
   } else {
     console.log(`Delete mode: removing all documents where seedData == true …`);
-    const snap = await db.collection(COLLECTION).where("seedData", "==", true).get();
-    allDocs = snap.docs;
   }
+
+  const allDocs = await fetchDeleteDocs(db, COLLECTION, userFilterActive, USER_IDS);
 
   const total = allDocs.length;
   console.log(`Found ${total} seed documents. Deleting in batches of ${BATCH_SIZE} …`);
