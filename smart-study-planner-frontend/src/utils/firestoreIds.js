@@ -1,4 +1,5 @@
 import { nanoid } from "nanoid";
+import { collection, doc, documentId, getDoc, getDocs, query, where } from "firebase/firestore";
 
 /**
  * Converts arbitrary text into a lowercase, URL-safe slug.
@@ -33,20 +34,57 @@ export function personalOrgId(uid) {
 }
 
 /**
- * Generates a human-readable, globally unique document ID for a task.
- * Format: task_<orgId>_<userId>_<nanoid(10)>
+ * Generates a human-readable, sequential document ID for a task.
+ * Format: task_<categorySlug>_<titleSlug>_<NNN>
  *
- * Why this format?
- * - "task_" prefix makes the collection obvious at a glance in the Firebase Console
- * - orgId and userId scoping lets you grep logs and trace ownership instantly
- * - nanoid(10) suffix (~1 quadrillion combinations) makes collisions essentially impossible
+ * Algorithm:
+ *  1. Query Firestore for all docs whose IDs start with the prefix to find
+ *     the current highest counter.
+ *  2. Propose the next number (max + 1).
+ *  3. Verify the candidate ID does not already exist (getDoc). If it does —
+ *     e.g. due to a concurrent write that landed between the query and here —
+ *     increment and retry until a free slot is found.
  *
- * @param {string} orgId  - Organization ID (e.g. from personalOrgId())
- * @param {string} userId - Firebase Auth UID of the task owner
- * @returns {string}  e.g. "task_org_abc123_abc123_V3kD9pQrLm"
+ * This retry loop makes collisions extremely unlikely in practice. A
+ * fully atomic guarantee would require a server-side counter; for this
+ * client-only app the loop provides sufficient safety.
+ *
+ * @param {import("firebase/firestore").Firestore} db - Firestore instance
+ * @param {string} category - Task category name (will be slugified)
+ * @param {string} title    - Task title (will be slugified)
+ * @returns {Promise<string>}  e.g. "task_school_unity-notes_002"
  */
-export function generateTaskId(orgId, userId) {
-  return `task_${orgId}_${userId}_${nanoid(10)}`;
+export async function generateTaskId(db, category, title) {
+  const categorySlug = slugify(category);
+  const titleSlug = slugify(title);
+  const prefix = `task_${categorySlug}_${titleSlug}_`;
+
+  const q = query(
+    collection(db, "tasks"),
+    where(documentId(), ">=", prefix),
+    where(documentId(), "<", prefix + "\uf8ff")
+  );
+
+  const snap = await getDocs(q);
+
+  let maxNum = 0;
+  snap.forEach((docSnap) => {
+    const suffix = docSnap.id.slice(prefix.length);
+    const num = parseInt(suffix, 10);
+    if (!isNaN(num) && num > maxNum) {
+      maxNum = num;
+    }
+  });
+
+  let candidate = maxNum + 1;
+  while (true) {
+    const candidateId = `${prefix}${String(candidate).padStart(3, "0")}`;
+    const existing = await getDoc(doc(db, "tasks", candidateId));
+    if (!existing.exists()) {
+      return candidateId;
+    }
+    candidate++;
+  }
 }
 
 /**

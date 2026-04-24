@@ -1,10 +1,24 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   slugify,
   personalOrgId,
   generateTaskId,
   generateCategoryId,
 } from "./firestoreIds.js";
+
+// ── Mock firebase/firestore ───────────────────────────────────────────────────
+
+vi.mock("firebase/firestore", () => ({
+  collection: vi.fn(),
+  doc: vi.fn((_db, _col, id) => ({ id })),
+  documentId: vi.fn(() => "__name__"),
+  getDoc: vi.fn(),
+  getDocs: vi.fn(),
+  query: vi.fn(),
+  where: vi.fn(),
+}));
+
+import { getDocs, getDoc } from "firebase/firestore";
 
 // ── slugify ──────────────────────────────────────────────────────────────────
 
@@ -81,45 +95,85 @@ describe("personalOrgId", () => {
 
 // ── generateTaskId ───────────────────────────────────────────────────────────
 
+function makeFakeSnapshot(ids) {
+  const docs = ids.map((id) => ({ id }));
+  return { forEach: (fn) => docs.forEach(fn) };
+}
+
+function makeExistingSet(existingIds) {
+  return (docRef) => Promise.resolve({ exists: () => existingIds.has(docRef.id) });
+}
+
 describe("generateTaskId", () => {
-  const orgId = "org_user123";
-  const userId = "user123";
+  const db = {};
 
-  it("starts with 'task_'", () => {
-    expect(generateTaskId(orgId, userId)).toMatch(/^task_/);
+  beforeEach(() => {
+    vi.clearAllMocks();
   });
 
-  it("embeds orgId in the ID", () => {
-    const id = generateTaskId(orgId, userId);
-    expect(id).toContain(orgId);
+  it("returns task_001 when no matching documents exist", async () => {
+    getDocs.mockResolvedValue(makeFakeSnapshot([]));
+    getDoc.mockImplementation(makeExistingSet(new Set()));
+
+    const id = await generateTaskId(db, "School", "Unity");
+    expect(id).toBe("task_school_unity_001");
   });
 
-  it("embeds userId in the ID", () => {
-    const id = generateTaskId(orgId, userId);
-    expect(id).toContain(userId);
+  it("starts with 'task_'", async () => {
+    getDocs.mockResolvedValue(makeFakeSnapshot([]));
+    getDoc.mockImplementation(makeExistingSet(new Set()));
+
+    const id = await generateTaskId(db, "Work", "Meeting Notes");
+    expect(id).toMatch(/^task_/);
   });
 
-  it("matches the expected format task_<orgId>_<userId>_<nanoid>", () => {
-    const id = generateTaskId(orgId, userId);
-    const regex = new RegExp(`^task_${orgId}_${userId}_[A-Za-z0-9_-]{10}$`);
-    expect(id).toMatch(regex);
+  it("slugifies category and title in the ID", async () => {
+    getDocs.mockResolvedValue(makeFakeSnapshot([]));
+    getDoc.mockImplementation(makeExistingSet(new Set()));
+
+    const id = await generateTaskId(db, "Math & Science!", "My Assignment");
+    expect(id).toBe("task_math-science_my-assignment_001");
   });
 
-  it("appends a 10-character nanoid suffix", () => {
-    const id = generateTaskId(orgId, userId);
-    // nanoid uses the URL-safe alphabet [A-Za-z0-9_-], which includes "_".
-    // Splitting on "_" would truncate the suffix if it contains underscores.
-    // Instead, strip the known prefix and measure what remains.
-    const prefix = `task_${orgId}_${userId}_`;
-    const suffix = id.slice(prefix.length);
-    expect(suffix).toHaveLength(10);
-  });
-
-  it("generates unique IDs across multiple calls", () => {
-    const ids = new Set(
-      Array.from({ length: 1000 }, () => generateTaskId(orgId, userId))
+  it("increments counter when matching documents already exist", async () => {
+    getDocs.mockResolvedValue(
+      makeFakeSnapshot(["task_school_unity_001", "task_school_unity_002"])
     );
-    expect(ids.size).toBe(1000);
+    getDoc.mockImplementation(
+      makeExistingSet(new Set(["task_school_unity_001", "task_school_unity_002"]))
+    );
+
+    const id = await generateTaskId(db, "School", "Unity");
+    expect(id).toBe("task_school_unity_003");
+  });
+
+  it("zero-pads the counter to 3 digits", async () => {
+    getDocs.mockResolvedValue(makeFakeSnapshot([]));
+    getDoc.mockImplementation(makeExistingSet(new Set()));
+
+    const id = await generateTaskId(db, "Work", "Review");
+    expect(id).toMatch(/_\d{3}$/);
+  });
+
+  it("skips a slot that was concurrently taken (retry loop)", async () => {
+    getDocs.mockResolvedValue(makeFakeSnapshot([]));
+    const taken = new Set(["task_school_unity_001"]);
+    getDoc.mockImplementation(makeExistingSet(taken));
+
+    const id = await generateTaskId(db, "School", "Unity");
+    expect(id).toBe("task_school_unity_002");
+  });
+
+  it("handles the highest existing counter correctly", async () => {
+    getDocs.mockResolvedValue(
+      makeFakeSnapshot(["task_work_review_005", "task_work_review_003"])
+    );
+    getDoc.mockImplementation(
+      makeExistingSet(new Set(["task_work_review_005", "task_work_review_003"]))
+    );
+
+    const id = await generateTaskId(db, "Work", "Review");
+    expect(id).toBe("task_work_review_006");
   });
 });
 
@@ -151,9 +205,6 @@ describe("generateCategoryId", () => {
 
   it("appends a 10-character nanoid suffix", () => {
     const id = generateCategoryId(orgId, "History");
-    // nanoid uses the URL-safe alphabet [A-Za-z0-9_-], which includes "_".
-    // Splitting on "_" would truncate the suffix if it contains underscores.
-    // Instead, strip the known prefix and measure what remains.
     const prefix = `cat_${orgId}_history_`;
     const suffix = id.slice(prefix.length);
     expect(suffix).toHaveLength(10);
