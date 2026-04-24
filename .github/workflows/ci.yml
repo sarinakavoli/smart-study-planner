@@ -144,7 +144,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: smart-study-planner-frontend/.test-cache
-          key: frontend-tests-${{ github.ref }}-node20-${{ hashFiles('.github/workflows/ci.yml', 'smart-study-planner-frontend/package-lock.json', 'smart-study-planner-frontend/src/**') }}
+          key: frontend-tests-${{ github.ref }}-node20-${{ hashFiles('.github/workflows/ci.yml', 'smart-study-planner-frontend/package-lock.json', 'smart-study-planner-frontend/src/**', 'smart-study-planner-frontend/scripts/**') }}
           restore-keys: |
             frontend-tests-${{ github.ref }}-node20-
             frontend-tests-refs/heads/main-node20-

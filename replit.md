@@ -108,6 +108,15 @@ since there is no other source for it. On the first request the backend log will
 - `taskService.js` has comments marking exactly where to add `organizationId` filters when real multi-org support is activated
 - `scripts/seed-organizations.mjs` — Admin SDK script that creates personal org docs in the `organizations` collection and refreshes `users/<uid>` docs; supports `--delete` to clean up seed data
 
+## Seed Script Testing
+
+- `smart-study-planner-frontend/scripts/seed-scripts-cli.test.js` — CLI integration tests for `seed-categories.mjs` and `seed-tasks.mjs`
+- Tests spawn the scripts as child processes using `--dry-run` mode, which skips Firebase SDK init so no GCP credentials are needed
+- 45 tests covering: `--dry-run` (basic, `--count`, `--users`, `--email`, `--delete`, `--undo-last`), error paths (invalid flags, empty args, conflicting flags), and the credential-guard (exits 1 without `GCP_SERVICE_ACCOUNT_JSON`)
+- The CI cache key for `frontend-check` now includes `scripts/**` so any change to a seed script or its test file busts the cache and triggers a fresh test run
+- `smart-study-planner-frontend/scripts/seed-user-resolver.test.js` — unit tests for `seed-user-resolver.mjs` (file loading, email-to-UID resolution, mixed-entry resolution)
+- All seed tests run automatically under `npm test` (vitest)
+
 ## Firebase Attachments
 
 - Frontend initializes Firebase Auth, Firestore (`smart-study` database), and Storage in `smart-study-planner-frontend/src/firebase.js`

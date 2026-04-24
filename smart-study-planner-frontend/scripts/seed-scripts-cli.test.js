@@ -1,0 +1,446 @@
+/**
+ * seed-scripts-cli.test.js
+ *
+ * CLI integration tests for seed-categories.mjs and seed-tasks.mjs.
+ *
+ * All tests use --dry-run so no GCP credentials or Firestore writes are
+ * required. Each test spawns the script as a child process and asserts on
+ * the exit code and stdout/stderr output.
+ */
+
+import { spawnSync } from "child_process";
+import { fileURLToPath } from "url";
+import { join, dirname } from "path";
+import { describe, it, expect } from "vitest";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const CATEGORIES_SCRIPT = join(__dirname, "seed-categories.mjs");
+const TASKS_SCRIPT      = join(__dirname, "seed-tasks.mjs");
+
+/**
+ * Spawns a seed script with the given arguments and returns
+ * { exitCode, stdout, stderr }.
+ */
+function run(script, args = []) {
+  const result = spawnSync(process.execPath, [script, ...args], {
+    encoding: "utf8",
+    env: { ...process.env, GCP_SERVICE_ACCOUNT_JSON: undefined },
+  });
+  return {
+    exitCode: result.status ?? 1,
+    stdout:   result.stdout ?? "",
+    stderr:   result.stderr ?? "",
+  };
+}
+
+// ── seed-categories.mjs ───────────────────────────────────────────────────────
+
+describe("seed-categories.mjs --dry-run", () => {
+  it("exits 0 and prints DRY RUN header", () => {
+    const { exitCode, stdout } = run(CATEGORIES_SCRIPT, ["--dry-run"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/DRY RUN/);
+  });
+
+  it("mentions the categories collection", () => {
+    const { stdout } = run(CATEGORIES_SCRIPT, ["--dry-run"]);
+    expect(stdout).toMatch(/categories/i);
+  });
+
+  it("reports the default document count (500)", () => {
+    const { stdout } = run(CATEGORIES_SCRIPT, ["--dry-run"]);
+    expect(stdout).toMatch(/500/);
+  });
+
+  it("shows sample document IDs in cat_<org>_<cat>_<NNN> format", () => {
+    const { stdout } = run(CATEGORIES_SCRIPT, ["--dry-run"]);
+    expect(stdout).toMatch(/cat_[a-z0-9][a-z0-9-]*_[a-z0-9][a-z0-9-]*_\d+/);
+  });
+
+  it("does not write to Firestore (no write-related lines)", () => {
+    const { stdout } = run(CATEGORIES_SCRIPT, ["--dry-run"]);
+    expect(stdout).not.toMatch(/Inserted|writing|batch/i);
+  });
+
+  it("mentions --skip-verify flag in the preview output", () => {
+    const { stdout } = run(CATEGORIES_SCRIPT, ["--dry-run"]);
+    expect(stdout).toMatch(/--skip-verify/);
+  });
+
+  it("reminds user to remove --dry-run to write to Firestore", () => {
+    const { stdout } = run(CATEGORIES_SCRIPT, ["--dry-run"]);
+    expect(stdout).toMatch(/Remove --dry-run/);
+  });
+});
+
+describe("seed-categories.mjs --dry-run --count", () => {
+  it("honours --count=10 and reports 10 documents", () => {
+    const { exitCode, stdout } = run(CATEGORIES_SCRIPT, ["--dry-run", "--count=10"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/10/);
+  });
+
+  it("honours --count=1 (single document)", () => {
+    const { exitCode, stdout } = run(CATEGORIES_SCRIPT, ["--dry-run", "--count=1"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/1/);
+  });
+
+  it("exits 1 and prints ERROR for --count=0", () => {
+    const { exitCode, stderr } = run(CATEGORIES_SCRIPT, ["--dry-run", "--count=0"]);
+    expect(exitCode).toBe(1);
+    expect(stderr).toMatch(/ERROR.*--count/i);
+  });
+
+  it("exits 1 and prints ERROR for a non-numeric --count", () => {
+    const { exitCode, stderr } = run(CATEGORIES_SCRIPT, ["--dry-run", "--count=abc"]);
+    expect(exitCode).toBe(1);
+    expect(stderr).toMatch(/ERROR.*--count/i);
+  });
+});
+
+describe("seed-categories.mjs --dry-run --users", () => {
+  it("accepts a single UID via --users and exits 0", () => {
+    const { exitCode, stdout } = run(CATEGORIES_SCRIPT, ["--dry-run", "--users=uid_abc"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/uid_abc/);
+  });
+
+  it("accepts multiple UIDs and lists them all", () => {
+    const { exitCode, stdout } = run(CATEGORIES_SCRIPT, [
+      "--dry-run",
+      "--users=uid_abc,uid_xyz",
+    ]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/uid_abc/);
+    expect(stdout).toMatch(/uid_xyz/);
+  });
+
+  it("exits 1 and prints ERROR for empty --users=", () => {
+    const { exitCode, stderr } = run(CATEGORIES_SCRIPT, ["--dry-run", "--users="]);
+    expect(exitCode).toBe(1);
+    expect(stderr).toMatch(/ERROR.*--users/i);
+  });
+});
+
+describe("seed-categories.mjs --dry-run --email", () => {
+  it("shows the email as-is in the user list (not resolved in dry-run)", () => {
+    const { exitCode, stdout } = run(CATEGORIES_SCRIPT, [
+      "--dry-run",
+      "--email=test@example.com",
+    ]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/test@example\.com/);
+  });
+
+  it("exits 1 when --email and --users are both supplied", () => {
+    const { exitCode, stderr } = run(CATEGORIES_SCRIPT, [
+      "--dry-run",
+      "--email=test@example.com",
+      "--users=uid_abc",
+    ]);
+    expect(exitCode).toBe(1);
+    expect(stderr).toMatch(/--email.*--users|--users.*--email/i);
+  });
+
+  it("exits 1 for empty --email=", () => {
+    const { exitCode, stderr } = run(CATEGORIES_SCRIPT, ["--dry-run", "--email="]);
+    expect(exitCode).toBe(1);
+    expect(stderr).toMatch(/ERROR.*--email/i);
+  });
+});
+
+describe("seed-categories.mjs --dry-run --delete", () => {
+  it("exits 0 and shows delete-preview output", () => {
+    const { exitCode, stdout } = run(CATEGORIES_SCRIPT, ["--dry-run", "--delete"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/DRY RUN/);
+    expect(stdout).toMatch(/--delete/);
+  });
+
+  it("reports ALL users when no user filter is active", () => {
+    const { stdout } = run(CATEGORIES_SCRIPT, ["--dry-run", "--delete"]);
+    expect(stdout).toMatch(/ALL users/i);
+  });
+
+  it("shows scoped user when --users is combined with --delete", () => {
+    const { exitCode, stdout } = run(CATEGORIES_SCRIPT, [
+      "--dry-run",
+      "--delete",
+      "--users=uid_xyz",
+    ]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/uid_xyz/);
+  });
+});
+
+describe("seed-categories.mjs --dry-run --undo-last", () => {
+  it("exits 0 and shows undo-last preview output", () => {
+    const { exitCode, stdout } = run(CATEGORIES_SCRIPT, ["--dry-run", "--undo-last"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/DRY RUN/);
+    expect(stdout).toMatch(/--undo-last/);
+  });
+
+  it("mentions that no manifest was found when none exists", () => {
+    const { stdout } = run(CATEGORIES_SCRIPT, ["--dry-run", "--undo-last"]);
+    expect(stdout).toMatch(/no manifest found|Run ID/i);
+  });
+});
+
+describe("seed-categories.mjs --dry-run --skip-verify", () => {
+  it("exits 0 when --skip-verify is combined with --dry-run", () => {
+    const { exitCode } = run(CATEGORIES_SCRIPT, ["--dry-run", "--skip-verify"]);
+    expect(exitCode).toBe(0);
+  });
+
+  it("still shows the DRY RUN header when --skip-verify is present", () => {
+    const { stdout } = run(CATEGORIES_SCRIPT, ["--dry-run", "--skip-verify"]);
+    expect(stdout).toMatch(/DRY RUN/);
+  });
+
+  it("shows sample document IDs when --skip-verify is combined with --dry-run", () => {
+    const { stdout } = run(CATEGORIES_SCRIPT, ["--dry-run", "--skip-verify"]);
+    expect(stdout).toMatch(/cat_[a-z0-9][a-z0-9-]*_[a-z0-9][a-z0-9-]*_\d+/);
+  });
+});
+
+describe("seed-categories.mjs --reset", () => {
+  it("exits 0 in --dry-run mode even when --reset is present", () => {
+    const { exitCode, stdout } = run(CATEGORIES_SCRIPT, ["--dry-run", "--reset"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/DRY RUN/);
+  });
+
+  it("exits 1 when --reset is used without credentials", () => {
+    const result = spawnSync(
+      process.execPath,
+      [CATEGORIES_SCRIPT, "--reset"],
+      {
+        encoding: "utf8",
+        env: { ...process.env, GCP_SERVICE_ACCOUNT_JSON: "" },
+      }
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/GCP_SERVICE_ACCOUNT_JSON/);
+  });
+});
+
+describe("seed-categories.mjs: no credentials without --dry-run", () => {
+  it("exits 1 and prints ERROR about missing credentials", () => {
+    const result = spawnSync(
+      process.execPath,
+      [CATEGORIES_SCRIPT],
+      {
+        encoding: "utf8",
+        env: { ...process.env, GCP_SERVICE_ACCOUNT_JSON: "" },
+      }
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/GCP_SERVICE_ACCOUNT_JSON/);
+  });
+});
+
+// ── seed-tasks.mjs ────────────────────────────────────────────────────────────
+
+describe("seed-tasks.mjs --dry-run", () => {
+  it("exits 0 and prints DRY RUN header", () => {
+    const { exitCode, stdout } = run(TASKS_SCRIPT, ["--dry-run"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/DRY RUN/);
+  });
+
+  it("mentions the tasks collection", () => {
+    const { stdout } = run(TASKS_SCRIPT, ["--dry-run"]);
+    expect(stdout).toMatch(/tasks/i);
+  });
+
+  it("reports the default document count (10,000)", () => {
+    const { stdout } = run(TASKS_SCRIPT, ["--dry-run"]);
+    expect(stdout).toMatch(/10[,.]?000/);
+  });
+
+  it("shows sample document IDs in task_<cat>_<title>_<NNN> format", () => {
+    const { stdout } = run(TASKS_SCRIPT, ["--dry-run"]);
+    expect(stdout).toMatch(/task_[a-z0-9][a-z0-9-]*_[a-z0-9][a-z0-9-]*_\d+/);
+  });
+
+  it("does not write to Firestore", () => {
+    const { stdout } = run(TASKS_SCRIPT, ["--dry-run"]);
+    expect(stdout).not.toMatch(/Inserted|writing|batch/i);
+  });
+
+  it("reminds user to remove --dry-run to write to Firestore", () => {
+    const { stdout } = run(TASKS_SCRIPT, ["--dry-run"]);
+    expect(stdout).toMatch(/Remove --dry-run/);
+  });
+});
+
+describe("seed-tasks.mjs --dry-run --count", () => {
+  it("honours --count=5 and exits 0", () => {
+    const { exitCode, stdout } = run(TASKS_SCRIPT, ["--dry-run", "--count=5"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/5/);
+  });
+
+  it("exits 1 and prints ERROR for --count=0", () => {
+    const { exitCode, stderr } = run(TASKS_SCRIPT, ["--dry-run", "--count=0"]);
+    expect(exitCode).toBe(1);
+    expect(stderr).toMatch(/ERROR.*--count/i);
+  });
+
+  it("exits 1 and prints ERROR for --count=-1", () => {
+    const { exitCode, stderr } = run(TASKS_SCRIPT, ["--dry-run", "--count=-1"]);
+    expect(exitCode).toBe(1);
+    expect(stderr).toMatch(/ERROR.*--count/i);
+  });
+
+  it("exits 1 and prints ERROR for non-numeric --count", () => {
+    const { exitCode, stderr } = run(TASKS_SCRIPT, ["--dry-run", "--count=xyz"]);
+    expect(exitCode).toBe(1);
+    expect(stderr).toMatch(/ERROR.*--count/i);
+  });
+});
+
+describe("seed-tasks.mjs --dry-run --users", () => {
+  it("accepts a single UID and exits 0", () => {
+    const { exitCode, stdout } = run(TASKS_SCRIPT, ["--dry-run", "--users=uid_abc"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/uid_abc/);
+  });
+
+  it("accepts comma-separated UIDs and lists them", () => {
+    const { exitCode, stdout } = run(TASKS_SCRIPT, [
+      "--dry-run",
+      "--users=uid_one,uid_two,uid_three",
+    ]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/uid_one/);
+    expect(stdout).toMatch(/uid_two/);
+    expect(stdout).toMatch(/uid_three/);
+  });
+
+  it("exits 1 for empty --users=", () => {
+    const { exitCode, stderr } = run(TASKS_SCRIPT, ["--dry-run", "--users="]);
+    expect(exitCode).toBe(1);
+    expect(stderr).toMatch(/ERROR.*--users/i);
+  });
+});
+
+describe("seed-tasks.mjs --dry-run --email", () => {
+  it("shows the email as-is in dry-run mode", () => {
+    const { exitCode, stdout } = run(TASKS_SCRIPT, [
+      "--dry-run",
+      "--email=dev@example.com",
+    ]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/dev@example\.com/);
+  });
+
+  it("exits 1 when --email and --users are both supplied", () => {
+    const { exitCode, stderr } = run(TASKS_SCRIPT, [
+      "--dry-run",
+      "--email=dev@example.com",
+      "--users=uid_abc",
+    ]);
+    expect(exitCode).toBe(1);
+    expect(stderr).toMatch(/--email.*--users|--users.*--email/i);
+  });
+
+  it("exits 1 for empty --email=", () => {
+    const { exitCode, stderr } = run(TASKS_SCRIPT, ["--dry-run", "--email="]);
+    expect(exitCode).toBe(1);
+    expect(stderr).toMatch(/ERROR.*--email/i);
+  });
+});
+
+describe("seed-tasks.mjs --dry-run --delete", () => {
+  it("exits 0 and shows delete-preview output", () => {
+    const { exitCode, stdout } = run(TASKS_SCRIPT, ["--dry-run", "--delete"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/DRY RUN/);
+    expect(stdout).toMatch(/--delete/);
+  });
+
+  it("reports ALL users when no user filter is active", () => {
+    const { stdout } = run(TASKS_SCRIPT, ["--dry-run", "--delete"]);
+    expect(stdout).toMatch(/ALL users/i);
+  });
+
+  it("shows scoped user when --users is combined with --delete", () => {
+    const { exitCode, stdout } = run(TASKS_SCRIPT, [
+      "--dry-run",
+      "--delete",
+      "--users=uid_xyz",
+    ]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/uid_xyz/);
+  });
+});
+
+describe("seed-tasks.mjs --dry-run --undo-last", () => {
+  it("exits 0 and shows undo-last preview output", () => {
+    const { exitCode, stdout } = run(TASKS_SCRIPT, ["--dry-run", "--undo-last"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/DRY RUN/);
+    expect(stdout).toMatch(/--undo-last/);
+  });
+
+  it("mentions that no manifest was found when none exists", () => {
+    const { stdout } = run(TASKS_SCRIPT, ["--dry-run", "--undo-last"]);
+    expect(stdout).toMatch(/no manifest found|Run ID/i);
+  });
+});
+
+describe("seed-tasks.mjs --dry-run --skip-verify", () => {
+  it("exits 0 when --skip-verify is combined with --dry-run", () => {
+    const { exitCode } = run(TASKS_SCRIPT, ["--dry-run", "--skip-verify"]);
+    expect(exitCode).toBe(0);
+  });
+
+  it("still shows the DRY RUN header when --skip-verify is present", () => {
+    const { stdout } = run(TASKS_SCRIPT, ["--dry-run", "--skip-verify"]);
+    expect(stdout).toMatch(/DRY RUN/);
+  });
+
+  it("shows sample document IDs when --skip-verify is combined with --dry-run", () => {
+    const { stdout } = run(TASKS_SCRIPT, ["--dry-run", "--skip-verify"]);
+    expect(stdout).toMatch(/task_[a-z0-9][a-z0-9-]*_[a-z0-9][a-z0-9-]*_\d+/);
+  });
+});
+
+describe("seed-tasks.mjs --reset", () => {
+  it("exits 0 in --dry-run mode even when --reset is present", () => {
+    const { exitCode, stdout } = run(TASKS_SCRIPT, ["--dry-run", "--reset"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/DRY RUN/);
+  });
+
+  it("exits 1 when --reset is used without credentials", () => {
+    const result = spawnSync(
+      process.execPath,
+      [TASKS_SCRIPT, "--reset"],
+      {
+        encoding: "utf8",
+        env: { ...process.env, GCP_SERVICE_ACCOUNT_JSON: "" },
+      }
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/GCP_SERVICE_ACCOUNT_JSON/);
+  });
+});
+
+describe("seed-tasks.mjs: no credentials without --dry-run", () => {
+  it("exits 1 and prints ERROR about missing credentials", () => {
+    const result = spawnSync(
+      process.execPath,
+      [TASKS_SCRIPT],
+      {
+        encoding: "utf8",
+        env: { ...process.env, GCP_SERVICE_ACCOUNT_JSON: "" },
+      }
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/GCP_SERVICE_ACCOUNT_JSON/);
+  });
+});
