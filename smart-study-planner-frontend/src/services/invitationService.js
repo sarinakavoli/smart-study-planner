@@ -2,7 +2,6 @@ import {
   collection,
   doc,
   setDoc,
-  getDoc,
   getDocs,
   updateDoc,
   query,
@@ -95,26 +94,19 @@ export async function getPendingInvitationsForEmail(email) {
 export async function acceptInvitation({ invitation, userId, userEmail }) {
   const { id: inviteId, organizationId, organizationName, invitedEmail } = invitation;
 
+  // arrayUnion/arrayRemove are idempotent — no need to read the org first.
+  // (Reading it would fail anyway since the invitee is not yet a member.)
   const orgRef = doc(db, "organizations", organizationId);
-  const orgSnap = await getDoc(orgRef);
+  await updateDoc(orgRef, {
+    memberIds: arrayUnion(userId),
+    memberEmails: arrayUnion(userEmail),
+    pendingInviteEmails: arrayRemove(invitedEmail),
+  });
 
-  if (!orgSnap.exists()) {
-    throw new Error("Organization not found.");
-  }
-
-  const orgData = orgSnap.data();
-  if (!(orgData.memberIds || []).includes(userId)) {
-    await updateDoc(orgRef, {
-      memberIds: arrayUnion(userId),
-      memberEmails: arrayUnion(userEmail),
-      pendingInviteEmails: arrayRemove(invitedEmail),
-    });
-
-    await updateDoc(doc(db, "users", userId), {
-      organizationId,
-      updatedAt: serverTimestamp(),
-    });
-  }
+  await updateDoc(doc(db, "users", userId), {
+    organizationId,
+    updatedAt: serverTimestamp(),
+  });
 
   await updateDoc(doc(db, "invitations", inviteId), {
     status: "accepted",
