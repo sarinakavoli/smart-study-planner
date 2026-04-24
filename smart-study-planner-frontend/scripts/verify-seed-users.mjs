@@ -11,10 +11,12 @@
  * never match a real UID unless overridden with --users=<real-uid>.
  *
  * This script:
- *   1. Queries Firestore for all documents where seedData == true in both the
- *      "categories" and "tasks" collections.
- *   2. Collects every unique userId found in those documents.
- *   3. Looks up each userId in Firebase Auth via the Admin SDK.
+ *   1. Queries Firestore for all documents where seedData == true in the
+ *      "categories", "tasks", and "organizations" collections.
+ *   2. Collects every unique owner UID found in those documents (using the
+ *      appropriate field per collection: userId for categories/tasks,
+ *      ownerId for organizations).
+ *   3. Looks up each UID in Firebase Auth via the Admin SDK.
  *   4. Reports which IDs exist (seeded data WILL appear) and which are missing
  *      from Auth (seeded data WILL NOT appear) so the mismatch is caught early.
  *
@@ -28,8 +30,8 @@
  *
  * FLAGS
  * ─────
- *   (no flag)          Check both "categories" and "tasks" collections.
- *   --collection=NAME  Only check the named collection (categories or tasks).
+ *   (no flag)          Check "categories", "tasks", and "organizations" collections.
+ *   --collection=NAME  Only check the named collection (categories, tasks, or organizations).
  *   --dry-run          Preview which collections would be scanned without
  *                      contacting Firebase. Exits 0. No credentials required.
  *                      When this flag is used, the script also reads a metadata
@@ -49,8 +51,9 @@
  *
  *                      Expected JSON shape:
  *                        {
- *                          "categories": <number>,
- *                          "tasks":      <number>
+ *                          "categories":    <number>,
+ *                          "tasks":         <number>,
+ *                          "organizations": <number>
  *                        }
  *
  *                      Each key is a collection name; the value is the count
@@ -114,7 +117,7 @@ const __dirname  = dirname(__filename);
 
 const DB_NAME    = "smart-study";
 
-const ALL_COLLECTIONS = ["categories", "tasks"];
+const ALL_COLLECTIONS = ["categories", "tasks", "organizations"];
 
 const DEFAULT_COUNTS_FILE = join(__dirname, ".seed-counts.json");
 
@@ -184,8 +187,8 @@ if (dryRun) {
   console.log("  DRY RUN — no network calls will be made.");
   console.log("  In a real run the script would:");
   console.log(`    1. Query each collection for documents where seedData == true`);
-  console.log(`    2. Collect every unique userId from those documents`);
-  console.log(`    3. Look up each userId in Firebase Auth`);
+  console.log(`    2. Collect every unique owner UID from those documents`);
+  console.log(`    3. Look up each UID in Firebase Auth`);
   console.log(`    4. Report which IDs exist in Auth and which do not`);
   console.log();
   console.log("  Remove --dry-run to perform the actual verification.");

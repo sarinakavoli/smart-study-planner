@@ -9,14 +9,37 @@
 const BATCH_SIZE = 500;
 
 /**
- * Returns every unique userId present in documents where seedData == true
+ * Maps collection names to the Firestore field that holds the owner's UID.
+ * Collections not listed here default to "userId".
+ */
+const COLLECTION_FIELD_MAP = {
+  categories:    "userId",
+  tasks:         "userId",
+  organizations: "ownerId",
+};
+
+/**
+ * Returns the UID field name for the given collection.
+ *
+ * @param {string} collectionName
+ * @returns {string}
+ */
+function getFieldName(collectionName) {
+  return COLLECTION_FIELD_MAP[collectionName] ?? "userId";
+}
+
+/**
+ * Returns every unique user UID present in documents where seedData == true
  * for the given Firestore collection.
  *
  * @param {FirebaseFirestore.Firestore} db
  * @param {string} collectionName
- * @returns {Promise<Map<string, number>>}  userId → document count
+ * @param {string} [fieldName]  The document field that contains the owner UID.
+ *   Defaults to the value from COLLECTION_FIELD_MAP, or "userId" if the
+ *   collection is not listed there.
+ * @returns {Promise<Map<string, number>>}  uid → document count
  */
-export async function collectSeedUserIds(db, collectionName) {
+export async function collectSeedUserIds(db, collectionName, fieldName = getFieldName(collectionName)) {
   const userCounts = new Map();
   let lastDoc = null;
 
@@ -34,7 +57,7 @@ export async function collectSeedUserIds(db, collectionName) {
     if (snap.empty) break;
 
     for (const doc of snap.docs) {
-      const uid = doc.data().userId;
+      const uid = doc.data()[fieldName];
       if (uid) {
         userCounts.set(uid, (userCounts.get(uid) ?? 0) + 1);
       }
@@ -80,12 +103,12 @@ export async function verifySeedUsers(db, auth, collectionName) {
   console.log("=".repeat(60));
 
   process.stdout.write(`  Scanning "${collectionName}" for seeded documents …`);
-  const userCounts = await collectSeedUserIds(db, collectionName);
+  const userCounts = await collectSeedUserIds(db, collectionName, getFieldName(collectionName));
 
   let totalDocs = 0;
   for (const count of userCounts.values()) totalDocs += count;
   console.log(
-    ` found ${totalDocs.toLocaleString()} docs across ${userCounts.size} unique userId(s).`
+    ` found ${totalDocs.toLocaleString()} docs across ${userCounts.size} unique UID(s).`
   );
   console.log();
 
@@ -95,7 +118,7 @@ export async function verifySeedUsers(db, auth, collectionName) {
     return true;
   }
 
-  console.log(`  Checking ${userCounts.size} unique userId(s) against Firebase Auth …`);
+  console.log(`  Checking ${userCounts.size} unique UID(s) against Firebase Auth …`);
   console.log();
 
   const found    = [];
@@ -111,7 +134,7 @@ export async function verifySeedUsers(db, auth, collectionName) {
   }
 
   if (found.length > 0) {
-    console.log(`  PASS — ${found.length} userId(s) exist in Firebase Auth:`);
+    console.log(`  PASS — ${found.length} UID(s) exist in Firebase Auth:`);
     console.log("  (Seeded data for these users WILL appear in the app)");
     console.log();
     for (const { uid, email, count } of found) {
@@ -123,7 +146,7 @@ export async function verifySeedUsers(db, auth, collectionName) {
   }
 
   if (notFound.length > 0) {
-    console.log(`  FAIL — ${notFound.length} userId(s) NOT found in Firebase Auth:`);
+    console.log(`  FAIL — ${notFound.length} UID(s) NOT found in Firebase Auth:`);
     console.log("  (Seeded data for these IDs will NOT appear in the app)");
     console.log();
     for (const { uid, count } of notFound) {
@@ -170,10 +193,11 @@ export async function verifySeedUsers(db, auth, collectionName) {
  * per entry in `seededUids`.  Used when SEED_VERIFY_MOCK_JSON is set.
  *
  * @param {string[]} seededUids
+ * @param {string}   [fieldName="userId"]  The field name to use for the UID.
  */
-function buildMockDb(seededUids) {
+function buildMockDb(seededUids, fieldName = "userId") {
   const docs = seededUids.map((uid) => ({
-    data: () => ({ userId: uid, seedData: true }),
+    data: () => ({ [fieldName]: uid, seedData: true }),
   }));
   let fetched = false;
   const makeQueryObj = () => ({
@@ -233,7 +257,7 @@ export async function verifySeedUsersOrExit(db, auth, collectionName) {
   const mockJson = process.env.SEED_VERIFY_MOCK_JSON;
   if (mockJson) {
     const { users: seededUids = [], missing: missingUids = [] } = JSON.parse(mockJson);
-    db   = buildMockDb(seededUids);
+    db   = buildMockDb(seededUids, getFieldName(collectionName));
     auth = buildMockAuth(missingUids);
   }
   const allPass = await verifySeedUsers(db, auth, collectionName);
@@ -276,7 +300,7 @@ export async function verifyAllCollections(db, auth, collectionsToCheck) {
 
   for (const col of collectionsToCheck) {
     process.stdout.write(`  Scanning "${col}" for seeded documents …`);
-    const counts = await collectSeedUserIds(db, col);
+    const counts = await collectSeedUserIds(db, col, getFieldName(col));
     perCollection[col] = counts;
 
     let totalInCol = 0;
@@ -286,7 +310,7 @@ export async function verifyAllCollections(db, auth, collectionsToCheck) {
     }
 
     console.log(
-      ` found ${totalInCol.toLocaleString()} docs across ${counts.size} unique userId(s).`
+      ` found ${totalInCol.toLocaleString()} docs across ${counts.size} unique UID(s).`
     );
   }
 
@@ -301,7 +325,7 @@ export async function verifyAllCollections(db, auth, collectionsToCheck) {
     return true;
   }
 
-  console.log(`  Checking ${combinedCounts.size} unique userId(s) against Firebase Auth …`);
+  console.log(`  Checking ${combinedCounts.size} unique UID(s) against Firebase Auth …`);
   console.log();
 
   const found    = [];
@@ -317,7 +341,7 @@ export async function verifyAllCollections(db, auth, collectionsToCheck) {
   }
 
   if (found.length > 0) {
-    console.log(`  PASS — ${found.length} userId(s) exist in Firebase Auth:`);
+    console.log(`  PASS — ${found.length} UID(s) exist in Firebase Auth:`);
     console.log("  (Seeded data for these users WILL appear in the app)");
     console.log();
     for (const { uid, email, totalDocs } of found) {
@@ -337,7 +361,7 @@ export async function verifyAllCollections(db, auth, collectionsToCheck) {
   }
 
   if (notFound.length > 0) {
-    console.log(`  FAIL — ${notFound.length} userId(s) NOT found in Firebase Auth:`);
+    console.log(`  FAIL — ${notFound.length} UID(s) NOT found in Firebase Auth:`);
     console.log("  (Seeded data for these IDs will NOT appear in the app)");
     console.log();
     for (const { uid, totalDocs } of notFound) {

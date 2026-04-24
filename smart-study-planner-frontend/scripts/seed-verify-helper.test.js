@@ -171,6 +171,50 @@ describe("collectSeedUserIds", () => {
 
     expect(result.size).toBe(1);
   });
+
+  it("reads 'ownerId' when an explicit fieldName of 'ownerId' is passed", async () => {
+    const db = makeDb([
+      [
+        { ownerId: "uid-alice", seedData: true },
+        { ownerId: "uid-alice", seedData: true },
+      ],
+    ]);
+
+    const result = await collectSeedUserIds(db, "organizations", "ownerId");
+
+    expect(result.get("uid-alice")).toBe(2);
+    expect(result.size).toBe(1);
+  });
+
+  it("defaults to 'ownerId' for the organizations collection without explicit fieldName", async () => {
+    const db = makeDb([
+      [
+        { ownerId: "uid-bob", seedData: true },
+        { ownerId: "uid-carol", seedData: true },
+      ],
+    ]);
+
+    const result = await collectSeedUserIds(db, "organizations");
+
+    expect(result.get("uid-bob")).toBe(1);
+    expect(result.get("uid-carol")).toBe(1);
+    expect(result.size).toBe(2);
+  });
+
+  it("does NOT pick up userId documents when reading organizations with ownerId field", async () => {
+    const db = makeDb([
+      [
+        { userId: "uid-wrong-field", seedData: true },
+        { ownerId: "uid-correct", seedData: true },
+      ],
+    ]);
+
+    const result = await collectSeedUserIds(db, "organizations");
+
+    expect(result.has("uid-wrong-field")).toBe(false);
+    expect(result.get("uid-correct")).toBe(1);
+    expect(result.size).toBe(1);
+  });
 });
 
 // ── lookupAuthUser ────────────────────────────────────────────────────────────
@@ -410,6 +454,35 @@ describe("verifySeedUsers", () => {
     await expect(verifySeedUsers(db, auth, "categories")).rejects.toThrow(
       "network failure"
     );
+  });
+
+  it("reads ownerId field for the organizations collection and finds the Auth user", async () => {
+    const db = makeDb([[{ ownerId: "uid-alice", seedData: true }]]);
+    const auth = makeAuth({ "uid-alice": { email: "alice@example.com" } });
+
+    const result = await verifySeedUsers(db, auth, "organizations");
+
+    expect(result).toBe(true);
+    expect(auth.getUser).toHaveBeenCalledWith("uid-alice");
+  });
+
+  it("returns false for organizations when the ownerId is missing from Auth", async () => {
+    const db = makeDb([[{ ownerId: "uid-ghost", seedData: true }]]);
+    const auth = makeAuth({}, ["uid-ghost"]);
+
+    const result = await verifySeedUsers(db, auth, "organizations");
+
+    expect(result).toBe(false);
+  });
+
+  it("does not find organizations docs that only have userId (not ownerId)", async () => {
+    const db = makeDb([[{ userId: "uid-alice", seedData: true }]]);
+    const auth = makeAuth({ "uid-alice": { email: "alice@example.com" } });
+
+    const result = await verifySeedUsers(db, auth, "organizations");
+
+    expect(result).toBe(true);
+    expect(auth.getUser).not.toHaveBeenCalled();
   });
 });
 
@@ -759,6 +832,56 @@ describe("verifyAllCollections", () => {
     await expect(
       verifyAllCollections(db, auth, ["categories", "tasks"])
     ).rejects.toThrow("network failure");
+  });
+
+  it("reads ownerId field from organizations and finds the Auth user", async () => {
+    const db = makeDbMulti({
+      organizations: [[{ ownerId: "uid-alice", seedData: true }]],
+    });
+    const auth = makeAuth({ "uid-alice": { email: "alice@example.com" } });
+
+    const result = await verifyAllCollections(db, auth, ["organizations"]);
+
+    expect(result).toBe(true);
+    expect(auth.getUser).toHaveBeenCalledWith("uid-alice");
+  });
+
+  it("returns false for organizations when the ownerId is missing from Auth", async () => {
+    const db = makeDbMulti({
+      organizations: [[{ ownerId: "uid-ghost", seedData: true }]],
+    });
+    const auth = makeAuth({}, ["uid-ghost"]);
+
+    const result = await verifyAllCollections(db, auth, ["organizations"]);
+
+    expect(result).toBe(false);
+  });
+
+  it("scans organizations alongside categories and tasks using the correct fields", async () => {
+    const db = makeDbMulti({
+      categories:    [[{ userId: "uid-alice", seedData: true }]],
+      tasks:         [[{ userId: "uid-alice", seedData: true }]],
+      organizations: [[{ ownerId: "uid-alice", seedData: true }]],
+    });
+    const auth = makeAuth({ "uid-alice": { email: "alice@example.com" } });
+
+    const result = await verifyAllCollections(db, auth, ["categories", "tasks", "organizations"]);
+
+    expect(result).toBe(true);
+    expect(auth.getUser).toHaveBeenCalledTimes(1);
+    expect(auth.getUser).toHaveBeenCalledWith("uid-alice");
+  });
+
+  it("does not pick up userId docs from organizations when looking for ownerId", async () => {
+    const db = makeDbMulti({
+      organizations: [[{ userId: "uid-wrong", seedData: true }]],
+    });
+    const auth = makeAuth({ "uid-wrong": { email: "wrong@example.com" } });
+
+    const result = await verifyAllCollections(db, auth, ["organizations"]);
+
+    expect(result).toBe(true);
+    expect(auth.getUser).not.toHaveBeenCalled();
   });
 });
 
