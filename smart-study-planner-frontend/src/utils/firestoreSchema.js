@@ -70,12 +70,14 @@
 //   e.g. "cat_AvU4Op_math-science_3kd9"
 //
 // Fields:
-//   name           string   Normalized (UPPERCASED) category name
-//   color          string   Hex color string, or "" for no color
-//   displayOrder   number   Sort position in the sidebar
-//   userId         string   Full Firebase Auth UID of the owner
-//   organizationId string   Org this category belongs to
-//   readableId     string   Copy of the document ID (for debugging/logging)
+//   name             string   Normalized (UPPERCASED) category name
+//   color            string   Hex color string, or "" for no color
+//   displayOrder     number   Sort position in the sidebar
+//   userId           string   Full Firebase Auth UID of the owner
+//   userEmail        string   Email address of the owner (for debugging/display)
+//   organizationId   string   Org this category belongs to
+//   organizationName string   Human-readable name of the org (for debugging/display)
+//   readableId       string   Copy of the document ID (for debugging/logging)
 //
 //
 // ── COLLECTION: tasks ────────────────────────────────────────────────────────

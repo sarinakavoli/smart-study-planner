@@ -51,6 +51,7 @@ function App() {
   const [theme, setTheme] = useState(localStorage.getItem("theme") || "dark");
   const [currentUser, setCurrentUser] = useState(null);
   const [organizationId, setOrganizationId] = useState(null);
+  const [organizationName, setOrganizationName] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [loading, setLoading] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
@@ -184,9 +185,11 @@ function App() {
 
         console.log("[auth] Setup complete — resolvedOrgId:", resolvedOrgId);
         setOrganizationId(resolvedOrgId);
+        setOrganizationName(`${firebaseUser.email || ""}'s Workspace`);
       } else {
         console.log("[auth] onAuthStateChanged fired — user signed out");
         setOrganizationId(null);
+        setOrganizationName(null);
       }
       setCurrentUser(firebaseUser ?? null);
       setAuthLoading(false);
@@ -754,7 +757,9 @@ function App() {
       color: "",
       displayOrder: maxOrder + 1,
       userId: currentUser?.uid ?? null,
+      userEmail: currentUser?.email ?? null,
       organizationId: orgId,
+      organizationName: organizationName ?? null,
       readableId: catId,
     });
 

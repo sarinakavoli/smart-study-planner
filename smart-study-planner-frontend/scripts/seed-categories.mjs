@@ -557,16 +557,21 @@ async function insertCategories() {
 
       const categoryId = buildCategoryId(shortUserId, catSlug, randomSuffix());
 
+      const userEmail      = `seed+${userId}@example.com`;
+      const orgName        = `Personal org for ${userId}`;
+
       const ref = db.collection(COLLECTION).doc(categoryId);
       batch.set(ref, {
-        name:           categoryName,
-        color:          pick(COLORS),
+        name:             categoryName,
+        color:            pick(COLORS),
         userId,
-        organizationId: orgId,
-        readableId:     categoryId,
-        seedData:       true,
+        userEmail,
+        organizationId:   orgId,
+        organizationName: orgName,
+        readableId:       categoryId,
+        seedData:         true,
         seedRunId,
-        createdAt:      new Date().toISOString(),
+        createdAt:        new Date().toISOString(),
       });
     }
 
