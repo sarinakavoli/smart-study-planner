@@ -16,8 +16,9 @@ import { join, dirname } from "path";
 import { describe, it, expect, afterEach } from "vitest";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const CATEGORIES_SCRIPT = join(__dirname, "seed-categories.mjs");
-const TASKS_SCRIPT      = join(__dirname, "seed-tasks.mjs");
+const CATEGORIES_SCRIPT    = join(__dirname, "seed-categories.mjs");
+const TASKS_SCRIPT         = join(__dirname, "seed-tasks.mjs");
+const ORGANIZATIONS_SCRIPT = join(__dirname, "seed-organizations.mjs");
 
 /**
  * Spawns a seed script with the given arguments and returns
@@ -871,5 +872,36 @@ describe(".seed-users file activates scoped filter in --dry-run output", () => {
       const { stdout } = run(TASKS_SCRIPT, ["--dry-run", "--undo-last"], env);
       expect(stdout).not.toMatch(/ALL users/i);
     });
+  });
+});
+
+// ── seed-organizations.mjs ────────────────────────────────────────────────────
+
+describe("seed-organizations.mjs --skip-verify", () => {
+  it("exits 0 when --skip-verify is set", () => {
+    const { exitCode } = run(
+      ORGANIZATIONS_SCRIPT,
+      ["--skip-verify"],
+      { SEED_VERIFY_MOCK_JSON: "{}" }
+    );
+    expect(exitCode).toBe(0);
+  });
+
+  it("prints the skip message when --skip-verify is set", () => {
+    const { stdout } = run(
+      ORGANIZATIONS_SCRIPT,
+      ["--skip-verify"],
+      { SEED_VERIFY_MOCK_JSON: "{}" }
+    );
+    expect(stdout).toMatch(/Skipping post-insert verification/);
+  });
+
+  it("does not print the verification header when --skip-verify is set", () => {
+    const { stdout } = run(
+      ORGANIZATIONS_SCRIPT,
+      ["--skip-verify"],
+      { SEED_VERIFY_MOCK_JSON: "{}" }
+    );
+    expect(stdout).not.toMatch(/Seed-user verification/);
   });
 });
