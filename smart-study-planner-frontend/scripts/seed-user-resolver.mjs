@@ -36,6 +36,7 @@ import { dirname } from "path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+const SEED_USERS_PATH_IS_OVERRIDE = Boolean(process.env.SEED_USERS_PATH_OVERRIDE);
 const SEED_USERS_PATH =
   process.env.SEED_USERS_PATH_OVERRIDE || join(__dirname, ".seed-users");
 
@@ -50,6 +51,13 @@ const SEED_USERS_PATH =
  */
 export function loadSeedUsersFile() {
   if (!existsSync(SEED_USERS_PATH)) {
+    if (SEED_USERS_PATH_IS_OVERRIDE) {
+      console.error(
+        `ERROR: SEED_USERS_PATH_OVERRIDE is set to "${SEED_USERS_PATH}" but the file was not found.\n` +
+        `       Check that the path is correct and the file is readable.`
+      );
+      process.exit(1);
+    }
     return null;
   }
 

@@ -182,6 +182,28 @@ describe("loadSeedUsersFile – file path selection", () => {
     );
     expect(result).toEqual(["default@example.com"]);
   });
+
+  it("calls process.exit(1) when SEED_USERS_PATH_OVERRIDE is set but the file does not exist", async () => {
+    const overridePath = "/tmp/nonexistent-seed-users.json";
+    process.env.SEED_USERS_PATH_OVERRIDE = overridePath;
+
+    vi.resetModules();
+    const { loadSeedUsersFile: loadWithOverride } = await import("./seed-user-resolver.mjs");
+
+    existsSync.mockReturnValue(false);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    expect(() => loadWithOverride()).toThrow("process.exit called");
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("SEED_USERS_PATH_OVERRIDE")
+    );
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining(overridePath)
+    );
+
+    errorSpy.mockRestore();
+  });
 });
 
 // ── resolveEmailsToUids ───────────────────────────────────────────────────────
