@@ -251,15 +251,55 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      # Sparse checkout fetches only the files needed to compute the cache key:
+      # the workflow file, package-lock.json, and the seed-script source and
+      # test files.  This lets the cache lookup happen before a full checkout so
+      # that checkout, install, and tests can all be skipped on a cache hit.
+      - name: Sparse checkout for cache key computation
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            .github/workflows/ci.yml
+            smart-study-planner-frontend/package-lock.json
+            smart-study-planner-frontend/scripts/seed-categories.mjs
+            smart-study-planner-frontend/scripts/seed-tasks.mjs
+            smart-study-planner-frontend/scripts/seed-organizations.mjs
+            smart-study-planner-frontend/scripts/seed-scripts-cli.test.js
+            smart-study-planner-frontend/scripts/seed-verify-exit-cli.test.js
+          sparse-checkout-cone-mode: false
+
+      # Cache key is derived from the branch ref, Node version, the workflow
+      # file, package-lock.json, and the seed-script source and test files only.
+      # A cache hit means the exact same inputs produced a passing run
+      # previously, so full checkout, install, and tests can be safely skipped.
+      # restore-keys let a new branch warm up from main's cache instead of
+      # starting cold (see top-of-file cache strategy comment).
+      - name: Restore cached seed scripts test results
+        id: cache-seed-tests
+        uses: actions/cache@v4
+        with:
+          path: smart-study-planner-frontend/.seed-test-cache
+          key: seed-scripts-tests-${{ github.ref }}-node20-${{ hashFiles('.github/workflows/ci.yml', 'smart-study-planner-frontend/package-lock.json', 'smart-study-planner-frontend/scripts/seed-categories.mjs', 'smart-study-planner-frontend/scripts/seed-tasks.mjs', 'smart-study-planner-frontend/scripts/seed-organizations.mjs', 'smart-study-planner-frontend/scripts/seed-scripts-cli.test.js', 'smart-study-planner-frontend/scripts/seed-verify-exit-cli.test.js') }}
+          restore-keys: |
+            seed-scripts-tests-${{ github.ref }}-node20-
+            seed-scripts-tests-refs/heads/main-node20-
+            seed-scripts-tests-node20-
+
+      # Full checkout is only needed when the cache misses.  The sparse checkout
+      # above already satisfies the key computation; this step upgrades it to the
+      # complete tree so install and tests can run against all project files.
+      - name: Full checkout
+        if: steps.cache-seed-tests.outputs.cache-hit != 'true'
         uses: actions/checkout@v4
 
       - name: Set up Node.js
+        if: steps.cache-seed-tests.outputs.cache-hit != 'true'
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
       - name: Cache npm dependencies
+        if: steps.cache-seed-tests.outputs.cache-hit != 'true'
         uses: actions/cache@v4
         with:
           path: ~/.npm
@@ -270,6 +310,7 @@ jobs:
             frontend-npm-node20-
 
       - name: Install frontend dependencies
+        if: steps.cache-seed-tests.outputs.cache-hit != 'true'
         working-directory: smart-study-planner-frontend
         run: npm ci
 
@@ -277,6 +318,7 @@ jobs:
       # required (all tests use --dry-run or mock mode).
       - name: Run seed scripts tests
         id: seed-tests
+        if: steps.cache-seed-tests.outputs.cache-hit != 'true'
         working-directory: smart-study-planner-frontend
         run: npx vitest run scripts/seed-scripts-cli.test.js scripts/seed-verify-exit-cli.test.js
 
@@ -289,10 +331,19 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+      - name: Record successful test run
+        if: steps.cache-seed-tests.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p smart-study-planner-frontend/.seed-test-cache
+          echo "passed" > smart-study-planner-frontend/.seed-test-cache/result.txt
+
       - name: Summarise seed scripts test execution
         if: always()
         run: |
-          if [ "${{ job.status }}" = "success" ]; then
+          if [ "${{ steps.cache-seed-tests.outputs.cache-hit }}" = "true" ]; then
+            echo "## Seed Scripts Tests: skipped (cache hit)" >> $GITHUB_STEP_SUMMARY
+            echo "All inputs matched a previous passing run. Seed script tests were skipped." >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ job.status }}" = "success" ]; then
             echo "## Seed Scripts Tests: passed" >> $GITHUB_STEP_SUMMARY
             echo "All CLI and exit-code scenarios for seed-categories.mjs and seed-tasks.mjs passed." >> $GITHUB_STEP_SUMMARY
           else
