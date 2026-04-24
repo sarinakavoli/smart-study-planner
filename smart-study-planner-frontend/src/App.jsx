@@ -100,6 +100,10 @@ function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
+        const orgId = personalOrgId(firebaseUser.uid);
+        const createdAt =
+          firebaseUser.metadata.creationTime ?? new Date().toISOString();
+
         // Write (or refresh) the user's Firestore profile document.
         // merge: true means existing fields are preserved — this is safe to
         // call on every login, not just the first signup.
@@ -110,13 +114,32 @@ function App() {
             doc(db, "users", firebaseUser.uid),
             {
               email: firebaseUser.email,
-              organizationId: personalOrgId(firebaseUser.uid),
-              createdAt: firebaseUser.metadata.creationTime ?? new Date().toISOString(),
+              organizationId: orgId,
+              createdAt,
             },
             { merge: true }
           );
         } catch (profileErr) {
           console.error("Could not write user profile doc:", profileErr);
+        }
+
+        // Create (or refresh) the personal organization document so the
+        // organizations collection is populated automatically without running
+        // the seed script.  The security rules allow this create because
+        // ownerId === auth.uid and auth.uid is in memberUids.
+        try {
+          await setDoc(
+            doc(db, "organizations", orgId),
+            {
+              name: `Personal org for ${firebaseUser.uid}`,
+              ownerId: firebaseUser.uid,
+              memberUids: arrayUnion(firebaseUser.uid),
+              createdAt,
+            },
+            { merge: true }
+          );
+        } catch (orgErr) {
+          console.error("Could not write organization doc:", orgErr);
         }
       }
       setCurrentUser(firebaseUser ?? null);
