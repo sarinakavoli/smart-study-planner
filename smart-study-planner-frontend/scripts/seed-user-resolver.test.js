@@ -129,6 +129,61 @@ describe("loadSeedUsersFile", () => {
   });
 });
 
+// ── loadSeedUsersFile – file path selection ───────────────────────────────────
+
+describe("loadSeedUsersFile – file path selection", () => {
+  let exitSpy;
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+      throw new Error("process.exit called");
+    });
+  });
+
+  afterEach(() => {
+    exitSpy.mockRestore();
+    delete process.env.SEED_USERS_PATH_OVERRIDE;
+    vi.resetModules();
+  });
+
+  it("reads from SEED_USERS_PATH_OVERRIDE when the env var is set", async () => {
+    const overridePath = "/tmp/test-seed-users-override.json";
+    process.env.SEED_USERS_PATH_OVERRIDE = overridePath;
+
+    vi.resetModules();
+    const { loadSeedUsersFile: loadWithOverride } = await import("./seed-user-resolver.mjs");
+
+    existsSync.mockReturnValue(true);
+    readFileSync.mockReturnValue(JSON.stringify({ users: ["override@example.com"] }));
+
+    const result = loadWithOverride();
+
+    expect(existsSync).toHaveBeenCalledWith(overridePath);
+    expect(readFileSync).toHaveBeenCalledWith(overridePath, "utf8");
+    expect(result).toEqual(["override@example.com"]);
+  });
+
+  it("reads from the default .seed-users path when SEED_USERS_PATH_OVERRIDE is not set", async () => {
+    delete process.env.SEED_USERS_PATH_OVERRIDE;
+
+    vi.resetModules();
+    const { loadSeedUsersFile: loadDefault } = await import("./seed-user-resolver.mjs");
+
+    existsSync.mockReturnValue(true);
+    readFileSync.mockReturnValue(JSON.stringify({ users: ["default@example.com"] }));
+
+    const result = loadDefault();
+
+    expect(existsSync).toHaveBeenCalledWith(expect.stringMatching(/[/\\]\.seed-users$/));
+    expect(readFileSync).toHaveBeenCalledWith(
+      expect.stringMatching(/[/\\]\.seed-users$/),
+      "utf8"
+    );
+    expect(result).toEqual(["default@example.com"]);
+  });
+});
+
 // ── resolveEmailsToUids ───────────────────────────────────────────────────────
 
 describe("resolveEmailsToUids", () => {
