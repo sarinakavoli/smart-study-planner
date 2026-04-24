@@ -15,6 +15,10 @@ smart-study-planner-frontend/.env.*.local
 # Vitest JUnit report output
 smart-study-planner-frontend/test-results
 
+# CI input-hash cache sentinel directories — created by GitHub Actions cache steps
+smart-study-planner-frontend/.test-cache
+smart-study-planner-frontend/.seed-test-cache
+
 # Google Cloud service account key — never commit this
 scripts/serviceAccountKey.json
 smart-study-planner-backend/service-account.json
