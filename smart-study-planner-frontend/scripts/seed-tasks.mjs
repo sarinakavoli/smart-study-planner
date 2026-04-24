@@ -60,6 +60,33 @@
  *                      Has no effect in --delete, --reset, or --undo-last modes
  *                      (verification is never run in those modes anyway).
  *
+ * ENVIRONMENT VARIABLES
+ * ─────────────────────
+ *   GCP_SERVICE_ACCOUNT_JSON
+ *                      Required for all live operations (insert, delete, reset,
+ *                      undo-last, email resolution).  Set it as a Replit Secret
+ *                      containing the full JSON content of your Firebase Admin
+ *                      SDK service account key.  Not required for --dry-run.
+ *
+ *   SEED_USERS_PATH_OVERRIDE
+ *                      Override the path to the .seed-users config file.
+ *                      Default: scripts/.seed-users
+ *                               (the .seed-users file next to this script)
+ *                      Useful in CI or multi-project setups where the config
+ *                      file lives outside the scripts directory.
+ *
+ *                      Example:
+ *                        SEED_USERS_PATH_OVERRIDE=/tmp/my-users.json \
+ *                          node smart-study-planner-frontend/scripts/seed-tasks.mjs
+ *
+ *                      Expected JSON shape (same as .seed-users):
+ *                        {
+ *                          "users": [
+ *                            "alice@example.com",
+ *                            "firebase-uid-xyz"
+ *                          ]
+ *                        }
+ *
  * .SEED-USERS CONFIG FILE
  * ───────────────────────
  *   If neither --users nor --email is supplied, the script looks for a
