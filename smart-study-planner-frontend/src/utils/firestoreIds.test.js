@@ -90,53 +90,51 @@ describe("generateTaskId", () => {
   const db = {};
   const userId = "abcXYZ123456";
 
-  it("starts with 'task_'", async () => {
-    const id = await generateTaskId(db, userId, "School", "Unity");
+  it("starts with 'task_'", () => {
+    const id = generateTaskId(db, userId, "School", "Unity");
     expect(id).toMatch(/^task_/);
   });
 
-  it("embeds the first 6 characters of userId after the task_ prefix", async () => {
-    const id = await generateTaskId(db, userId, "School", "Unity");
+  it("embeds the first 6 characters of userId after the task_ prefix", () => {
+    const id = generateTaskId(db, userId, "School", "Unity");
     const shortUserId = userId.slice(0, 6);
     expect(id.startsWith(`task_${shortUserId}_`)).toBe(true);
   });
 
-  it("slugifies the category into the ID", async () => {
-    const id = await generateTaskId(db, userId, "Math & Science!", "Assignment");
+  it("slugifies the category into the ID", () => {
+    const id = generateTaskId(db, userId, "Math & Science!", "Assignment");
     expect(id).toContain("math-science");
   });
 
-  it("slugifies the title into the ID", async () => {
-    const id = await generateTaskId(db, userId, "School", "My Assignment");
+  it("slugifies the title into the ID", () => {
+    const id = generateTaskId(db, userId, "School", "My Assignment");
     expect(id).toContain("my-assignment");
   });
 
-  it("ends with a 4-character strictly alphanumeric suffix", async () => {
-    const id = await generateTaskId(db, userId, "School", "Unity");
+  it("ends with a 4-character strictly alphanumeric suffix", () => {
+    const id = generateTaskId(db, userId, "School", "Unity");
     expect(id).toMatch(/_[A-Za-z0-9]{4}$/);
   });
 
-  it("matches the full expected format", async () => {
-    const id = await generateTaskId(db, userId, "School", "Unity Notes");
+  it("matches the full expected format", () => {
+    const id = generateTaskId(db, userId, "School", "Unity Notes");
     expect(id).toMatch(/^task_[A-Za-z0-9]{1,6}_[a-z0-9-]*_[a-z0-9-]*_[A-Za-z0-9]{4}$/);
   });
 
-  it("generates unique IDs across multiple calls", async () => {
+  it("generates unique IDs across multiple calls", () => {
     const ids = new Set(
-      await Promise.all(
-        Array.from({ length: 200 }, () =>
-          generateTaskId(db, userId, "School", "Unity")
-        )
+      Array.from({ length: 200 }, () =>
+        generateTaskId(db, userId, "School", "Unity")
       )
     );
     expect(ids.size).toBeGreaterThan(1);
   });
 
-  it("does not require any Firestore reads or writes", async () => {
+  it("does not require any Firestore reads or writes", () => {
     const fakeDb = {
       collection: vi.fn(() => { throw new Error("Firestore should not be called"); }),
     };
-    await expect(generateTaskId(fakeDb, userId, "Work", "Meeting")).resolves.toMatch(/^task_/);
+    expect(generateTaskId(fakeDb, userId, "Work", "Meeting")).toMatch(/^task_/);
   });
 });
 

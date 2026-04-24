@@ -806,7 +806,7 @@ function App() {
       if (editingTaskId) {
         await updateDoc(doc(db, "tasks", editingTaskId), payload);
       } else {
-        const generatedId = await generateTaskId(db, currentUser.uid, finalCategory, newTask.title.trim());
+        const generatedId = generateTaskId(db, currentUser.uid, finalCategory, newTask.title.trim());
         await setDoc(doc(db, "tasks", generatedId), {
           ...payload,
           readableId: generatedId,

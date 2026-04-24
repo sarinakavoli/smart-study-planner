@@ -45,11 +45,11 @@ export function personalOrgId(uid) {
  * @param {string} userId   - Firebase Auth UID of the current user
  * @param {string} category - Task category name (will be slugified)
  * @param {string} title    - Task title (will be slugified)
- * @returns {Promise<string>}  e.g. "task_abc1_school_unity-notes_v3kD"
+ * @returns {string}  e.g. "task_abc1_school_unity-notes_v3kD"
  */
 const alphanumeric = customAlphabet("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", 4);
 
-export async function generateTaskId(_db, userId, category, title) {
+export function generateTaskId(_db, userId, category, title) {
   const shortUserId = String(userId).slice(0, 6);
   const categorySlug = slugify(category);
   const titleSlug = slugify(title);
