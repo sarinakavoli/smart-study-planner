@@ -9,9 +9,11 @@
  */
 
 import { spawnSync } from "child_process";
+import { writeFileSync, mkdtempSync, rmSync } from "fs";
+import { tmpdir } from "os";
 import { fileURLToPath } from "url";
 import { join, dirname } from "path";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CATEGORIES_SCRIPT = join(__dirname, "seed-categories.mjs");
@@ -20,11 +22,15 @@ const TASKS_SCRIPT      = join(__dirname, "seed-tasks.mjs");
 /**
  * Spawns a seed script with the given arguments and returns
  * { exitCode, stdout, stderr }.
+ *
+ * @param {string}   script   - Absolute path to the script
+ * @param {string[]} args     - CLI arguments
+ * @param {object}   extraEnv - Optional additional environment variables
  */
-function run(script, args = []) {
+function run(script, args = [], extraEnv = {}) {
   const result = spawnSync(process.execPath, [script, ...args], {
     encoding: "utf8",
-    env: { ...process.env, GCP_SERVICE_ACCOUNT_JSON: undefined },
+    env: { ...process.env, GCP_SERVICE_ACCOUNT_JSON: undefined, ...extraEnv },
   });
   return {
     exitCode: result.status ?? 1,
@@ -626,5 +632,96 @@ describe("seed-tasks.mjs: no credentials without --dry-run", () => {
     );
     expect(result.status).toBe(1);
     expect(result.stderr).toMatch(/GCP_SERVICE_ACCOUNT_JSON/);
+  });
+});
+
+// ── .seed-users file path tests ───────────────────────────────────────────────
+//
+// Each test creates a temporary directory, writes `.seed-users` there, and
+// passes SEED_USERS_PATH_OVERRIDE so the spawned script reads from that
+// isolated location. The temp directory is removed after each test, ensuring
+// no real scripts/.seed-users file is touched.
+
+describe(".seed-users file activates scoped filter in --dry-run output", () => {
+  let tmpDir;
+  let seedUsersFile;
+
+  afterEach(() => {
+    if (tmpDir) {
+      rmSync(tmpDir, { recursive: true, force: true });
+      tmpDir = undefined;
+      seedUsersFile = undefined;
+    }
+  });
+
+  function writeSeedUsers(users) {
+    tmpDir = mkdtempSync(join(tmpdir(), "seed-users-test-"));
+    seedUsersFile = join(tmpDir, ".seed-users");
+    writeFileSync(seedUsersFile, JSON.stringify({ users }), "utf8");
+    return { SEED_USERS_PATH_OVERRIDE: seedUsersFile };
+  }
+
+  describe("seed-categories.mjs --dry-run --delete", () => {
+    it("shows scoped filter when .seed-users file contains UIDs", () => {
+      const env = writeSeedUsers(["uid_from_file"]);
+      const { exitCode, stdout } = run(CATEGORIES_SCRIPT, ["--dry-run", "--delete"], env);
+      expect(exitCode).toBe(0);
+      expect(stdout).toMatch(/uid_from_file/);
+      expect(stdout).toMatch(/seedData == true AND userId IN/);
+    });
+
+    it("does not show ALL-users scope when .seed-users file is present", () => {
+      const env = writeSeedUsers(["uid_from_file"]);
+      const { stdout } = run(CATEGORIES_SCRIPT, ["--dry-run", "--delete"], env);
+      expect(stdout).not.toMatch(/ALL users/i);
+    });
+  });
+
+  describe("seed-categories.mjs --dry-run --undo-last", () => {
+    it("shows scoped filter when .seed-users file contains UIDs", () => {
+      const env = writeSeedUsers(["uid_from_file"]);
+      const { exitCode, stdout } = run(CATEGORIES_SCRIPT, ["--dry-run", "--undo-last"], env);
+      expect(exitCode).toBe(0);
+      expect(stdout).toMatch(/uid_from_file/);
+      expect(stdout).toMatch(/seedRunId == <run-id> AND userId IN/);
+    });
+
+    it("does not show ALL-users scope when .seed-users file is present", () => {
+      const env = writeSeedUsers(["uid_from_file"]);
+      const { stdout } = run(CATEGORIES_SCRIPT, ["--dry-run", "--undo-last"], env);
+      expect(stdout).not.toMatch(/ALL users/i);
+    });
+  });
+
+  describe("seed-tasks.mjs --dry-run --delete", () => {
+    it("shows scoped filter when .seed-users file contains UIDs", () => {
+      const env = writeSeedUsers(["uid_from_file"]);
+      const { exitCode, stdout } = run(TASKS_SCRIPT, ["--dry-run", "--delete"], env);
+      expect(exitCode).toBe(0);
+      expect(stdout).toMatch(/uid_from_file/);
+      expect(stdout).toMatch(/seedData == true AND userId IN/);
+    });
+
+    it("does not show ALL-users scope when .seed-users file is present", () => {
+      const env = writeSeedUsers(["uid_from_file"]);
+      const { stdout } = run(TASKS_SCRIPT, ["--dry-run", "--delete"], env);
+      expect(stdout).not.toMatch(/ALL users/i);
+    });
+  });
+
+  describe("seed-tasks.mjs --dry-run --undo-last", () => {
+    it("shows scoped filter when .seed-users file contains UIDs", () => {
+      const env = writeSeedUsers(["uid_from_file"]);
+      const { exitCode, stdout } = run(TASKS_SCRIPT, ["--dry-run", "--undo-last"], env);
+      expect(exitCode).toBe(0);
+      expect(stdout).toMatch(/uid_from_file/);
+      expect(stdout).toMatch(/seedRunId == <run-id> AND userId IN/);
+    });
+
+    it("does not show ALL-users scope when .seed-users file is present", () => {
+      const env = writeSeedUsers(["uid_from_file"]);
+      const { stdout } = run(TASKS_SCRIPT, ["--dry-run", "--undo-last"], env);
+      expect(stdout).not.toMatch(/ALL users/i);
+    });
   });
 });

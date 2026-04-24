@@ -36,7 +36,8 @@ import { dirname } from "path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const SEED_USERS_PATH = join(__dirname, ".seed-users");
+const SEED_USERS_PATH =
+  process.env.SEED_USERS_PATH_OVERRIDE || join(__dirname, ".seed-users");
 
 /**
  * Attempts to load the .seed-users config file from the scripts directory.
