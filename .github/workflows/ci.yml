@@ -276,8 +276,18 @@ jobs:
       # Run both seed-script test files in one step so no GCP credentials are
       # required (all tests use --dry-run or mock mode).
       - name: Run seed scripts tests
+        id: seed-tests
         working-directory: smart-study-planner-frontend
         run: npx vitest run scripts/seed-scripts-cli.test.js scripts/seed-verify-exit-cli.test.js
+
+      - name: Upload seed scripts test report on failure
+        if: steps.seed-tests.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: seed-scripts-test-report
+          path: smart-study-planner-frontend/test-results/junit.xml
+          retention-days: 7
+          if-no-files-found: ignore
 
       - name: Summarise seed scripts test execution
         if: always()
