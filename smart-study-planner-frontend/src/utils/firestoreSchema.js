@@ -40,18 +40,17 @@
 //   displayName     string|null  Display name from Firebase Auth (null if not set)
 //   organizationId  string    ID of the org this user currently belongs to
 //                             e.g. "org_AvU4Op_default"
-//   organizationIds string[]  All org IDs this user belongs to
-//                             Currently always [organizationId]
 //   createdAt       Timestamp Firestore server timestamp — set once at first login
 //   updatedAt       Timestamp Firestore server timestamp — refreshed on every login
 //
 // Notes:
 //   - Written in full on first login (when organizationId is not yet set).
 //   - On subsequent logins only uid, email, displayName, and updatedAt are
-//     refreshed (merge: true), preserving organizationId, organizationIds,
-//     and createdAt.
+//     refreshed (merge: true), preserving organizationId and createdAt.
 //   - organizationId is the source of truth used by the app for scoping
 //     tasks and categories — it is loaded from Firestore, not computed.
+//   - When a user joins an existing org, update organizationId to the new
+//     org's ID and add the user's UID to that org's memberIds array.
 //
 //
 // ── COLLECTION: categories ───────────────────────────────────────────────────
@@ -102,18 +101,23 @@
 //
 // On sign-up or first login (onAuthStateChanged in App.jsx):
 //   1. Read users/<uid> — check for an existing organizationId.
-//   2. If organizationId is missing:
+//   2. If organizationId is missing (new user):
 //      a. Generate resolvedOrgId = personalOrgId(uid)
 //              = "org_" + uid.slice(0, 6) + "_default"
 //      b. Create organizations/<resolvedOrgId> with id, name, ownerId,
-//         memberIds, createdAt, updatedAt (all server timestamps).
+//         memberIds: [uid], createdAt, updatedAt (all server timestamps).
 //      c. Write users/<uid> with uid, email, displayName, organizationId,
-//         organizationIds, createdAt, updatedAt (all server timestamps).
-//   3. If organizationId already exists:
+//         createdAt, updatedAt (all server timestamps).
+//   3. If organizationId already exists (returning user):
 //      a. Use the stored value (no new org is created).
 //      b. Merge-update uid, email, displayName, updatedAt only.
 //   4. Store resolvedOrgId in React state (organizationId).
 //      All subsequent task and category writes use this value.
+//
+// When a user joins an existing organization:
+//   1. Add the user's UID to organizations/<orgId>.memberIds (arrayUnion).
+//   2. Update users/<uid>.organizationId to the existing orgId.
+//   3. Do NOT create a new org document.
 //
 //
 // ── FIRESTORE SECURITY RULES — ACCESS MODEL ──────────────────────────────────

@@ -36,7 +36,7 @@
  * ──────────────────────────────────────
  * When you add real organizations (e.g. a school or team):
  *   1. Create a new org document in this script (without seedData: true).
- *   2. Add the member UIDs to the org's `memberUids` array.
+ *   2. Add the member UIDs to the org's `memberIds` array.
  *   3. Update each member's `users/<uid>` document so organizationId points
  *      to the real org ID instead of their personal org.
  *   4. In App.jsx, replace personalOrgId(uid) calls with the real org ID
@@ -87,9 +87,10 @@ const db = getFirestore(DB_NAME);
 /**
  * Returns the personal org ID for a given uid.
  * Must match personalOrgId() in src/utils/firestoreIds.js exactly.
+ * Format: org_<first6charsOfUid>_default
  */
 function personalOrgId(uid) {
-  return `org_${uid}`;
+  return `org_${String(uid).slice(0, 6)}_default`;
 }
 
 // ── Main ────────────────────────────────────────────────────────────────────
@@ -115,13 +116,15 @@ async function seedOrganizations() {
     // merge: true — safe to re-run; existing orgs are not overwritten.
     await db.collection("organizations").doc(orgId).set(
       {
+        id: orgId,
         name: `Personal org for ${uid}`,
         ownerId: uid,
-        memberUids: [uid],
+        memberIds: [uid],
         createdAt: now,
+        updatedAt: now,
         seedData: true,
         // When real multi-org support is added, remove seedData: true and
-        // replace name/memberUids with values from your org management UI.
+        // replace name/memberIds with values from your org management UI.
       },
       { merge: true }
     );

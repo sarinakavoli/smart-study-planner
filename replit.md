@@ -93,6 +93,25 @@ Any successful response from `POST /api/generate` proves the key came from Googl
 since there is no other source for it. On the first request the backend log will print:
 `GEMINI_API_KEY retrieved from Secret Manager and cached.`
 
+## Organization Membership Model
+
+Each organization document stores its members directly in a `memberIds` array:
+
+```
+organizations/{organizationId}
+  id:         organizationId
+  name:       organization name
+  ownerId:    uid of creator
+  memberIds:  [uid1, uid2, ...]
+  createdAt:  serverTimestamp()
+  updatedAt:  serverTimestamp()
+```
+
+- **Creating an org** (on first login): `ownerId = currentUser.uid`, `memberIds = [currentUser.uid]`
+- **Joining an existing org**: add UID to `memberIds` (via `arrayUnion`), update `users/{uid}.organizationId` to the existing org ID — do NOT create a new org
+- **Access check**: a user can read/write org tasks and categories if their UID is inside `organizations/{orgId}.memberIds`
+- `users/{uid}` stores a single `organizationId` field (no plural `organizationIds` array)
+
 ## Firestore Document ID Strategy & Multi-Org Design
 
 - All newly created tasks and categories use **human-readable, prefixed document IDs** instead of Firestore auto-IDs

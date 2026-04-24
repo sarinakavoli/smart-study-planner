@@ -155,7 +155,6 @@ function App() {
               email: firebaseUser.email,
               displayName: firebaseUser.displayName ?? null,
               organizationId: resolvedOrgId,
-              organizationIds: [resolvedOrgId],
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp(),
             });
