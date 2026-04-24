@@ -118,7 +118,7 @@
 import { readFileSync, writeFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { join, dirname } from "path";
-import { verifySeedUsers } from "./seed-verify-helper.mjs";
+import { verifySeedUsersOrExit } from "./seed-verify-helper.mjs";
 import { loadSeedUsersFile, resolveMixedEntries } from "./seed-user-resolver.mjs";
 import { fetchDeleteDocs, fetchUndoLastDocs } from "./seed-firestore-helpers.mjs";
 import { slugify, personalOrgId, buildTaskId } from "./seed-id-helpers.mjs";
@@ -693,7 +693,6 @@ async function insertTasks() {
   if (skipVerify) {
     console.log("\n  (Skipping post-insert verification — --skip-verify flag is set.)");
   } else {
-    const allPass = await verifySeedUsers(db, auth, COLLECTION);
-    if (!allPass) process.exit(1);
+    await verifySeedUsersOrExit(db, auth, COLLECTION);
   }
 }
