@@ -33,8 +33,8 @@
  *
  * REFINED FORMAT REGEX
  * ────────────────────
- *   Tasks      : task_<orgSlug>_<catSlug>_<dateSlug>_<counter>
- *     Regex    : /^task_[a-z0-9][a-z0-9-]*_[a-z0-9][a-z0-9-]*_[a-z0-9][a-z0-9-]*_\d+$/
+ *   Tasks      : task_<categorySlug>_<titleSlug>_<NNN>
+ *     Regex    : /^task_[a-z0-9][a-z0-9-]*_[a-z0-9][a-z0-9-]*_\d+$/
  *
  *   Categories : cat_<orgSlug>_<catSlug>_<counter>
  *     Regex    : /^cat_[a-z0-9][a-z0-9-]*_[a-z0-9][a-z0-9-]*_\d+$/
@@ -90,11 +90,11 @@ const __dirname  = dirname(__filename);
 // ── Strict refined-format regexes ─────────────────────────────────────────────
 
 /**
- * Valid refined task ID: task_<orgSlug>_<catSlug>_<dateSlug>_<counter>
- * All slug segments: lowercase alphanumeric + hyphens, starts with [a-z0-9].
- * Counter: one or more digits.
+ * Valid refined task ID: task_<categorySlug>_<titleSlug>_<NNN>
+ * Both slug segments: lowercase alphanumeric + hyphens, start with [a-z0-9].
+ * Counter: one or more digits (zero-padded to 3 digits by generateTaskId).
  */
-const TASK_ID_REGEX = /^task_[a-z0-9][a-z0-9-]*_[a-z0-9][a-z0-9-]*_[a-z0-9][a-z0-9-]*_\d+$/;
+const TASK_ID_REGEX = /^task_[a-z0-9][a-z0-9-]*_[a-z0-9][a-z0-9-]*_\d+$/;
 
 /**
  * Valid refined category ID: cat_<orgSlug>_<catSlug>_<counter>
@@ -167,9 +167,12 @@ db.settings({ databaseId: FIRESTORE_DATABASE });
 /**
  * Classifies a document ID:
  *   "ok"         — Passes strict refined-format regex.
- *   "deprecated" — Starts with deprecated prefix (e.g. "task_org_").
- *   "malformed"  — Has right prefix but fails the refined regex.
- *   "legacy"     — No expected prefix (Firestore auto-ID).
+ *   "deprecated" — Does NOT pass the regex AND starts with deprecated prefix.
+ *   "malformed"  — Does NOT pass the regex AND has the right prefix but not deprecated.
+ *   "legacy"     — Does NOT pass the regex AND lacks the expected prefix.
+ *
+ * The regex is checked first so a valid new-format ID (e.g. task_org_math_001
+ * for a category named "org") is never wrongly flagged as deprecated.
  *
  * @param {string} docId
  * @param {string} newPrefix         e.g. "task_"
@@ -178,10 +181,10 @@ db.settings({ databaseId: FIRESTORE_DATABASE });
  * @returns {"ok"|"deprecated"|"malformed"|"legacy"}
  */
 function classifyId(docId, newPrefix, deprecatedPrefix, refinedRegex) {
+  if (refinedRegex.test(docId)) return "ok";
   if (!docId.startsWith(newPrefix)) return "legacy";
   if (docId.startsWith(deprecatedPrefix)) return "deprecated";
-  if (!refinedRegex.test(docId)) return "malformed";
-  return "ok";
+  return "malformed";
 }
 
 // ── Helper: print a list of IDs with optional verbose mode ────────────────────

@@ -12,18 +12,17 @@
  *     Examples : cat_org-abc123_research_1
  *                cat_org-abc123_school_2
  *
- *   Tasks      : task_<orgSlug>_<categorySlug>_<dueDate>_<counter>
- *     Examples : task_org-abc123_math_2025-04-19_1
- *                task_org-abc123_research_noduedate_1
+ *   Tasks      : task_<categorySlug>_<titleSlug>_<NNN>
+ *     Examples : task_school_unity-notes_001
+ *                task_math_algebra-review_002
  *
  *   Where:
- *     orgSlug      = slugify(organizationId)   e.g. "org_abc123" → "org-abc123"
- *     categorySlug = slugify(category name)    e.g. "Math & Science" → "math-science"
- *     dueDate      = YYYY-MM-DD string, or "noduedate" if absent
- *     counter      = 1-based integer, unique per (orgSlug, catSlug, dueDate)
- *                    Seeded from the maximum counter in existing refined docs
- *                    of the same group, so new assignments never collide with
- *                    already-migrated documents.
+ *     categorySlug = slugify(category name)   e.g. "Math & Science" → "math-science"
+ *     titleSlug    = slugify(task title)      e.g. "Unity Notes" → "unity-notes"
+ *     NNN          = 3-digit zero-padded sequential counter, unique per
+ *                    (categorySlug, titleSlug) group, seeded from the maximum
+ *                    counter in existing refined docs so new assignments never
+ *                    collide with already-migrated documents.
  *
  * DOCUMENTS THAT ARE MIGRATED
  * ────────────────────────────
@@ -118,11 +117,11 @@ function safeSlug(text, fallback) {
 
 /**
  * Strict regex for a VALID refined task ID.
- * Format: task_<orgSlug>_<catSlug>_<dateSlug>_<counter>
- * All slug segments: lowercase alphanumeric + hyphens.
- * Counter: one or more digits.
+ * Format: task_<categorySlug>_<titleSlug>_<NNN>
+ * All slug segments: lowercase alphanumeric + hyphens, start with [a-z0-9].
+ * Counter: one or more digits (zero-padded to at least 3 digits in practice).
  */
-const TASK_ID_REGEX = /^task_[a-z0-9][a-z0-9-]*_[a-z0-9][a-z0-9-]*_[a-z0-9][a-z0-9-]*_\d+$/;
+const TASK_ID_REGEX = /^task_[a-z0-9][a-z0-9-]*_[a-z0-9][a-z0-9-]*_\d+$/;
 
 /**
  * Strict regex for a VALID refined category ID.
@@ -131,16 +130,14 @@ const TASK_ID_REGEX = /^task_[a-z0-9][a-z0-9-]*_[a-z0-9][a-z0-9-]*_[a-z0-9][a-z0
 const CAT_ID_REGEX = /^cat_[a-z0-9][a-z0-9-]*_[a-z0-9][a-z0-9-]*_\d+$/;
 
 /**
- * Returns true if a document ID needs migration:
- *   - No expected prefix (legacy auto-ID).
- *   - Starts with deprecated prefix (e.g. "task_org_").
- *   - Has right prefix but fails the strict refined-format regex.
+ * Returns true if a document ID needs migration.
+ * The refined regex is checked first so that a valid new-format ID is never
+ * incorrectly flagged as "deprecated" (e.g. a task whose category slug
+ * happens to be "org" would produce a task_org_... prefix but is fine if
+ * it passes the strict regex).
  */
-function needsMigration(docId, newPrefix, deprecatedPrefix, refinedRegex) {
-  if (!docId.startsWith(newPrefix)) return true;        // legacy auto-ID
-  if (docId.startsWith(deprecatedPrefix)) return true;  // deprecated readable format
-  if (!refinedRegex.test(docId)) return true;           // malformed new-prefix ID
-  return false;
+function needsMigration(docId, _newPrefix, _deprecatedPrefix, refinedRegex) {
+  return !refinedRegex.test(docId);
 }
 
 /**
@@ -197,43 +194,34 @@ function seedGroupCounters(allDocs, newPrefix, deprecatedPrefix, refinedRegex, g
 
 /**
  * Assigns deterministic 1-based (or seeded) counters to each doc in `docs`.
- * Docs are sorted by composite key (orgSlug + catSlug + dateSlug + oldDocId)
- * for stable, reproducible ordering within a run.
+ * Docs are sorted by (groupPrefix + oldDocId) for stable, reproducible
+ * ordering within a run.
  *
- * @param {FirebaseFirestore.QueryDocumentSnapshot[]} docs   Docs to migrate.
- * @param {function} getSegments   (docSnap) → { orgSlug, catSlug, dateSlug }
- * @param {string}   idPrefix      e.g. "cat_" or "task_"
- * @param {Map}      groupCounters Pre-seeded map; mutated in place.
- * @returns {Map<string, { orgSlug, catSlug, dateSlug, counter, newId }>}
+ * @param {FirebaseFirestore.QueryDocumentSnapshot[]} docs          Docs to migrate.
+ * @param {function} getGroupPrefix  (docSnap) → string   Group prefix for the new ID,
+ *                                   e.g. "task_school_unity-notes" or "cat_org-abc_math".
+ *                                   Everything before the final _<counter> segment.
+ * @param {Map}      groupCounters   Pre-seeded map; mutated in place.
+ * @param {boolean}  [padCounter]    Zero-pad counter to 3 digits (default: false).
+ * @returns {Map<string, { groupPrefix, counter, newId }>}
  */
-function assignCounters(docs, getSegments, idPrefix, groupCounters) {
+function assignCounters(docs, getGroupPrefix, groupCounters, padCounter = false) {
   const sorted = [...docs].sort((a, b) => {
-    const sa = getSegments(a);
-    const sb = getSegments(b);
-    const ka = `${sa.orgSlug}\x00${sa.catSlug}\x00${sa.dateSlug}\x00${a.id}`;
-    const kb = `${sb.orgSlug}\x00${sb.catSlug}\x00${sb.dateSlug}\x00${b.id}`;
+    const ka = `${getGroupPrefix(a)}\x00${a.id}`;
+    const kb = `${getGroupPrefix(b)}\x00${b.id}`;
     return ka.localeCompare(kb);
   });
 
   const assignments = new Map();
 
   for (const docSnap of sorted) {
-    const { orgSlug, catSlug, dateSlug } = getSegments(docSnap);
-
-    // Build the group prefix that the new ID will share
-    // (everything before the counter segment).
-    let groupPrefix;
-    if (idPrefix === "task_") {
-      groupPrefix = `task_${orgSlug}_${catSlug}_${dateSlug}`;
-    } else {
-      groupPrefix = `cat_${orgSlug}_${catSlug}`;
-    }
-
+    const groupPrefix = getGroupPrefix(docSnap);
     const counter = (groupCounters.get(groupPrefix) ?? 0) + 1;
     groupCounters.set(groupPrefix, counter);
 
-    const newId = `${groupPrefix}_${counter}`;
-    assignments.set(docSnap.id, { orgSlug, catSlug, dateSlug, counter, newId });
+    const counterStr = padCounter ? String(counter).padStart(3, "0") : String(counter);
+    const newId = `${groupPrefix}_${counterStr}`;
+    assignments.set(docSnap.id, { groupPrefix, counter, newId });
   }
 
   return assignments;
@@ -405,13 +393,11 @@ async function migrateTasks() {
     return { migrated: 0, skipped: 0, errors: 0 };
   }
 
-  const getTaskSegments = (docSnap) => {
-    const data    = docSnap.data();
-    const orgId   = data.organizationId || `org_${data.userId || "unknown"}`;
-    const orgSlug  = safeSlug(orgId, "unknown-org");
+  const getTaskGroupPrefix = (docSnap) => {
+    const data     = docSnap.data();
     const catSlug  = safeSlug(data.category || "uncategorized", "uncategorized");
-    const dateSlug = data.dueDate ? safeSlug(data.dueDate, "noduedate") : "noduedate";
-    return { orgSlug, catSlug, dateSlug };
+    const titleSlug = safeSlug(data.title || "untitled", "untitled");
+    return `task_${catSlug}_${titleSlug}`;
   };
 
   // Seed group counters from existing refined docs to avoid collisions.
@@ -425,14 +411,12 @@ async function migrateTasks() {
     console.log();
   }
 
-  const counterAssignments = assignCounters(legacy, getTaskSegments, "task_", groupCounters);
+  const counterAssignments = assignCounters(legacy, getTaskGroupPrefix, groupCounters, true);
 
-  // Sort for deterministic batch ordering.
+  // Sort for deterministic batch ordering (same order as assignCounters).
   const sortedLegacy = [...legacy].sort((a, b) => {
-    const sa = getTaskSegments(a);
-    const sb = getTaskSegments(b);
-    const ka = `${sa.orgSlug}\x00${sa.catSlug}\x00${sa.dateSlug}\x00${a.id}`;
-    const kb = `${sb.orgSlug}\x00${sb.catSlug}\x00${sb.dateSlug}\x00${b.id}`;
+    const ka = `${getTaskGroupPrefix(a)}\x00${a.id}`;
+    const kb = `${getTaskGroupPrefix(b)}\x00${b.id}`;
     return ka.localeCompare(kb);
   });
 
@@ -479,13 +463,6 @@ async function migrateTasks() {
     for (const docSnap of chunk) {
       const oldId = docSnap.id;
       const data  = docSnap.data();
-
-      const userId = data.userId;
-      if (!userId && !data.organizationId) {
-        console.warn(`  SKIP: task ${oldId} has no userId or organizationId — cannot derive org, skipping`);
-        skipped++;
-        continue;
-      }
 
       const { newId } = counterAssignments.get(oldId);
 
@@ -535,11 +512,19 @@ async function migrateTasks() {
       }
 
       // ── Build new document ─────────────────────────────────────────────────
-      const orgId = data.organizationId || `org_${userId}`;
+      // Preserve or derive organizationId for security-rule compatibility.
+      const userId = data.userId;
+      const orgId  = data.organizationId || (userId ? `org_${userId}` : null);
+      if (!orgId) {
+        console.warn(
+          `  WARN: task ${oldId} has no userId or organizationId — ` +
+          "organizationId will be absent in the migrated document."
+        );
+      }
       const newData = {
         ...data,
-        organizationId: orgId,
-        readableId:     newId,
+        ...(orgId ? { organizationId: orgId } : {}),
+        readableId: newId,
         attachments,
       };
 
@@ -606,13 +591,12 @@ async function migrateCategories() {
     return { migrated: 0, skipped: 0, errors: 0 };
   }
 
-  const getCatSegments = (docSnap) => {
-    const data   = docSnap.data();
-    const orgId  = data.organizationId || `org_${data.userId || "unknown"}`;
-    const orgSlug  = safeSlug(orgId, "unknown-org");
-    const catSlug  = safeSlug(data.name || "uncategorized", "uncategorized");
-    const dateSlug = "";
-    return { orgSlug, catSlug, dateSlug };
+  const getCatGroupPrefix = (docSnap) => {
+    const data    = docSnap.data();
+    const orgId   = data.organizationId || `org_${data.userId || "unknown"}`;
+    const orgSlug = safeSlug(orgId, "unknown-org");
+    const catSlug = safeSlug(data.name || "uncategorized", "uncategorized");
+    return `cat_${orgSlug}_${catSlug}`;
   };
 
   // Seed group counters from existing refined docs.
@@ -626,13 +610,11 @@ async function migrateCategories() {
     console.log();
   }
 
-  const counterAssignments = assignCounters(legacy, getCatSegments, "cat_", groupCounters);
+  const counterAssignments = assignCounters(legacy, getCatGroupPrefix, groupCounters);
 
   const sortedLegacy = [...legacy].sort((a, b) => {
-    const sa = getCatSegments(a);
-    const sb = getCatSegments(b);
-    const ka = `${sa.orgSlug}\x00${sa.catSlug}\x00\x00${a.id}`;
-    const kb = `${sb.orgSlug}\x00${sb.catSlug}\x00\x00${b.id}`;
+    const ka = `${getCatGroupPrefix(a)}\x00${a.id}`;
+    const kb = `${getCatGroupPrefix(b)}\x00${b.id}`;
     return ka.localeCompare(kb);
   });
 
@@ -679,13 +661,6 @@ async function migrateCategories() {
       const oldId = docSnap.id;
       const data  = docSnap.data();
 
-      const userId = data.userId;
-      if (!userId && !data.organizationId) {
-        console.warn(`  SKIP: category ${oldId} has no userId or organizationId — cannot derive org, skipping`);
-        skipped++;
-        continue;
-      }
-
       const { newId } = counterAssignments.get(oldId);
 
       // Guard: skip if target doc already exists (would overwrite).
@@ -701,11 +676,18 @@ async function migrateCategories() {
       console.log(`  ${oldId}`);
       console.log(`    → ${newId}`);
 
-      const orgId = data.organizationId || `org_${userId}`;
+      const userId = data.userId;
+      const orgId  = data.organizationId || (userId ? `org_${userId}` : null);
+      if (!orgId) {
+        console.warn(
+          `  WARN: category ${oldId} has no userId or organizationId — ` +
+          "organizationId will be absent in the migrated document."
+        );
+      }
       const newData = {
         ...data,
-        organizationId: orgId,
-        readableId:     newId,
+        ...(orgId ? { organizationId: orgId } : {}),
+        readableId: newId,
       };
 
       if (!DRY_RUN) {
