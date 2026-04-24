@@ -26,16 +26,15 @@ service cloud.firestore {
         && request.resource.data.ownerId == request.auth.uid
         && request.auth.uid in request.resource.data.memberIds;
 
-      // Existing members can update the org (they must remain a member after).
-      // Invited users (email in pendingInviteEmails) can also update the org
-      // to add themselves as a member when accepting an invitation.
       allow update: if request.auth != null && (
         (
           request.auth.uid in resource.data.memberIds
           && request.auth.uid in request.resource.data.memberIds
         )
-        || (
+        ||
+        (
           request.auth.token.email != null
+          && resource.data.pendingInviteEmails is list
           && request.auth.token.email in resource.data.pendingInviteEmails
           && request.auth.uid in request.resource.data.memberIds
         )
@@ -76,20 +75,31 @@ service cloud.firestore {
     }
 
     match /invitations/{inviteId} {
-      // The inviter or the invitee can read an invitation.
       allow read: if request.auth != null && (
         request.auth.uid == resource.data.invitedByUserId
         || request.auth.token.email == resource.data.invitedEmail
       );
 
-      // Only org members can create invitations for their org.
       allow create: if request.auth != null
         && request.auth.uid == request.resource.data.invitedByUserId
         && request.auth.uid in get(/databases/$(database)/documents/organizations/$(request.resource.data.organizationId)).data.memberIds;
 
-      // The invitee can update the invitation (to accept it).
       allow update: if request.auth != null
         && request.auth.token.email == resource.data.invitedEmail;
+
+      allow delete: if false;
+    }
+
+    match /memberships/{membershipId} {
+      allow read: if request.auth != null
+        && request.auth.uid == resource.data.userId;
+
+      allow create: if request.auth != null
+        && request.auth.uid == request.resource.data.userId;
+
+      allow update: if request.auth != null
+        && request.auth.uid == resource.data.userId
+        && request.auth.uid == request.resource.data.userId;
 
       allow delete: if false;
     }
