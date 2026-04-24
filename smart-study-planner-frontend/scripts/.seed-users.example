@@ -1,4 +1,15 @@
 {
+  "_comment": [
+    "Copy this file to .seed-users (same directory) before running any seed script.",
+    "Each entry in 'users' can be an email address or a raw Firebase Auth UID.",
+    "Emails are resolved to UIDs automatically via the Firebase Auth Admin SDK.",
+    "",
+    "File location override:",
+    "  By default the seed scripts look for this file at scripts/.seed-users.",
+    "  Set SEED_USERS_PATH_OVERRIDE to an absolute path to load the file from a",
+    "  different location instead.",
+    "  Example: SEED_USERS_PATH_OVERRIDE=/home/dev/my-seed-users.json node seed-categories.mjs"
+  ],
   "users": [
     "alice@example.com",
     "bob@example.com",
