@@ -120,12 +120,12 @@ describe("generateTaskId", () => {
 
   it("ends with a 4-character strictly alphanumeric suffix", () => {
     const id = generateTaskId(userId, "School", "Unity");
-    expect(id).toMatch(/_[A-Za-z0-9]{4}$/);
+    expect(id).toMatch(/_[a-z0-9]{4}$/);
   });
 
   it("matches the full expected format", () => {
     const id = generateTaskId(userId, "School", "Unity Notes");
-    expect(id).toMatch(/^task_[A-Za-z0-9]{1,6}_[a-z0-9-]*_[a-z0-9-]*_[A-Za-z0-9]{4}$/);
+    expect(id).toMatch(/^task_[A-Za-z0-9]{1,6}_[a-z0-9-]*_[a-z0-9-]*_[a-z0-9]{4}$/);
   });
 
   it("generates unique IDs across multiple calls", () => {

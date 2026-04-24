@@ -43,6 +43,8 @@ export function personalOrgId(uid, email = "") {
   return `org_${shortOwnerId}_${emailSlug}_default`;
 }
 
+const lowercase4 = customAlphabet("0123456789abcdefghijklmnopqrstuvwxyz", 4);
+
 /**
  * Generates a human-readable document ID for a task.
  * Format: task_<shortUserId>_<categorySlug>_<titleSlug>_<random4>
@@ -52,13 +54,11 @@ export function personalOrgId(uid, email = "") {
  * @param {string} title    - Task title (will be slugified)
  * @returns {string}  e.g. "task_abc1de_school_unity-notes_v3kd"
  */
-const alphanumericMixed = customAlphabet("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", 4);
-
 export function generateTaskId(userId, category, title) {
   const shortUserId = String(userId).slice(0, 6);
   const categorySlug = slugify(category);
   const titleSlug = slugify(title);
-  const random4 = alphanumericMixed();
+  const random4 = lowercase4();
   return `task_${shortUserId}_${categorySlug}_${titleSlug}_${random4}`;
 }
 
@@ -76,7 +76,6 @@ export function generateTaskId(userId, category, title) {
  * @param {string} name   - Category name (will be slugified automatically)
  * @returns {string}  e.g. "cat_AvU4Op_math-science_3kd9"
  */
-const lowercase4 = customAlphabet("0123456789abcdefghijklmnopqrstuvwxyz", 4);
 
 export function generateCategoryId(userId, name) {
   const shortUserId = String(userId).slice(0, 6);
