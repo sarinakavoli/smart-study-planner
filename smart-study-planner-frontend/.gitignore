@@ -19,6 +19,9 @@ scripts/serviceAccountKey.json
 scripts/.last-seed-run-categories.json
 scripts/.last-seed-run-tasks.json
 
+# Personal seed users config — keep account details off of version control
+scripts/.seed-users
+
 # Vitest JUnit report output
 test-results
 
