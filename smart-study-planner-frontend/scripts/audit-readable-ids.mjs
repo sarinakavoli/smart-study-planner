@@ -98,7 +98,7 @@ const __dirname  = dirname(__filename);
  * NOTE: Documents seeded before this change used a 3-digit suffix (001–999).
  * Those IDs will be flagged as MALFORMED and require re-seeding to migrate.
  */
-const TASK_ID_REGEX = /^task_[a-z0-9][a-z0-9-]*_[a-z0-9][a-z0-9-]*_[a-z0-9]{4}$/;
+const TASK_ID_REGEX = /^task_[A-Za-z0-9]{1,6}_[a-z0-9-]*_[a-z0-9-]*_[a-z0-9]{4}$/;
 
 /**
  * Valid refined category ID: cat_<orgSlug>_<catSlug>_<shortRandom>
