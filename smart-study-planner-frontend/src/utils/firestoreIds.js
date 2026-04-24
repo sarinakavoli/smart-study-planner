@@ -20,13 +20,13 @@ export function slugify(text) {
 
 /**
  * Generates the default organization ID for a new user.
- * Format: org_<shortOwnerId>_<orgSlug>
+ * Format: org_<shortOwnerId>_<emailSlug>_default
  * where shortOwnerId = first 6 characters of the Firebase Auth UID,
- * and orgSlug = slugified local-part of the owner's email (before @),
+ * and emailSlug = slugified local-part of the owner's email (before @),
  * falling back to "workspace" when no email is available.
  *
- * Example: uid "AvU4Op9xKqZ...", email "alice@example.com"
- *          → "org_AvU4Op_alice"
+ * Example: uid "AvU4Op9xKqZ...", email "sarina.kavoli@example.com"
+ *          → "org_AvU4Op_sarinakavoli_default"
  *
  * This is only used when creating a brand-new organization on first
  * login. For existing users the organizationId is read from their
@@ -34,13 +34,13 @@ export function slugify(text) {
  *
  * @param {string} uid   - Firebase Auth UID
  * @param {string} email - Owner's email address (optional)
- * @returns {string}  e.g. "org_AvU4Op_alice"
+ * @returns {string}  e.g. "org_AvU4Op_sarinakavoli_default"
  */
 export function personalOrgId(uid, email = "") {
   const shortOwnerId = String(uid).slice(0, 6);
   const localPart = email ? email.split("@")[0] : "";
-  const orgSlug = localPart ? slugify(localPart).slice(0, 20) : "workspace";
-  return `org_${shortOwnerId}_${orgSlug}`;
+  const emailSlug = localPart ? slugify(localPart).slice(0, 20) : "workspace";
+  return `org_${shortOwnerId}_${emailSlug}_default`;
 }
 
 /**
@@ -95,7 +95,7 @@ export function generateCategoryId(userId, name) {
  *
  * @param {string} organizationId - The organization's Firestore document ID
  * @param {string} email          - The invited user's email address
- * @returns {string}  e.g. "invite_org_AvU4Op_alice_3kd9"
+ * @returns {string}  e.g. "invite_org_AvU4Op_sa_alice_3kd9"
  */
 export function generateInviteId(organizationId, email) {
   const shortOrgId = String(organizationId).slice(0, 12);

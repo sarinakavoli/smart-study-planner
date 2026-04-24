@@ -95,16 +95,16 @@ describe("slugify", () => {
 // ── personalOrgId ─────────────────────────────────────────────────────────────
 
 describe("personalOrgId", () => {
-  it("returns org_<shortOwnerId>_<emailLocalSlug> for a typical UID and email", () => {
-    expect(personalOrgId("abc123XYZ", "alice@example.com")).toBe("org_abc123_alice");
+  it("returns org_<shortOwnerId>_<emailLocalSlug>_default for a typical UID and email", () => {
+    expect(personalOrgId("abc123XYZ", "alice@example.com")).toBe("org_abc123_alice_default");
   });
 
   it("falls back to 'workspace' slug when no email is provided", () => {
-    expect(personalOrgId("abc123XYZ")).toBe("org_abc123_workspace");
+    expect(personalOrgId("abc123XYZ")).toBe("org_abc123_workspace_default");
   });
 
   it("works for an empty string UID", () => {
-    expect(personalOrgId("", "user@example.com")).toBe("org__user");
+    expect(personalOrgId("", "user@example.com")).toBe("org__user_default");
   });
 
   it("always starts with 'org_'", () => {
@@ -112,11 +112,11 @@ describe("personalOrgId", () => {
   });
 
   it("uses exactly the first 6 characters of uid as the short owner ID", () => {
-    expect(personalOrgId("ABCDEF123", "test@example.com")).toBe("org_ABCDEF_test");
+    expect(personalOrgId("ABCDEF123", "test@example.com")).toBe("org_ABCDEF_test_default");
   });
 
   it("slugifies the email local-part", () => {
-    expect(personalOrgId("uid123", "my.name+tag@example.com")).toBe("org_uid123_my-name-tag");
+    expect(personalOrgId("uid123", "my.name+tag@example.com")).toBe("org_uid123_my-name-tag_default");
   });
 });
 

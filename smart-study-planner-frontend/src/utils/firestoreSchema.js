@@ -9,10 +9,10 @@
 //
 // ── COLLECTION: organizations ────────────────────────────────────────────────
 //
-// Document ID: org_<shortOwnerId>_<orgSlug>
+// Document ID: org_<shortOwnerId>_<emailSlug>_default
 //   where shortOwnerId = first 6 characters of the Firebase Auth UID
-//   and orgSlug = slugified email local-part (before @), or "workspace"
-//   e.g. "org_AvU4Op_alice"
+//   and emailSlug = slugified email local-part (before @), or "workspace"
+//   e.g. "org_AvU4Op_sarinakavoli_default"
 //
 // Fields:
 //   id            string   Mirrors the document ID
@@ -47,7 +47,7 @@
 //   email           string    User's email address
 //   displayName     string|null  Display name from Firebase Auth (null if not set)
 //   organizationId  string    ID of the org this user currently belongs to
-//                             e.g. "org_AvU4Op_alice"
+//                             e.g. "org_AvU4Op_sarinakavoli_default"
 //   createdAt       Timestamp Firestore server timestamp — set once at first login
 //   updatedAt       Timestamp Firestore server timestamp — refreshed on every login
 //

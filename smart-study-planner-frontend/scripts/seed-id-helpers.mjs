@@ -21,22 +21,22 @@ export function slugify(text) {
 
 /**
  * Returns the personal org ID for a given uid and optional email.
- * Format: org_<shortOwnerId>_<orgSlug>
+ * Format: org_<shortOwnerId>_<emailSlug>_default
  * where shortOwnerId = first 6 characters of the Firebase Auth UID,
- * and orgSlug = slugified local-part of the owner's email (before @),
+ * and emailSlug = slugified local-part of the owner's email (before @),
  * falling back to "workspace" when no email is available.
  *
  * Must match personalOrgId() in src/utils/firestoreIds.js exactly.
  *
  * @param {string} uid   - Firebase Auth UID
  * @param {string} email - Owner email address (optional)
- * @returns {string}  e.g. "org_AvU4Op_alice"
+ * @returns {string}  e.g. "org_AvU4Op_sarinakavoli_default"
  */
 export function personalOrgId(uid, email = "") {
   const shortOwnerId = String(uid).slice(0, 6);
   const localPart = email ? email.split("@")[0] : "";
-  const orgSlug = localPart ? slugify(localPart).slice(0, 20) : "workspace";
-  return `org_${shortOwnerId}_${orgSlug}`;
+  const emailSlug = localPart ? slugify(localPart).slice(0, 20) : "workspace";
+  return `org_${shortOwnerId}_${emailSlug}_default`;
 }
 
 /**

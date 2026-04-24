@@ -87,8 +87,8 @@ const db = getFirestore(DB_NAME);
 /**
  * Returns the personal org ID for a given uid and optional email.
  * Must match personalOrgId() in src/utils/firestoreIds.js exactly.
- * Format: org_<shortOwnerId>_<orgSlug>
- * where orgSlug = slugified email local-part, or "workspace" if no email.
+ * Format: org_<shortOwnerId>_<emailSlug>_default
+ * where emailSlug = slugified email local-part, or "workspace" if no email.
  */
 function slugify(text) {
   return String(text)
@@ -101,8 +101,8 @@ function slugify(text) {
 function personalOrgId(uid, email = "") {
   const shortOwnerId = String(uid).slice(0, 6);
   const localPart = email ? email.split("@")[0] : "";
-  const orgSlug = localPart ? slugify(localPart).slice(0, 20) : "workspace";
-  return `org_${shortOwnerId}_${orgSlug}`;
+  const emailSlug = localPart ? slugify(localPart).slice(0, 20) : "workspace";
+  return `org_${shortOwnerId}_${emailSlug}_default`;
 }
 
 // ── Main ────────────────────────────────────────────────────────────────────
