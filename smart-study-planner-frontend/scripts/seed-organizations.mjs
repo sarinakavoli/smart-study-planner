@@ -34,6 +34,10 @@
  *
  * FLAGS
  * ─────
+ *   --dry-run      Preview what the script would do without writing to Firestore
+ *                  or requiring GCP_SERVICE_ACCOUNT_JSON.
+ *                  Prints a DRY RUN header and the org document IDs it would create,
+ *                  then exits 0.
  *   --delete       Remove seed documents (seedData: true) instead of writing.
  *   --skip-verify  Skip the post-insert Auth verification step.
  *
@@ -66,11 +70,13 @@ const USER_IDS = [
   // "abc123realuid",
 ];
 
-// ── Bootstrap Admin SDK (skipped in mock mode) ───────────────────────────────
+// ── Bootstrap Admin SDK (skipped in dry-run and mock mode) ──────────────────
+
+const dryRun = process.argv.includes("--dry-run");
 
 let db;
 
-if (!process.env.SEED_VERIFY_MOCK_JSON) {
+if (!dryRun && !process.env.SEED_VERIFY_MOCK_JSON) {
   const { initializeApp, cert } = await import("firebase-admin/app");
   const { getFirestore } = await import("firebase-admin/firestore");
 
@@ -121,7 +127,9 @@ function personalOrgId(uid, email = "") {
 const isDelete = process.argv.includes("--delete");
 const skipVerify = process.argv.includes("--skip-verify");
 
-if (isDelete) {
+if (dryRun) {
+  await dryRunOrganizations();
+} else if (isDelete) {
   await deleteOrgSeedData();
 } else {
   await seedOrganizations();
@@ -130,6 +138,26 @@ if (isDelete) {
   } else {
     await verifyOrgUsersOrExit(USER_IDS);
   }
+}
+
+// ── Dry-run: preview planned writes without touching Firestore ────────────────
+
+async function dryRunOrganizations() {
+  console.log(`DRY RUN — no data will be written to Firestore.\n`);
+  console.log(`  Collection : organizations`);
+  console.log(`  Users      : ${USER_IDS.join(", ")}\n`);
+  console.log(`  Org document IDs that would be created:`);
+
+  for (const uid of USER_IDS) {
+    const placeholderEmail = `seed+${uid}@example.com`;
+    const orgId = personalOrgId(uid, placeholderEmail);
+    console.log(`    ${orgId}  (user: ${uid})`);
+  }
+
+  console.log(`\n  Format: org_<shortOwnerId>_<emailSlug>_default`);
+  console.log(`\n  Flags:`);
+  console.log(`    --skip-verify  Skip the post-insert Auth verification step.`);
+  console.log(`\n  (Remove --dry-run to write ${USER_IDS.length} org doc(s) to Firestore.)`);
 }
 
 async function seedOrganizations() {

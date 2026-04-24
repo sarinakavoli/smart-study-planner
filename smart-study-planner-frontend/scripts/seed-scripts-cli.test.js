@@ -905,3 +905,42 @@ describe("seed-organizations.mjs --skip-verify", () => {
     expect(stdout).not.toMatch(/Seed-user verification/);
   });
 });
+
+describe("seed-organizations.mjs --dry-run", () => {
+  it("exits 0 without GCP credentials", () => {
+    const { exitCode } = run(ORGANIZATIONS_SCRIPT, ["--dry-run"]);
+    expect(exitCode).toBe(0);
+  });
+
+  it("prints a DRY RUN header", () => {
+    const { stdout } = run(ORGANIZATIONS_SCRIPT, ["--dry-run"]);
+    expect(stdout).toMatch(/DRY RUN/);
+  });
+
+  it("mentions the organizations collection", () => {
+    const { stdout } = run(ORGANIZATIONS_SCRIPT, ["--dry-run"]);
+    expect(stdout).toMatch(/organizations/i);
+  });
+
+  it("prints org document IDs in org_<shortOwnerId>_<emailSlug>_default format", () => {
+    const { stdout } = run(ORGANIZATIONS_SCRIPT, ["--dry-run"]);
+    expect(stdout).toMatch(/org_[a-z0-9_][a-z0-9_-]*_[a-z0-9][a-z0-9-]*_default/);
+  });
+
+  it("lists an org ID for each default user", () => {
+    const { stdout } = run(ORGANIZATIONS_SCRIPT, ["--dry-run"]);
+    expect(stdout).toMatch(/user_test_001/);
+    expect(stdout).toMatch(/user_test_002/);
+    expect(stdout).toMatch(/user_test_003/);
+  });
+
+  it("does not write to Firestore (no write-related lines)", () => {
+    const { stdout } = run(ORGANIZATIONS_SCRIPT, ["--dry-run"]);
+    expect(stdout).not.toMatch(/Created\/updated|writing|batch/i);
+  });
+
+  it("reminds user to remove --dry-run to write to Firestore", () => {
+    const { stdout } = run(ORGANIZATIONS_SCRIPT, ["--dry-run"]);
+    expect(stdout).toMatch(/Remove --dry-run/);
+  });
+});
