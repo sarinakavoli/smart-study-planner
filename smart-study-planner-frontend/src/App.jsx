@@ -126,25 +126,6 @@ function App() {
         } catch (profileErr) {
           console.error("Could not write user profile doc:", profileErr);
         }
-
-        // Create (or refresh) the personal organization document so the
-        // organizations collection is populated automatically without running
-        // the seed script.  The security rules allow this create because
-        // ownerId === auth.uid and auth.uid is in memberUids.
-        try {
-          await setDoc(
-            doc(db, "organizations", orgId),
-            {
-              name: `Personal org for ${firebaseUser.uid}`,
-              ownerId: firebaseUser.uid,
-              memberUids: arrayUnion(firebaseUser.uid),
-              createdAt,
-            },
-            { merge: true }
-          );
-        } catch (orgErr) {
-          console.error("Could not write organization doc:", orgErr);
-        }
       }
       setCurrentUser(firebaseUser ?? null);
       setAuthLoading(false);
