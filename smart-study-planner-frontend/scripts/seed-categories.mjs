@@ -122,6 +122,7 @@ import { verifySeedUsersOrExit } from "./seed-verify-helper.mjs";
 import { loadSeedUsersFile, resolveMixedEntries } from "./seed-user-resolver.mjs";
 import { fetchDeleteDocs, fetchUndoLastDocs } from "./seed-firestore-helpers.mjs";
 import { slugify, personalOrgId, buildCategoryId, randomSuffix } from "./seed-id-helpers.mjs";
+import { updateSeedCounts } from "./seed-counts-helper.mjs";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -193,21 +194,6 @@ function loadManifest() {
   } catch {
     return null;
   }
-}
-
-/**
- * Updates scripts/.seed-counts.json with the count for this collection.
- * Creates the file if it does not already exist; merges with existing entries.
- */
-function updateSeedCounts(collection, count) {
-  let existing = {};
-  try {
-    existing = JSON.parse(readFileSync(SEED_COUNTS_PATH, "utf8"));
-  } catch {
-    // file doesn't exist yet — start fresh
-  }
-  existing[collection] = { count, updatedAt: new Date().toISOString() };
-  writeFileSync(SEED_COUNTS_PATH, JSON.stringify(existing, null, 2));
 }
 
 // ── CLI flag parsing ──────────────────────────────────────────────────────────
@@ -586,7 +572,7 @@ async function insertCategories() {
   saveManifest(seedRunId, inserted, USER_IDS);
 
   // Update shared count metadata so dry-run reports stay accurate
-  updateSeedCounts(COLLECTION, inserted);
+  updateSeedCounts(SEED_COUNTS_PATH, COLLECTION, inserted);
 
   console.log(`\n✓ Done! ${inserted.toLocaleString()} categories written to Firestore.`);
   console.log(`\n  Every document now has:`);
