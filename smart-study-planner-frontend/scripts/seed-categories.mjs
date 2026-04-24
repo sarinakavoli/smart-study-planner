@@ -6,9 +6,9 @@
  *
  * Every seeded document includes:
  *   - A human-readable document ID:
- *       cat_<orgSlug>_<catSlug>_<NNN>
- *       e.g. cat_org-user-test-001_math_001
- *   - organizationId field          (= "org_<uid>")
+ *       cat_<shortUserId>_<categorySlug>_<random4>
+ *       e.g. cat_user_t_math_3kd9
+ *   - organizationId field          (= "org_<shortOwnerId>_<orgSlug>")
  *   - readableId field              (copy of the document ID for debugging)
  *   - seedData: true                (so you can delete only seed data later)
  *   - seedRunId: "<run-id>"         (identifies the specific seeding run)
@@ -35,9 +35,9 @@
  *                      Does not require GCP_SERVICE_ACCOUNT_JSON to be set.
  *                      When combined with --delete or --undo-last, previews
  *                      which documents would be deleted (user scope, filter).
- *                      When combined with insert flags, sample IDs assume
- *                      counters start at 001; actual IDs may use higher
- *                      counters if matching docs already exist.
+ *                      When combined with insert flags, sample IDs show
+ *                      example random suffixes; actual IDs will have
+ *                      different random suffixes.
  *                      Takes precedence over --undo-last, --delete, and --reset
  *                      when combined with those flags.
  *                      Note: --email addresses are not resolved in dry-run mode;
@@ -121,7 +121,7 @@ import { join, dirname } from "path";
 import { verifySeedUsers } from "./seed-verify-helper.mjs";
 import { loadSeedUsersFile, resolveMixedEntries } from "./seed-user-resolver.mjs";
 import { fetchDeleteDocs, fetchUndoLastDocs } from "./seed-firestore-helpers.mjs";
-import { slugify, personalOrgId, buildCategoryId } from "./seed-id-helpers.mjs";
+import { slugify, personalOrgId, buildCategoryId, randomSuffix } from "./seed-id-helpers.mjs";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -370,7 +370,7 @@ async function dryRunCategories() {
   console.log(`  Count      : ${TOTAL_RECORDS.toLocaleString()} documents`);
   console.log(`  Users      : ${USER_IDS.join(", ")}\n`);
 
-  // Plan all records (same logic as insertCategories, without the counter queries)
+  // Plan all records (same logic as insertCategories)
   const planned = [];
   for (let i = 0; i < TOTAL_RECORDS; i++) {
     const userId       = pick(USER_IDS);
@@ -378,41 +378,19 @@ async function dryRunCategories() {
     planned.push({ userId, categoryName });
   }
 
-  // Collect unique (orgSlug, catSlug) pairs and assign sequential counters
-  // starting at 1 (dry-run doesn't query existing Firestore counters).
-  const uniqueGroups = new Map();
-  for (const item of planned) {
-    const orgSlug = slugify(personalOrgId(item.userId));
-    const catSlug = slugify(item.categoryName);
-    const key     = `${orgSlug}|${catSlug}`;
-    if (!uniqueGroups.has(key)) {
-      uniqueGroups.set(key, { orgSlug, catSlug });
-    }
-  }
-
-  const groupCounters = new Map();
-  for (const [key] of uniqueGroups) {
-    groupCounters.set(key, 1);
-  }
-
-  // Build sample IDs from the first DRY_RUN_SAMPLE_SIZE planned records
+  // Build sample IDs from the first DRY_RUN_SAMPLE_SIZE planned records.
+  // Each ID uses shortUserId (first 6 chars of uid) + catSlug + random 4-char suffix.
   const sampleIds = [];
-  const tempCounters = new Map(groupCounters);
   for (let i = 0; i < Math.min(DRY_RUN_SAMPLE_SIZE, planned.length); i++) {
     const { userId, categoryName } = planned[i];
-    const orgSlug = slugify(personalOrgId(userId));
-    const catSlug = slugify(categoryName);
-    const key     = `${orgSlug}|${catSlug}`;
-    const counter = tempCounters.get(key);
-    tempCounters.set(key, counter + 1);
-    sampleIds.push(buildCategoryId(orgSlug, catSlug, counter));
+    const shortUserId = String(userId).slice(0, 6);
+    const catSlug     = slugify(categoryName);
+    sampleIds.push(buildCategoryId(shortUserId, catSlug, randomSuffix()));
   }
 
-  console.log(`  Unique (org, category) groups : ${uniqueGroups.size}`);
   console.log(`  Sample document IDs (first ${sampleIds.length}):`);
   sampleIds.forEach((id) => console.log(`    ${id}`));
-  console.log(`\n  NOTE: Sample IDs above assume counters start at 001. If matching documents`);
-  console.log(`        already exist in Firestore the real IDs will use higher counter values.`);
+  console.log(`\n  Format: cat_<shortUserId>_<categorySlug>_<random4>`);
   console.log(`\n  Flags:`);
   console.log(`    --skip-verify  Skip the post-insert Auth verification step.`);
   console.log(`\n  (Remove --dry-run to write ${TOTAL_RECORDS.toLocaleString()} documents to Firestore.)`);
@@ -528,29 +506,6 @@ async function deleteSeedData() {
 
 // ── Insert: write TOTAL_RECORDS categories with the new schema ────────────────
 
-/**
- * Queries Firestore for the maximum existing numeric counter among all category
- * documents whose IDs start with `cat_<orgSlug>_<catSlug>_`.
- * Returns 0 if no such documents exist yet.
- */
-async function fetchMaxCounter(orgSlug, catSlug) {
-  const prefix = `cat_${orgSlug}_${catSlug}_`;
-  const snap = await db
-    .collection(COLLECTION)
-    .orderBy("__name__")
-    .startAt(prefix)
-    .endBefore(prefix + "\uffff")
-    .get();
-
-  let max = 0;
-  for (const doc of snap.docs) {
-    const suffix = doc.id.slice(prefix.length);
-    const n = parseInt(suffix, 10);
-    if (!isNaN(n) && n > max) max = n;
-  }
-  return max;
-}
-
 async function insertCategories() {
   // Generate a unique run ID for this seeding session.
   // Stored on every document so --undo-last can target exactly this run.
@@ -568,29 +523,10 @@ async function insertCategories() {
     planned.push({ userId, categoryName });
   }
 
-  // ── Step 2: collect unique (orgSlug, catSlug) pairs ─────────────────────────
-  const uniqueGroups = new Map(); // key: "orgSlug|catSlug" → { orgSlug, catSlug }
-  for (const item of planned) {
-    const orgSlug = slugify(personalOrgId(item.userId));
-    const catSlug = slugify(item.categoryName);
-    const key     = `${orgSlug}|${catSlug}`;
-    if (!uniqueGroups.has(key)) {
-      uniqueGroups.set(key, { orgSlug, catSlug });
-    }
-  }
-
-  // ── Step 3: query Firestore for the max existing counter per group ──────────
-  // Queries are run in parallel (Promise.all) since groups are independent.
-  console.log(`  Querying existing counters for ${uniqueGroups.size} unique (org, category) group(s) …`);
-  const groupCounters = new Map(); // key: "orgSlug|catSlug" → next counter to assign
-  await Promise.all(
-    Array.from(uniqueGroups.entries()).map(async ([key, { orgSlug, catSlug }]) => {
-      const maxExisting = await fetchMaxCounter(orgSlug, catSlug);
-      groupCounters.set(key, maxExisting + 1);
-    })
-  );
-
-  // ── Step 4: assign IDs and insert in batches ────────────────────────────────
+  // ── Step 2: assign IDs and insert in batches ────────────────────────────────
+  // Each category gets: cat_<shortUserId>_<catSlug>_<random4>
+  // shortUserId = first 6 chars of the Firebase Auth UID.
+  // random4     = 4 lowercase alphanumeric characters for uniqueness.
   let inserted = 0;
 
   while (inserted < TOTAL_RECORDS) {
@@ -599,15 +535,11 @@ async function insertCategories() {
 
     for (let i = 0; i < count; i++) {
       const { userId, categoryName } = planned[inserted + i];
-      const orgId   = personalOrgId(userId);
-      const orgSlug = slugify(orgId);
-      const catSlug = slugify(categoryName);
-      const key     = `${orgSlug}|${catSlug}`;
+      const shortUserId = String(userId).slice(0, 6);
+      const catSlug     = slugify(categoryName);
+      const orgId       = personalOrgId(userId);
 
-      const counter = groupCounters.get(key);
-      groupCounters.set(key, counter + 1);
-
-      const categoryId = buildCategoryId(orgSlug, catSlug, counter);
+      const categoryId = buildCategoryId(shortUserId, catSlug, randomSuffix());
 
       const ref = db.collection(COLLECTION).doc(categoryId);
       batch.set(ref, {
@@ -634,8 +566,8 @@ async function insertCategories() {
 
   console.log(`\n✓ Done! ${inserted.toLocaleString()} categories written to Firestore.`);
   console.log(`\n  Every document now has:`);
-  console.log(`    - A readable ID:    cat_<orgSlug>_<catSlug>_<NNN>`);
-  console.log(`    - organizationId:   org_<userId>`);
+  console.log(`    - A readable ID:    cat_<shortUserId>_<catSlug>_<random4>`);
+  console.log(`    - organizationId:   org_<shortOwnerId>_<orgSlug>`);
   console.log(`    - readableId:       (same as document ID)`);
   console.log(`    - seedData: true    (so you can clean up later)`);
   console.log(`    - seedRunId:        ${seedRunId}\n`);

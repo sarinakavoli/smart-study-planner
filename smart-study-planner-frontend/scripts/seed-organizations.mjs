@@ -85,12 +85,24 @@ const db = getFirestore(DB_NAME);
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
- * Returns the personal org ID for a given uid.
+ * Returns the personal org ID for a given uid and optional email.
  * Must match personalOrgId() in src/utils/firestoreIds.js exactly.
- * Format: org_<first6charsOfUid>_default
+ * Format: org_<shortOwnerId>_<orgSlug>
+ * where orgSlug = slugified email local-part, or "workspace" if no email.
  */
-function personalOrgId(uid) {
-  return `org_${String(uid).slice(0, 6)}_default`;
+function slugify(text) {
+  return String(text)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 30);
+}
+
+function personalOrgId(uid, email = "") {
+  const shortOwnerId = String(uid).slice(0, 6);
+  const localPart = email ? email.split("@")[0] : "";
+  const orgSlug = localPart ? slugify(localPart).slice(0, 20) : "workspace";
+  return `org_${shortOwnerId}_${orgSlug}`;
 }
 
 // ── Main ────────────────────────────────────────────────────────────────────
@@ -109,7 +121,6 @@ async function seedOrganizations() {
   let created = 0;
 
   for (const uid of USER_IDS) {
-    const orgId = personalOrgId(uid);
     const now = new Date().toISOString();
 
     // For seed/test UIDs there is no real email — use a placeholder so the
@@ -117,12 +128,14 @@ async function seedOrganizations() {
     // When seeding real UIDs, fetch the user record from Firebase Auth first
     // and pass the actual email here.
     const placeholderEmail = `seed+${uid}@example.com`;
+    const orgId = personalOrgId(uid, placeholderEmail);
 
     // Write the organization document.
     // merge: true — safe to re-run; existing orgs are not overwritten.
     await db.collection("organizations").doc(orgId).set(
       {
         id: orgId,
+        readableId: orgId,
         name: `Personal org for ${uid}`,
         ownerId: uid,
         ownerEmail: placeholderEmail,

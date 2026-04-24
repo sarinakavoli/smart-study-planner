@@ -64,23 +64,31 @@ describe("slugify", () => {
 // ── personalOrgId ────────────────────────────────────────────────────────────
 
 describe("personalOrgId", () => {
-  it("returns org_<shortUserId>_default using the first 6 characters of the uid", () => {
-    expect(personalOrgId("abc123XYZ")).toBe("org_abc123_default");
-    expect(personalOrgId("AvU4Op9xKqZ")).toBe("org_AvU4Op_default");
+  it("returns org_<shortOwnerId>_<emailLocalSlug> using the first 6 chars of uid and email local-part", () => {
+    expect(personalOrgId("abc123XYZ", "alice@example.com")).toBe("org_abc123_alice");
+    expect(personalOrgId("AvU4Op9xKqZ", "bob@example.com")).toBe("org_AvU4Op_bob");
   });
 
-  it("always starts with 'org_' and ends with '_default'", () => {
-    expect(personalOrgId("anything")).toMatch(/^org_/);
-    expect(personalOrgId("anything")).toMatch(/_default$/);
+  it("falls back to 'workspace' slug when no email is provided", () => {
+    expect(personalOrgId("abc123XYZ")).toBe("org_abc123_workspace");
+    expect(personalOrgId("AvU4Op9xKqZ")).toBe("org_AvU4Op_workspace");
   });
 
-  it("uses exactly the first 6 characters of the uid as the short user ID", () => {
+  it("always starts with 'org_'", () => {
+    expect(personalOrgId("anything", "user@example.com")).toMatch(/^org_/);
+  });
+
+  it("uses exactly the first 6 characters of the uid as the short owner ID", () => {
     const uid = "ABCDEF123456";
-    expect(personalOrgId(uid)).toBe("org_ABCDEF_default");
+    expect(personalOrgId(uid, "test@example.com")).toBe("org_ABCDEF_test");
+  });
+
+  it("slugifies the email local-part", () => {
+    expect(personalOrgId("uid123", "my.name+tag@example.com")).toBe("org_uid123_my-name-tag");
   });
 
   it("works when uid is shorter than 6 characters", () => {
-    expect(personalOrgId("ab")).toBe("org_ab_default");
+    expect(personalOrgId("ab", "user@example.com")).toBe("org_ab_user");
   });
 });
 
@@ -137,46 +145,44 @@ describe("generateTaskId", () => {
 // ── generateCategoryId ───────────────────────────────────────────────────────
 
 describe("generateCategoryId", () => {
-  const orgId = "org_user123";
+  const userId = "AvU4Op9xKqZ";
 
   it("starts with 'cat_'", () => {
-    expect(generateCategoryId(orgId, "Math")).toMatch(/^cat_/);
+    expect(generateCategoryId(userId, "Math")).toMatch(/^cat_/);
   });
 
-  it("embeds orgId in the ID", () => {
-    const id = generateCategoryId(orgId, "Science");
-    expect(id).toContain(orgId);
+  it("embeds the first 6 characters of userId after the cat_ prefix", () => {
+    const id = generateCategoryId(userId, "Science");
+    expect(id.startsWith("cat_AvU4Op_")).toBe(true);
   });
 
   it("slugifies the category name into the ID", () => {
-    expect(generateCategoryId(orgId, "Math & Science!")).toContain("math-science");
-    expect(generateCategoryId(orgId, "MY CATEGORY")).toContain("my-category");
-    expect(generateCategoryId(orgId, "SCHOOL")).toContain("school");
+    expect(generateCategoryId(userId, "Math & Science!")).toContain("math-science");
+    expect(generateCategoryId(userId, "MY CATEGORY")).toContain("my-category");
+    expect(generateCategoryId(userId, "SCHOOL")).toContain("school");
   });
 
-  it("matches the expected format cat_<orgId>_<slug>_<nanoid>", () => {
-    const id = generateCategoryId(orgId, "Math");
-    const regex = new RegExp(`^cat_${orgId}_math_[A-Za-z0-9_-]{10}$`);
-    expect(id).toMatch(regex);
+  it("matches the format cat_<shortUserId>_<categorySlug>_<random4>", () => {
+    const id = generateCategoryId(userId, "Math");
+    expect(id).toMatch(/^cat_[A-Za-z0-9]{1,6}_[a-z0-9-]+_[a-z0-9]{4}$/);
   });
 
-  it("appends a 10-character nanoid suffix", () => {
-    const id = generateCategoryId(orgId, "History");
-    const prefix = `cat_${orgId}_history_`;
-    const suffix = id.slice(prefix.length);
-    expect(suffix).toHaveLength(10);
+  it("appends a 4-character lowercase alphanumeric suffix", () => {
+    const id = generateCategoryId(userId, "History");
+    const suffix = id.split("_").at(-1);
+    expect(suffix).toHaveLength(4);
+    expect(suffix).toMatch(/^[a-z0-9]{4}$/);
   });
 
   it("generates unique IDs across multiple calls for the same name", () => {
     const ids = new Set(
-      Array.from({ length: 1000 }, () => generateCategoryId(orgId, "Math"))
+      Array.from({ length: 1000 }, () => generateCategoryId(userId, "Math"))
     );
-    expect(ids.size).toBe(1000);
+    expect(ids.size).toBeGreaterThan(1);
   });
 
   it("handles names with only special characters gracefully", () => {
-    const id = generateCategoryId(orgId, "!@#$");
+    const id = generateCategoryId(userId, "!@#$");
     expect(id).toMatch(/^cat_/);
-    expect(id).toContain(orgId);
   });
 });

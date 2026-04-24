@@ -4,10 +4,6 @@
  * Shared ID-generation helpers for seed scripts.
  * Centralised here so seed-categories.mjs and seed-tasks.mjs stay in sync
  * and never drift from each other.
- *
- * NOTE: personalOrgId() here intentionally uses the simpler `org_<uid>`
- * format used by the seed scripts, which differs from the app's
- * firestoreIds.js format (`org_<shortUid>_default`).  Do not merge them.
  */
 
 /**
@@ -23,22 +19,57 @@ export function slugify(text) {
     .slice(0, 30);
 }
 
-/** Returns the personal org ID for a given UID (used for organizationId field). */
-export function personalOrgId(uid) {
-  return `org_${uid}`;
+/**
+ * Returns the personal org ID for a given uid and optional email.
+ * Format: org_<shortOwnerId>_<orgSlug>
+ * where shortOwnerId = first 6 characters of the Firebase Auth UID,
+ * and orgSlug = slugified local-part of the owner's email (before @),
+ * falling back to "workspace" when no email is available.
+ *
+ * Must match personalOrgId() in src/utils/firestoreIds.js exactly.
+ *
+ * @param {string} uid   - Firebase Auth UID
+ * @param {string} email - Owner email address (optional)
+ * @returns {string}  e.g. "org_AvU4Op_alice"
+ */
+export function personalOrgId(uid, email = "") {
+  const shortOwnerId = String(uid).slice(0, 6);
+  const localPart = email ? email.split("@")[0] : "";
+  const orgSlug = localPart ? slugify(localPart).slice(0, 20) : "workspace";
+  return `org_${shortOwnerId}_${orgSlug}`;
 }
 
 /**
- * Builds a category document ID from pre-slugified segments and a numeric counter.
- * Format: cat_<orgSlug>_<catSlug>_<NNN>
- * Counter is zero-padded to at least 3 digits.
- *
- * Both slug segments are derived from already-slugified input so the result
- * always satisfies the audit regex:
- *   /^cat_[a-z0-9][a-z0-9-]*_[a-z0-9][a-z0-9-]*_\d+$/
+ * Generates a 4-character random suffix from lowercase letters and digits.
+ * Used as shortRandom in category document IDs.
  */
-export function buildCategoryId(orgSlug, catSlug, counter) {
-  return `cat_${orgSlug}_${catSlug}_${String(counter).padStart(3, "0")}`;
+export function randomSuffix() {
+  const chars = "0123456789abcdefghijklmnopqrstuvwxyz";
+  let result = "";
+  for (let i = 0; i < 4; i++) {
+    result += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return result;
+}
+
+/**
+ * Builds a category document ID.
+ * Format: cat_<shortUserId>_<catSlug>_<shortRandom>
+ *
+ * shortUserId = first 6 characters of the Firebase Auth UID.
+ * catSlug     = pre-slugified category name.
+ * shortRandom = 4 lowercase letters/numbers.
+ *
+ * Satisfies the audit regex:
+ *   /^cat_[a-z0-9]{1,6}_[a-z0-9][a-z0-9-]*_[a-z0-9]{4}$/
+ *
+ * @param {string} shortUserId - First 6 chars of Firebase Auth UID
+ * @param {string} catSlug     - Pre-slugified category name
+ * @param {string} random4     - 4-char lowercase alphanumeric suffix
+ * @returns {string}  e.g. "cat_avu4op_math_3kd9"
+ */
+export function buildCategoryId(shortUserId, catSlug, random4) {
+  return `cat_${shortUserId}_${catSlug}_${random4}`;
 }
 
 /**

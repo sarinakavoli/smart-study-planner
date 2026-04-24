@@ -120,7 +120,7 @@ function App() {
         }
 
         // Use existing organizationId if present, otherwise generate a new one.
-        resolvedOrgId = existingData?.organizationId ?? personalOrgId(firebaseUser.uid);
+        resolvedOrgId = existingData?.organizationId ?? personalOrgId(firebaseUser.uid, firebaseUser.email);
 
         // ── Step 2: ensure the organization document exists ──────────────────
         // Always run this step so that accounts whose org doc was never created
@@ -129,6 +129,7 @@ function App() {
           const orgRef = doc(db, "organizations", resolvedOrgId);
           const orgPayload = {
             id: resolvedOrgId,
+            readableId: resolvedOrgId,
             name: `${firebaseUser.email || ""}'s Workspace`,
             ownerId: firebaseUser.uid,
             ownerEmail: firebaseUser.email || "",
@@ -746,8 +747,8 @@ function App() {
       ? Math.max(...customCategories.map((c) => c.displayOrder ?? 0))
       : 3;
 
-    const orgId = organizationId ?? personalOrgId(currentUser.uid);
-    const catId = generateCategoryId(orgId, normalizedName);
+    const orgId = organizationId ?? personalOrgId(currentUser.uid, currentUser.email);
+    const catId = generateCategoryId(currentUser.uid, normalizedName);
     await setDoc(doc(db, "categories", catId), {
       name: normalizedName,
       color: "",
@@ -793,7 +794,7 @@ function App() {
         throw new Error("User not logged in");
       }
 
-      const orgId = organizationId ?? personalOrgId(currentUser.uid);
+      const orgId = organizationId ?? personalOrgId(currentUser.uid, currentUser.email);
 
       const payload = {
         title: newTask.title.trim(),

@@ -11,6 +11,7 @@ import {
   slugify,
   personalOrgId,
   buildCategoryId,
+  randomSuffix,
   buildTaskId,
 } from "./seed-id-helpers.mjs";
 
@@ -94,25 +95,47 @@ describe("slugify", () => {
 // ── personalOrgId ─────────────────────────────────────────────────────────────
 
 describe("personalOrgId", () => {
-  it("returns org_<uid> for a typical UID", () => {
-    expect(personalOrgId("abc123")).toBe("org_abc123");
+  it("returns org_<shortOwnerId>_<emailLocalSlug> for a typical UID and email", () => {
+    expect(personalOrgId("abc123XYZ", "alice@example.com")).toBe("org_abc123_alice");
+  });
+
+  it("falls back to 'workspace' slug when no email is provided", () => {
+    expect(personalOrgId("abc123XYZ")).toBe("org_abc123_workspace");
   });
 
   it("works for an empty string UID", () => {
-    expect(personalOrgId("")).toBe("org_");
-  });
-
-  it("works for a UID with special characters", () => {
-    expect(personalOrgId("user-001")).toBe("org_user-001");
+    expect(personalOrgId("", "user@example.com")).toBe("org__user");
   });
 
   it("always starts with 'org_'", () => {
-    expect(personalOrgId("someUser")).toMatch(/^org_/);
+    expect(personalOrgId("someUser", "x@x.com")).toMatch(/^org_/);
   });
 
-  it("appends the UID verbatim after the prefix", () => {
-    const uid = "XYZ_789";
-    expect(personalOrgId(uid)).toBe(`org_${uid}`);
+  it("uses exactly the first 6 characters of uid as the short owner ID", () => {
+    expect(personalOrgId("ABCDEF123", "test@example.com")).toBe("org_ABCDEF_test");
+  });
+
+  it("slugifies the email local-part", () => {
+    expect(personalOrgId("uid123", "my.name+tag@example.com")).toBe("org_uid123_my-name-tag");
+  });
+});
+
+// ── randomSuffix ──────────────────────────────────────────────────────────────
+
+describe("randomSuffix", () => {
+  it("returns a 4-character string", () => {
+    expect(randomSuffix()).toHaveLength(4);
+  });
+
+  it("contains only lowercase letters and digits", () => {
+    for (let i = 0; i < 100; i++) {
+      expect(randomSuffix()).toMatch(/^[a-z0-9]{4}$/);
+    }
+  });
+
+  it("generates different values across calls", () => {
+    const results = new Set(Array.from({ length: 200 }, () => randomSuffix()));
+    expect(results.size).toBeGreaterThan(1);
   });
 });
 
@@ -120,42 +143,31 @@ describe("personalOrgId", () => {
 
 describe("buildCategoryId", () => {
   it("builds the correct ID from typical inputs", () => {
-    expect(buildCategoryId("alice", "math", 1)).toBe("cat_alice_math_001");
-  });
-
-  it("zero-pads the counter to at least 3 digits", () => {
-    expect(buildCategoryId("org", "cat", 1)).toMatch(/_001$/);
-  });
-
-  it("does not pad counter when it already has 3 digits", () => {
-    expect(buildCategoryId("org", "cat", 100)).toBe("cat_org_cat_100");
-  });
-
-  it("does not truncate counters larger than 3 digits", () => {
-    expect(buildCategoryId("org", "cat", 1000)).toBe("cat_org_cat_1000");
-  });
-
-  it("uses counter = 0 with zero-padding", () => {
-    expect(buildCategoryId("org", "cat", 0)).toBe("cat_org_cat_000");
+    expect(buildCategoryId("avu4op", "math", "3kd9")).toBe("cat_avu4op_math_3kd9");
   });
 
   it("always starts with 'cat_'", () => {
-    expect(buildCategoryId("a", "b", 1)).toMatch(/^cat_/);
+    expect(buildCategoryId("a", "b", "xxxx")).toMatch(/^cat_/);
   });
 
-  it("matches the audit regex for valid slugified inputs", () => {
-    const id = buildCategoryId("alice", "math-101", 5);
-    expect(id).toMatch(/^cat_[a-z0-9][a-z0-9-]*_[a-z0-9][a-z0-9-]*_\d+$/);
-  });
-
-  it("includes both orgSlug and catSlug in the output", () => {
-    const id = buildCategoryId("myorg", "mycat", 7);
-    expect(id).toContain("myorg");
+  it("includes both shortUserId and catSlug in the output", () => {
+    const id = buildCategoryId("myusr1", "mycat", "ab12");
+    expect(id).toContain("myusr1");
     expect(id).toContain("mycat");
   });
 
+  it("appends the random4 suffix verbatim", () => {
+    const id = buildCategoryId("uid123", "science", "zz99");
+    expect(id.endsWith("_zz99")).toBe(true);
+  });
+
+  it("matches the expected format cat_<shortUserId>_<catSlug>_<random4>", () => {
+    const id = buildCategoryId("abc123", "math-101", "a1b2");
+    expect(id).toMatch(/^cat_[a-z0-9A-Z]{1,6}_[a-z0-9][a-z0-9-]*_[a-z0-9]{4}$/);
+  });
+
   it("handles numeric-only slugs", () => {
-    expect(buildCategoryId("123", "456", 2)).toBe("cat_123_456_002");
+    expect(buildCategoryId("123456", "456", "7890")).toBe("cat_123456_456_7890");
   });
 });
 

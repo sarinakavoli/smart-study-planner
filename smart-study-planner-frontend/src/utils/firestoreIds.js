@@ -1,4 +1,4 @@
-import { nanoid, customAlphabet } from "nanoid";
+import { customAlphabet } from "nanoid";
 
 /**
  * Converts arbitrary text into a lowercase, URL-safe slug.
@@ -20,21 +20,27 @@ export function slugify(text) {
 
 /**
  * Generates the default organization ID for a new user.
- * Format: org_<shortUserId>_default
- * where shortUserId = first 6 characters of the Firebase Auth UID.
+ * Format: org_<shortOwnerId>_<orgSlug>
+ * where shortOwnerId = first 6 characters of the Firebase Auth UID,
+ * and orgSlug = slugified local-part of the owner's email (before @),
+ * falling back to "workspace" when no email is available.
  *
- * Example: uid "AvU4Op9xKqZ..." → "org_AvU4Op_default"
+ * Example: uid "AvU4Op9xKqZ...", email "alice@example.com"
+ *          → "org_AvU4Op_alice"
  *
  * This is only used when creating a brand-new organization on first
  * login. For existing users the organizationId is read from their
  * Firestore profile document instead of being computed here.
  *
- * @param {string} uid - Firebase Auth UID
- * @returns {string}  e.g. "org_AvU4Op_default"
+ * @param {string} uid   - Firebase Auth UID
+ * @param {string} email - Owner's email address (optional)
+ * @returns {string}  e.g. "org_AvU4Op_alice"
  */
-export function personalOrgId(uid) {
-  const shortUserId = String(uid).slice(0, 6);
-  return `org_${shortUserId}_default`;
+export function personalOrgId(uid, email = "") {
+  const shortOwnerId = String(uid).slice(0, 6);
+  const localPart = email ? email.split("@")[0] : "";
+  const orgSlug = localPart ? slugify(localPart).slice(0, 20) : "workspace";
+  return `org_${shortOwnerId}_${orgSlug}`;
 }
 
 /**
@@ -44,29 +50,37 @@ export function personalOrgId(uid) {
  * @param {string} userId   - Firebase Auth UID of the current user
  * @param {string} category - Task category name (will be slugified)
  * @param {string} title    - Task title (will be slugified)
- * @returns {string}  e.g. "task_abc1_school_unity-notes_v3kD"
+ * @returns {string}  e.g. "task_abc1de_school_unity-notes_v3kd"
  */
-const alphanumeric = customAlphabet("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", 4);
+const alphanumericMixed = customAlphabet("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", 4);
 
 export function generateTaskId(userId, category, title) {
   const shortUserId = String(userId).slice(0, 6);
   const categorySlug = slugify(category);
   const titleSlug = slugify(title);
-  const random4 = alphanumeric();
+  const random4 = alphanumericMixed();
   return `task_${shortUserId}_${categorySlug}_${titleSlug}_${random4}`;
 }
 
 /**
  * Generates a human-readable, globally unique document ID for a category.
- * Format: cat_<orgId>_<slug>_<nanoid(10)>
+ * Format: cat_<shortUserId>_<categorySlug>_<shortRandom>
  *
- * The slug comes from the category name so the ID is self-describing.
- * The nanoid suffix ensures uniqueness even if two orgs use the same name.
+ * shortUserId    = first 6 characters of the Firebase Auth UID.
+ * categorySlug   = lowercase, spaces replaced with hyphens, special chars removed.
+ * shortRandom    = 4 lowercase letters/numbers for uniqueness.
  *
- * @param {string} orgId  - Organization ID (e.g. from personalOrgId())
+ * The same value is meant to be stored in the readableId field.
+ *
+ * @param {string} userId - Firebase Auth UID of the current user
  * @param {string} name   - Category name (will be slugified automatically)
- * @returns {string}  e.g. "cat_org_abc123_math-science_V3kD9pQrLm"
+ * @returns {string}  e.g. "cat_AvU4Op_math-science_3kd9"
  */
-export function generateCategoryId(orgId, name) {
-  return `cat_${orgId}_${slugify(name)}_${nanoid(10)}`;
+const lowercase4 = customAlphabet("0123456789abcdefghijklmnopqrstuvwxyz", 4);
+
+export function generateCategoryId(userId, name) {
+  const shortUserId = String(userId).slice(0, 6);
+  const categorySlug = slugify(name);
+  const shortRandom = lowercase4();
+  return `cat_${shortUserId}_${categorySlug}_${shortRandom}`;
 }
