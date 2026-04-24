@@ -61,6 +61,10 @@ externalPort = 3000
 localPort = 8080
 externalPort = 8080
 
+[[ports]]
+localPort = 9005
+externalPort = 3002
+
 [deployment]
 deploymentTarget = "vm"
 run = ["java", "-jar", "smart-study-planner-backend/target/smart-study-planner-0.0.1-SNAPSHOT.jar", "--server.port=5000"]
