@@ -46,6 +46,11 @@
  *   --delete           Delete only documents where seedData == true.
  *   --reset            Delete ALL documents in the tasks collection (full wipe).
  *                      Use this to start completely fresh before reseeding.
+ *   --skip-verify      Skip the post-insert seed-user verification step.
+ *                      Useful in CI/scripting scenarios where the caller wants
+ *                      to suppress the Auth lookup that runs after an insert.
+ *                      Has no effect in --delete, --reset, or --undo-last modes
+ *                      (verification is never run in those modes anyway).
  *
  * .SEED-USERS CONFIG FILE
  * ───────────────────────
@@ -85,6 +90,9 @@
  *
  *   # Only remove seeded documents (leaves real user tasks untouched):
  *   node smart-study-planner-frontend/scripts/seed-tasks.mjs --delete
+ *
+ *   # Seed and skip the post-insert Auth verification (e.g. in CI):
+ *   node smart-study-planner-frontend/scripts/seed-tasks.mjs --skip-verify
  */
 
 import { readFileSync, writeFileSync } from "fs";
@@ -208,8 +216,9 @@ function loadManifest() {
 
 const args = process.argv.slice(2);
 
-const dryRun   = args.includes("--dry-run");
-const undoLast = args.includes("--undo-last");
+const dryRun     = args.includes("--dry-run");
+const undoLast   = args.includes("--undo-last");
+const skipVerify = args.includes("--skip-verify");
 
 // --count=N  → override TOTAL_RECORDS
 const countArg = args.find((a) => a.startsWith("--count="));
@@ -375,6 +384,8 @@ async function dryRunTasks() {
   sampleIds.forEach((id) => console.log(`    ${id}`));
   console.log(`\n  NOTE: Sample IDs above assume counters start at 001. If matching documents`);
   console.log(`        already exist in Firestore the real IDs will use higher counter values.`);
+  console.log(`\n  Flags:`);
+  console.log(`    --skip-verify  Skip the post-insert Auth verification step.`);
   console.log(`\n  (Remove --dry-run to write ${TOTAL_RECORDS.toLocaleString()} documents to Firestore.)`);
 }
 
@@ -605,6 +616,10 @@ async function insertTasks() {
     "    node smart-study-planner-frontend/scripts/seed-tasks.mjs --reset"
   );
 
-  const allPass = await verifySeedUsers(db, auth, COLLECTION);
-  if (!allPass) process.exit(1);
+  if (skipVerify) {
+    console.log("\n  (Skipping post-insert verification — --skip-verify flag is set.)");
+  } else {
+    const allPass = await verifySeedUsers(db, auth, COLLECTION);
+    if (!allPass) process.exit(1);
+  }
 }
