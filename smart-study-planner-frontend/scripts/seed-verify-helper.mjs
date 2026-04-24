@@ -16,7 +16,7 @@ const BATCH_SIZE = 500;
  * @param {string} collectionName
  * @returns {Promise<Map<string, number>>}  userId → document count
  */
-async function collectSeedUserIds(db, collectionName) {
+export async function collectSeedUserIds(db, collectionName) {
   const userCounts = new Map();
   let lastDoc = null;
 
@@ -163,4 +163,18 @@ export async function verifySeedUsers(db, auth, collectionName) {
   console.log("=".repeat(60));
 
   return notFound.length === 0;
+}
+
+/**
+ * Convenience wrapper: runs verifySeedUsers and exits the process with code 1
+ * if any seeded userId is missing from Firebase Auth.
+ *
+ * @param {FirebaseFirestore.Firestore} db
+ * @param {import("firebase-admin/auth").Auth} auth
+ * @param {string} collectionName
+ * @returns {Promise<void>}
+ */
+export async function verifySeedUsersOrExit(db, auth, collectionName) {
+  const allPass = await verifySeedUsers(db, auth, collectionName);
+  if (!allPass) process.exit(1);
 }
