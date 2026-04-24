@@ -685,9 +685,21 @@ describe(".seed-users file: broken content causes exit 1 with ERROR message", ()
     expect(stderr).toMatch(/\.seed-users/);
   });
 
+  it("(seed-tasks) mentions the file path in the ERROR message for invalid JSON", () => {
+    const env = writeBadSeedUsers("this is not json at all");
+    const { stderr } = run(TASKS_SCRIPT, ["--dry-run"], env);
+    expect(stderr).toMatch(/\.seed-users/);
+  });
+
   it("mentions the expected format in the ERROR message for missing 'users' key", () => {
     const env = writeBadSeedUsers(JSON.stringify({ users: null }));
     const { stderr } = run(CATEGORIES_SCRIPT, ["--dry-run"], env);
+    expect(stderr).toMatch(/"users"/i);
+  });
+
+  it("(seed-tasks) mentions the expected format in the ERROR message for missing 'users' key", () => {
+    const env = writeBadSeedUsers(JSON.stringify({ users: null }));
+    const { stderr } = run(TASKS_SCRIPT, ["--dry-run"], env);
     expect(stderr).toMatch(/"users"/i);
   });
 
