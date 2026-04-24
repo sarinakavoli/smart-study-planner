@@ -74,24 +74,6 @@ const BATCH_SIZE = 500;
 
 const ALL_COLLECTIONS = ["categories", "tasks"];
 
-// ── Bootstrap Admin SDK ───────────────────────────────────────────────────────
-
-const serviceAccountJson = process.env.GCP_SERVICE_ACCOUNT_JSON;
-if (!serviceAccountJson) {
-  console.error(
-    "ERROR: GCP_SERVICE_ACCOUNT_JSON environment variable is not set.\n" +
-    "       Add it as a Replit Secret (the full JSON content of your service account key)."
-  );
-  process.exit(1);
-}
-
-const serviceAccount = JSON.parse(serviceAccountJson);
-if (!getApps().length) {
-  initializeApp({ credential: cert(serviceAccount) });
-}
-const db   = getFirestore(DB_NAME);
-const auth = getAuth();
-
 // ── CLI flag parsing ──────────────────────────────────────────────────────────
 
 const args = process.argv.slice(2);
@@ -109,6 +91,24 @@ if (collectionArg) {
   }
   collectionsToCheck = [name];
 }
+
+// ── Bootstrap Admin SDK ───────────────────────────────────────────────────────
+
+const serviceAccountJson = process.env.GCP_SERVICE_ACCOUNT_JSON;
+if (!serviceAccountJson) {
+  console.error(
+    "ERROR: GCP_SERVICE_ACCOUNT_JSON environment variable is not set.\n" +
+    "       Add it as a Replit Secret (the full JSON content of your service account key)."
+  );
+  process.exit(1);
+}
+
+const serviceAccount = JSON.parse(serviceAccountJson);
+if (!getApps().length) {
+  initializeApp({ credential: cert(serviceAccount) });
+}
+const db   = getFirestore(DB_NAME);
+const auth = getAuth();
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
