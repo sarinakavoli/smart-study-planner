@@ -281,6 +281,85 @@ body {
   justify-content: center;
 }
 
+.invite-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #f87171;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.invite-card {
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin-bottom: 14px;
+}
+
+.invite-card-field {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.invite-card-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-soft);
+  flex-shrink: 0;
+}
+
+.invite-card-value {
+  font-size: 13px;
+  color: var(--text-main);
+  font-weight: 500;
+  text-align: right;
+  word-break: break-all;
+}
+
+.invite-card-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+
+.invite-decline-btn {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-soft);
+  cursor: pointer;
+}
+
+.invite-decline-btn:hover {
+  color: #f87171;
+  border-color: #f87171;
+}
+
+.invite-decline-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.invite-card-message {
+  margin: 10px 0 0;
+  font-size: 13px;
+  font-weight: 500;
+}
+
 .org-context {
   margin: 10px 0 12px;
   padding: 8px 10px;

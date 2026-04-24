@@ -49,6 +49,7 @@ export async function createInvitation({
     status: "pending",
     createdAt: serverTimestamp(),
     acceptedAt: null,
+    declinedAt: null,
     expiresAt: null,
   });
 
@@ -79,49 +80,41 @@ export async function getPendingInvitationsForEmail(email) {
 
 /**
  * Accepts a pending invitation:
- *  1. Checks that the user is not already a member (no-op if they are).
+ *  1. Checks that the user is not already a member (skips org update if so).
  *  2. Adds the user's UID/email to the organization's memberIds/memberEmails.
  *  3. Removes the email from pendingInviteEmails.
  *  4. Updates the user's organizationId.
  *  5. Marks the invitation as accepted.
  *
  * @param {object} params
- * @param {object} params.invitation  - Invitation document data (must include id, organizationId, invitedEmail)
+ * @param {object} params.invitation  - Invitation document data
  * @param {string} params.userId      - Firebase Auth UID of the accepting user
  * @param {string} params.userEmail   - Email of the accepting user
+ * @returns {Promise<{organizationId: string, organizationName: string}>}
  */
 export async function acceptInvitation({ invitation, userId, userEmail }) {
-  const { id: inviteId, organizationId, invitedEmail } = invitation;
+  const { id: inviteId, organizationId, organizationName, invitedEmail } = invitation;
 
   const orgRef = doc(db, "organizations", organizationId);
   const orgSnap = await getDoc(orgRef);
 
   if (!orgSnap.exists()) {
-    console.warn("[invitation] Organization not found:", organizationId);
-    return;
+    throw new Error("Organization not found.");
   }
 
   const orgData = orgSnap.data();
-  if ((orgData.memberIds || []).includes(userId)) {
-    console.log("[invitation] User already a member of org:", organizationId);
-    await updateDoc(doc(db, "invitations", inviteId), {
-      status: "accepted",
-      acceptedAt: serverTimestamp(),
+  if (!(orgData.memberIds || []).includes(userId)) {
+    await updateDoc(orgRef, {
+      memberIds: arrayUnion(userId),
+      memberEmails: arrayUnion(userEmail),
+      pendingInviteEmails: arrayRemove(invitedEmail),
     });
-    return;
+
+    await updateDoc(doc(db, "users", userId), {
+      organizationId,
+      updatedAt: serverTimestamp(),
+    });
   }
-
-  await updateDoc(orgRef, {
-    memberIds: arrayUnion(userId),
-    memberEmails: arrayUnion(userEmail),
-    pendingInviteEmails: arrayRemove(invitedEmail),
-  });
-
-  const userRef = doc(db, "users", userId);
-  await updateDoc(userRef, {
-    organizationId,
-    updatedAt: serverTimestamp(),
-  });
 
   await updateDoc(doc(db, "invitations", inviteId), {
     status: "accepted",
@@ -129,4 +122,21 @@ export async function acceptInvitation({ invitation, userId, userEmail }) {
   });
 
   console.log("[invitation] Accepted:", inviteId, "→ org:", organizationId);
+  return { organizationId, organizationName };
+}
+
+/**
+ * Declines a pending invitation.
+ * Updates the invitation status to "declined" only.
+ * Does not modify the organization or user documents.
+ *
+ * @param {string} inviteId - The invitation document ID
+ * @returns {Promise<void>}
+ */
+export async function declineInvitation(inviteId) {
+  await updateDoc(doc(db, "invitations", inviteId), {
+    status: "declined",
+    declinedAt: serverTimestamp(),
+  });
+  console.log("[invitation] Declined:", inviteId);
 }

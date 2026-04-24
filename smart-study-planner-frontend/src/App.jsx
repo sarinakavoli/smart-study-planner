@@ -26,6 +26,7 @@ import {
   createInvitation,
   getPendingInvitationsForEmail,
   acceptInvitation,
+  declineInvitation,
 } from "./services/invitationService";
 import {
   ref as storageRef,
@@ -73,6 +74,10 @@ function App() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteStatus, setInviteStatus] = useState(null);
   const [inviteSending, setInviteSending] = useState(false);
+
+  const [pendingInvites, setPendingInvites] = useState([]);
+  const [inviteActionLoading, setInviteActionLoading] = useState(null);
+  const [inviteCardStatus, setInviteCardStatus] = useState({});
 
   const [newTask, setNewTask] = useState({
     title: "",
@@ -194,32 +199,25 @@ function App() {
           }
         }
 
-        // ── Step 4: check for pending invitations ────────────────────────────
-        let finalOrgId = resolvedOrgId;
-        let finalOrgName = `${firebaseUser.email || ""}'s Workspace`;
+        // ── Step 4: fetch pending invitations (shown in UI, not auto-accepted) ─
         try {
-          const pendingInvites = await getPendingInvitationsForEmail(firebaseUser.email);
-          if (pendingInvites.length > 0) {
-            const invite = pendingInvites[0];
-            console.log("[auth] Step 4 — pending invitation found:", invite.id, "for org:", invite.organizationId);
-            await acceptInvitation({
-              invitation: invite,
-              userId: firebaseUser.uid,
-              userEmail: firebaseUser.email,
-            });
-            finalOrgId = invite.organizationId;
-            finalOrgName = invite.organizationName || finalOrgName;
-            console.log("[auth] Step 4 — invitation accepted, new orgId:", finalOrgId);
+          const fetched = await getPendingInvitationsForEmail(firebaseUser.email);
+          if (fetched.length > 0) {
+            console.log("[auth] Step 4 —", fetched.length, "pending invitation(s) for:", firebaseUser.email);
+            setPendingInvites(fetched);
+            setActiveView("PENDING_INVITATIONS");
           } else {
             console.log("[auth] Step 4 — no pending invitations for:", firebaseUser.email);
+            setPendingInvites([]);
           }
         } catch (err) {
-          console.error("[auth] Step 4 FAILED — invitation check error:", err.code, err.message, err);
+          console.error("[auth] Step 4 FAILED — invitation fetch error:", err.code, err.message, err);
+          setPendingInvites([]);
         }
 
-        console.log("[auth] Setup complete — resolvedOrgId:", finalOrgId);
-        setOrganizationId(finalOrgId);
-        setOrganizationName(finalOrgName);
+        console.log("[auth] Setup complete — resolvedOrgId:", resolvedOrgId);
+        setOrganizationId(resolvedOrgId);
+        setOrganizationName(`${firebaseUser.email || ""}'s Workspace`);
       } else {
         console.log("[auth] onAuthStateChanged fired — user signed out");
         setOrganizationId(null);
@@ -294,6 +292,57 @@ function App() {
     setOrganizationName(null);
     setOrgOwnerEmail(null);
     setOrgMembers([]);
+    setPendingInvites([]);
+    setInviteCardStatus({});
+  };
+
+  const handleAcceptInvitation = async (invite) => {
+    setInviteActionLoading(invite.id);
+    setInviteCardStatus((prev) => ({ ...prev, [invite.id]: null }));
+    try {
+      const { organizationId: newOrgId, organizationName: newOrgName } =
+        await acceptInvitation({
+          invitation: invite,
+          userId: currentUser.uid,
+          userEmail: currentUser.email,
+        });
+      setPendingInvites((prev) => prev.filter((i) => i.id !== invite.id));
+      setInviteCardStatus((prev) => ({
+        ...prev,
+        [invite.id]: { type: "success", message: `You joined ${invite.organizationName || "the organization"}.` },
+      }));
+      setOrganizationId(newOrgId);
+      setOrganizationName(newOrgName || `${currentUser.email}'s Workspace`);
+    } catch (err) {
+      console.error("[invite] Accept failed:", err);
+      setInviteCardStatus((prev) => ({
+        ...prev,
+        [invite.id]: { type: "error", message: `Could not accept: ${err.message}` },
+      }));
+    } finally {
+      setInviteActionLoading(null);
+    }
+  };
+
+  const handleDeclineInvitation = async (invite) => {
+    setInviteActionLoading(invite.id);
+    setInviteCardStatus((prev) => ({ ...prev, [invite.id]: null }));
+    try {
+      await declineInvitation(invite.id);
+      setPendingInvites((prev) => prev.filter((i) => i.id !== invite.id));
+      setInviteCardStatus((prev) => ({
+        ...prev,
+        [invite.id]: { type: "info", message: "Invitation declined." },
+      }));
+    } catch (err) {
+      console.error("[invite] Decline failed:", err);
+      setInviteCardStatus((prev) => ({
+        ...prev,
+        [invite.id]: { type: "error", message: `Could not decline: ${err.message}` },
+      }));
+    } finally {
+      setInviteActionLoading(null);
+    }
   };
 
   useEffect(() => {
@@ -1506,6 +1555,21 @@ function App() {
           Calendar
         </button>
 
+        {pendingInvites.length > 0 && (
+          <button
+            onClick={() => setActiveView("PENDING_INVITATIONS")}
+            style={{
+              ...sidebarButtonStyle(activeView === "PENDING_INVITATIONS"),
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+            }}
+          >
+            Invitations
+            <span className="invite-badge">{pendingInvites.length}</span>
+          </button>
+        )}
+
         <button
           onClick={() => {
             setInviteEmail("");
@@ -1937,12 +2001,105 @@ function App() {
           </div>
         )}
 
+        {activeView === "PENDING_INVITATIONS" && (
+          <div className="panel-card">
+            <h2>Pending Invitations</h2>
+            <p className="helper-text">
+              You have been invited to join an organization. Review and respond below.
+            </p>
+
+            {pendingInvites.length === 0 && Object.keys(inviteCardStatus).length === 0 && (
+              <p style={{ textAlign: "center", color: "var(--text-soft)" }}>No pending invitations.</p>
+            )}
+
+            {[
+              ...pendingInvites,
+              ...Object.entries(inviteCardStatus)
+                .filter(([id]) => !pendingInvites.find((i) => i.id === id))
+                .map(([id, status]) => ({ id, _dismissed: true, _status: status })),
+            ].map((invite) => {
+              const cardStatus = inviteCardStatus[invite.id];
+              const isLoading = inviteActionLoading === invite.id;
+              const isDismissed = invite._dismissed;
+
+              return (
+                <div key={invite.id} className="invite-card">
+                  {!isDismissed && (
+                    <>
+                      <div className="invite-card-field">
+                        <span className="invite-card-label">Organization</span>
+                        <span className="invite-card-value">{invite.organizationName || invite.organizationId}</span>
+                      </div>
+                      <div className="invite-card-field">
+                        <span className="invite-card-label">Invited by</span>
+                        <span className="invite-card-value">{invite.invitedByEmail}</span>
+                      </div>
+                      <div className="invite-card-field">
+                        <span className="invite-card-label">Role</span>
+                        <span className="invite-card-value">{invite.role}</span>
+                      </div>
+                      <div className="invite-card-field">
+                        <span className="invite-card-label">Status</span>
+                        <span className="invite-card-value">{invite.status}</span>
+                      </div>
+                    </>
+                  )}
+
+                  {cardStatus && (
+                    <p
+                      className="invite-card-message"
+                      style={{
+                        color:
+                          cardStatus.type === "success" ? "#4ade80"
+                          : cardStatus.type === "error" ? "#f87171"
+                          : "var(--text-soft)",
+                      }}
+                    >
+                      {cardStatus.message}
+                    </p>
+                  )}
+
+                  {!isDismissed && !cardStatus && (
+                    <div className="invite-card-actions">
+                      <button
+                        className="main-btn"
+                        disabled={isLoading}
+                        onClick={() => handleAcceptInvitation(invite)}
+                      >
+                        {isLoading ? "Accepting..." : "Accept Invitation"}
+                      </button>
+                      <button
+                        className="invite-decline-btn"
+                        disabled={isLoading}
+                        onClick={() => handleDeclineInvitation(invite)}
+                      >
+                        {isLoading ? "..." : "Decline"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {pendingInvites.length === 0 && (
+              <div style={{ textAlign: "center", marginTop: "20px" }}>
+                <button
+                  className="main-btn"
+                  onClick={() => setActiveView("ALL_TASKS")}
+                >
+                  Go to My Tasks
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
         {activeView === "INVITE_USER" && (
           <div className="panel-card">
             <h2>Invite a User</h2>
             <p className="helper-text">
               Enter an email address to invite someone to your organization.
-              They will be added automatically the next time they sign in.
+              They will see the invitation the next time they sign in.
             </p>
 
             <form
