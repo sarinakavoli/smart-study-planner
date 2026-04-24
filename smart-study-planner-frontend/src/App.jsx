@@ -57,6 +57,8 @@ function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [organizationId, setOrganizationId] = useState(null);
   const [organizationName, setOrganizationName] = useState(null);
+  const [orgOwnerEmail, setOrgOwnerEmail] = useState(null);
+  const [orgMembers, setOrgMembers] = useState([]);
   const [authLoading, setAuthLoading] = useState(true);
   const [loading, setLoading] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
@@ -289,6 +291,9 @@ function App() {
     setTasks([]);
     setCategoriesData([]);
     setOrganizationId(null);
+    setOrganizationName(null);
+    setOrgOwnerEmail(null);
+    setOrgMembers([]);
   };
 
   useEffect(() => {
@@ -297,6 +302,28 @@ function App() {
       loadCategories();
     }
   }, [currentUser]);
+
+  useEffect(() => {
+    if (!organizationId) {
+      setOrgOwnerEmail(null);
+      setOrgMembers([]);
+      return;
+    }
+    const fetchOrg = async () => {
+      try {
+        const orgSnap = await getDoc(doc(db, "organizations", organizationId));
+        if (orgSnap.exists()) {
+          const data = orgSnap.data();
+          setOrgOwnerEmail(data.ownerEmail ?? null);
+          setOrgMembers(data.memberEmails ?? []);
+          if (data.name) setOrganizationName(data.name);
+        }
+      } catch (err) {
+        console.error("[org] Could not fetch org doc:", err.code, err.message);
+      }
+    };
+    fetchOrg();
+  }, [organizationId]);
 
   useEffect(() => {
     const closeMenu = () => {
@@ -1424,6 +1451,31 @@ function App() {
           <span className="user-name">{currentUser.email}</span>
           <button className="logout-btn" onClick={handleLogout}>Sign out</button>
         </div>
+
+        {organizationName && (
+          <div className="org-context">
+            <p className="org-context-label">Workspace</p>
+            <p className="org-context-name">{organizationName}</p>
+          </div>
+        )}
+
+        {orgMembers.length > 0 && (
+          <div className="org-members">
+            <p className="org-members-label">
+              Members{orgOwnerEmail ? ` · owner: ${orgOwnerEmail}` : ""}
+            </p>
+            <ul className="org-members-list">
+              {orgMembers.map((email) => (
+                <li key={email} className="org-member-item">
+                  {email}
+                  {email === orgOwnerEmail && (
+                    <span className="org-owner-badge">owner</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <div className="theme-switch">
           <button
