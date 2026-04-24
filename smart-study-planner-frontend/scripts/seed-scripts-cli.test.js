@@ -60,7 +60,7 @@ describe("seed-categories.mjs --dry-run", () => {
 
   it("shows sample document IDs in cat_<org>_<cat>_<NNN> format", () => {
     const { stdout } = run(CATEGORIES_SCRIPT, ["--dry-run"]);
-    expect(stdout).toMatch(/cat_[a-z0-9][a-z0-9-]*_[a-z0-9][a-z0-9-]*_\d+/);
+    expect(stdout).toMatch(/cat_[a-z0-9][a-z0-9-]*_[a-z0-9][a-z0-9-]*_[a-z0-9]{4}/);
   });
 
   it("does not write to Firestore (no write-related lines)", () => {
@@ -299,7 +299,7 @@ describe("seed-categories.mjs --dry-run --skip-verify", () => {
 
   it("shows sample document IDs when --skip-verify is combined with --dry-run", () => {
     const { stdout } = run(CATEGORIES_SCRIPT, ["--dry-run", "--skip-verify"]);
-    expect(stdout).toMatch(/cat_[a-z0-9][a-z0-9-]*_[a-z0-9][a-z0-9-]*_\d+/);
+    expect(stdout).toMatch(/cat_[a-z0-9][a-z0-9-]*_[a-z0-9][a-z0-9-]*_[a-z0-9]{4}/);
   });
 });
 
