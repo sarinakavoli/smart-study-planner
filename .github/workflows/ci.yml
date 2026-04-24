@@ -349,6 +349,8 @@ jobs:
           else
             echo "## Seed Scripts Tests: FAILED" >> $GITHUB_STEP_SUMMARY
             echo "One or more seed-script assertions failed. Check the test output above for details." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Download the \`seed-scripts-test-report\` artifact from this run for the full JUnit XML report." >> $GITHUB_STEP_SUMMARY
           fi
 
   deploy:
