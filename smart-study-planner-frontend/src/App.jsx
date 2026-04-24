@@ -119,29 +119,35 @@ function App() {
           console.error("[auth] Step 1 FAILED — could not read user doc:", err.code, err.message);
         }
 
-        resolvedOrgId = existingData?.organizationId ?? null;
+        // Use existing organizationId if present, otherwise generate a new one.
+        resolvedOrgId = existingData?.organizationId ?? personalOrgId(firebaseUser.uid);
 
-        if (!resolvedOrgId) {
-          // ── Step 2: generate org ID and create organization document ────────
-          resolvedOrgId = personalOrgId(firebaseUser.uid);
-          console.log("[auth] Step 2 — no organizationId found, creating org:", resolvedOrgId);
-
-          try {
-            const orgRef = doc(db, "organizations", resolvedOrgId);
-            await setDoc(orgRef, {
+        // ── Step 2: ensure the organization document exists ──────────────────
+        // Always run this step so that accounts whose org doc was never created
+        // (e.g. due to a past permission error) are self-healed on next login.
+        console.log("[auth] creating organizations/", resolvedOrgId);
+        try {
+          const orgRef = doc(db, "organizations", resolvedOrgId);
+          await setDoc(
+            orgRef,
+            {
               id: resolvedOrgId,
               name: `${firebaseUser.email}'s Workspace`,
               ownerId: firebaseUser.uid,
               memberIds: [firebaseUser.uid],
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp(),
-            });
-            console.log("[auth] Step 2 — organizations/", resolvedOrgId, "created OK");
-          } catch (err) {
-            console.error("[auth] Step 2 FAILED — could not create org doc:", err.code, err.message, err);
-          }
+            },
+            { merge: true }
+          );
+          console.log("[auth] organizations/", resolvedOrgId, "created OK");
+        } catch (err) {
+          console.error("[auth] organizations create failed:", err.code, err.message, err);
+        }
 
-          // ── Step 3: write full user document for the first time ─────────────
+        // ── Step 3: write or refresh the user document ───────────────────────
+        if (!existingData?.organizationId) {
+          // New user — write the full document for the first time.
           console.log("[auth] Step 3 — writing users/", firebaseUser.uid, "for the first time");
           try {
             await setDoc(userRef, {
@@ -158,8 +164,8 @@ function App() {
             console.error("[auth] Step 3 FAILED — could not write user doc:", err.code, err.message, err);
           }
         } else {
-          // ── Step 2 (returning user): refresh mutable fields only ────────────
-          console.log("[auth] Step 2 — returning user, merging email/displayName/updatedAt into users/", firebaseUser.uid);
+          // Returning user — refresh mutable fields only.
+          console.log("[auth] Step 3 — returning user, merging into users/", firebaseUser.uid);
           try {
             await setDoc(
               userRef,
@@ -171,9 +177,9 @@ function App() {
               },
               { merge: true }
             );
-            console.log("[auth] Step 2 — users/", firebaseUser.uid, "merge-updated OK");
+            console.log("[auth] Step 3 — users/", firebaseUser.uid, "merge-updated OK");
           } catch (err) {
-            console.error("[auth] Step 2 FAILED — could not merge-update user doc:", err.code, err.message, err);
+            console.error("[auth] Step 3 FAILED — could not merge-update user doc:", err.code, err.message, err);
           }
         }
 
