@@ -39,6 +39,59 @@ function run(args = [], extraEnv = {}) {
   };
 }
 
+// ── --dry-run ─────────────────────────────────────────────────────────────────
+
+describe("verify-seed-users.mjs --dry-run", () => {
+  it("exits 0 without any credentials", () => {
+    const { exitCode } = run(["--dry-run"]);
+    expect(exitCode).toBe(0);
+  });
+
+  it("prints a DRY RUN header", () => {
+    const { stdout } = run(["--dry-run"]);
+    expect(stdout).toMatch(/DRY RUN/);
+  });
+
+  it("shows both collections to be checked by default", () => {
+    const { stdout } = run(["--dry-run"]);
+    expect(stdout).toMatch(/categories/i);
+    expect(stdout).toMatch(/tasks/i);
+  });
+
+  it("shows only the specified collection when --collection is supplied", () => {
+    const { stdout } = run(["--dry-run", "--collection=categories"]);
+    expect(stdout).toMatch(/categories/i);
+    expect(stdout).not.toMatch(/\btasks\b/);
+  });
+
+  it("shows only tasks when --collection=tasks is supplied", () => {
+    const { stdout } = run(["--dry-run", "--collection=tasks"]);
+    expect(stdout).toMatch(/tasks/i);
+    expect(stdout).not.toMatch(/\bcategories\b/);
+  });
+
+  it("prints a preview message describing what would happen", () => {
+    const { stdout } = run(["--dry-run"]);
+    expect(stdout).toMatch(/no network calls/i);
+  });
+
+  it("tells the user to remove --dry-run to run for real", () => {
+    const { stdout } = run(["--dry-run"]);
+    expect(stdout).toMatch(/Remove --dry-run/);
+  });
+
+  it("does not produce any error output", () => {
+    const { stderr } = run(["--dry-run"]);
+    expect(stderr).toBe("");
+  });
+
+  it("still rejects an invalid --collection value even in dry-run mode", () => {
+    const { exitCode, stderr } = run(["--dry-run", "--collection=bogus"]);
+    expect(exitCode).toBe(1);
+    expect(stderr).toMatch(/--collection/i);
+  });
+});
+
 // ── Missing credentials ───────────────────────────────────────────────────────
 
 describe("verify-seed-users.mjs: missing credentials", () => {

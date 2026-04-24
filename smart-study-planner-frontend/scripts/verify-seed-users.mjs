@@ -30,6 +30,8 @@
  * ─────
  *   (no flag)          Check both "categories" and "tasks" collections.
  *   --collection=NAME  Only check the named collection (categories or tasks).
+ *   --dry-run          Preview which collections would be scanned without
+ *                      contacting Firebase. Exits 0. No credentials required.
  *
  * EXIT CODE
  * ─────────
@@ -78,6 +80,8 @@ const ALL_COLLECTIONS = ["categories", "tasks"];
 
 const args = process.argv.slice(2);
 
+const dryRun = args.includes("--dry-run");
+
 const collectionArg = args.find((a) => a.startsWith("--collection="));
 let collectionsToCheck = ALL_COLLECTIONS;
 if (collectionArg) {
@@ -90,6 +94,26 @@ if (collectionArg) {
     process.exit(1);
   }
   collectionsToCheck = [name];
+}
+
+// ── Dry-run early exit ────────────────────────────────────────────────────────
+
+if (dryRun) {
+  console.log("=".repeat(60));
+  console.log("  Seed-user verification smoke test  [DRY RUN]");
+  console.log("=".repeat(60));
+  console.log(`  Collections to be checked: ${collectionsToCheck.join(", ")}`);
+  console.log();
+  console.log("  DRY RUN — no network calls will be made.");
+  console.log("  In a real run the script would:");
+  console.log(`    1. Query each collection for documents where seedData == true`);
+  console.log(`    2. Collect every unique userId from those documents`);
+  console.log(`    3. Look up each userId in Firebase Auth`);
+  console.log(`    4. Report which IDs exist in Auth and which do not`);
+  console.log();
+  console.log("  Remove --dry-run to perform the actual verification.");
+  console.log("=".repeat(60));
+  process.exit(0);
 }
 
 // ── Bootstrap Admin SDK ───────────────────────────────────────────────────────
