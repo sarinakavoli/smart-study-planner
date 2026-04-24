@@ -19,6 +19,7 @@ import {
 } from "firebase/firestore";
 import {
   personalOrgId,
+  readableUserId,
   generateTaskId,
   generateCategoryId,
 } from "./utils/firestoreIds";
@@ -215,6 +216,29 @@ function App() {
         } catch (err) {
           console.error("[auth] Step 4 FAILED — invitation fetch error:", err.code, err.message, err);
           setPendingInvites([]);
+        }
+
+        // ── Step 5: write the debugging-only userIndex entry ─────────────────
+        // userIndex/{readableId} is NOT used for auth — it exists purely so
+        // a human can find a user by readable name in the Firebase Console.
+        try {
+          const userIndexId = readableUserId(firebaseUser.uid, firebaseUser.email);
+          const userIndexRef = doc(db, "userIndex", userIndexId);
+          await setDoc(
+            userIndexRef,
+            {
+              uid: firebaseUser.uid,
+              email: firebaseUser.email || "",
+              displayName: firebaseUser.displayName ?? null,
+              organizationId: resolvedOrgId,
+              readableId: userIndexId,
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+          );
+          console.log("[auth] Step 5 — userIndex/", userIndexId, "written OK");
+        } catch (err) {
+          console.error("[auth] Step 5 FAILED — could not write userIndex:", err.code, err.message);
         }
 
         console.log("[auth] Setup complete — resolvedOrgId:", resolvedOrgId);

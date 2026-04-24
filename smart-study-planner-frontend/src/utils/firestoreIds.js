@@ -43,6 +43,30 @@ export function personalOrgId(uid, email = "") {
   return `org_${shortOwnerId}_${emailSlug}_default`;
 }
 
+/**
+ * Generates a human-readable document ID for the userIndex collection.
+ * Format: user_<shortUserId>_<emailSlug>
+ * where shortUserId = first 6 characters of the Firebase Auth UID,
+ * and emailSlug = slugified local-part of the user's email (before @),
+ * falling back to "unknown" when no email is available.
+ *
+ * Example: uid "AvU4OpeL5WO...", email "sarinakavoli@icloud.com"
+ *          → "user_AvU4Op_sarinakavoli"
+ *
+ * Used only for the debugging-only userIndex collection.
+ * The real auth key is always users/{uid} (the full Firebase UID).
+ *
+ * @param {string} uid   - Firebase Auth UID
+ * @param {string} email - User's email address (optional)
+ * @returns {string}  e.g. "user_AvU4Op_sarinakavoli"
+ */
+export function readableUserId(uid, email = "") {
+  const shortUserId = String(uid).slice(0, 6);
+  const localPart = email ? email.split("@")[0] : "";
+  const emailSlug = localPart ? slugify(localPart).slice(0, 20) : "unknown";
+  return `user_${shortUserId}_${emailSlug}`;
+}
+
 const lowercase4 = customAlphabet("0123456789abcdefghijklmnopqrstuvwxyz", 4);
 
 /**

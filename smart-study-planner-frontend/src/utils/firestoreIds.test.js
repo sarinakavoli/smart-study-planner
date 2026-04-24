@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import {
   slugify,
   personalOrgId,
+  readableUserId,
   generateTaskId,
   generateCategoryId,
 } from "./firestoreIds.js";
@@ -89,6 +90,35 @@ describe("personalOrgId", () => {
 
   it("works when uid is shorter than 6 characters", () => {
     expect(personalOrgId("ab", "user@example.com")).toBe("org_ab_user_default");
+  });
+});
+
+// ── readableUserId ───────────────────────────────────────────────────────────
+
+describe("readableUserId", () => {
+  it("returns user_<shortUserId>_<emailSlug> for a typical uid and email", () => {
+    expect(readableUserId("AvU4OpeL5WO", "sarinakavoli@icloud.com")).toBe("user_AvU4Op_sarinakavoli");
+    expect(readableUserId("Mn1p9Tu5LZM", "kavolisarina@gmail.com")).toBe("user_Mn1p9T_kavolisarina");
+  });
+
+  it("always starts with 'user_'", () => {
+    expect(readableUserId("abc123XYZ", "test@example.com")).toMatch(/^user_/);
+  });
+
+  it("uses exactly the first 6 characters of uid", () => {
+    expect(readableUserId("ABCDEF123456", "test@example.com")).toBe("user_ABCDEF_test");
+  });
+
+  it("slugifies the email local-part", () => {
+    expect(readableUserId("uid123", "my.name+tag@example.com")).toBe("user_uid123_my-name-tag");
+  });
+
+  it("falls back to 'unknown' when no email is provided", () => {
+    expect(readableUserId("abc123XYZ")).toBe("user_abc123_unknown");
+  });
+
+  it("works when uid is shorter than 6 characters", () => {
+    expect(readableUserId("ab", "test@example.com")).toBe("user_ab_test");
   });
 });
 
