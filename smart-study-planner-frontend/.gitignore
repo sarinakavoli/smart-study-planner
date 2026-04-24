@@ -15,6 +15,10 @@ dist-ssr
 # Service account key — never commit this
 scripts/serviceAccountKey.json
 
+# Seed run manifests — local state files used by --undo-last
+scripts/.last-seed-run-categories.json
+scripts/.last-seed-run-tasks.json
+
 # Vitest JUnit report output
 test-results
 
