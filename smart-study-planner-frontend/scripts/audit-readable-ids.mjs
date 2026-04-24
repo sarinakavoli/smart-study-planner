@@ -495,19 +495,22 @@ async function main() {
     if (legacyTotal > 0) {
       log(
         `✗ FAIL: ${legacyTotal} document(s) still use legacy auto-IDs. ` +
-        "Run migrate-to-readable-ids.mjs to migrate them."
+        "These documents must be re-created with IDs matching the refined format " +
+        "(task_<categorySlug>_<titleSlug>_<NNN> / cat_<orgSlug>_<catSlug>_<N>)."
       );
     }
     if (deprecatedTotal > 0) {
       log(
         `✗ FAIL: ${deprecatedTotal} document(s) use the deprecated task_org_/cat_org_ ` +
-        "format. Run migrate-to-readable-ids.mjs to re-migrate them."
+        "format. These documents must be re-created with IDs matching the refined format " +
+        "(task_<categorySlug>_<titleSlug>_<NNN> / cat_<orgSlug>_<catSlug>_<N>)."
       );
     }
     if (malformedTotal > 0) {
       log(
         `✗ FAIL: ${malformedTotal} document(s) have a task_/cat_ prefix but do not ` +
-        "match the refined ID structure. Run migrate-to-readable-ids.mjs to re-migrate them."
+        "match the refined ID structure. These documents must be re-created with " +
+        "IDs matching the format task_<categorySlug>_<titleSlug>_<NNN> / cat_<orgSlug>_<catSlug>_<N>."
       );
     }
     if (totalWarnField > 0) {
