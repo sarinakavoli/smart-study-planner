@@ -1,5 +1,4 @@
-import { nanoid } from "nanoid";
-import { collection, doc, documentId, getDocs, query, runTransaction, where } from "firebase/firestore";
+import { nanoid, customAlphabet } from "nanoid";
 
 /**
  * Converts arbitrary text into a lowercase, URL-safe slug.
@@ -34,63 +33,23 @@ export function personalOrgId(uid) {
 }
 
 /**
- * Generates a human-readable, sequential document ID for a task.
- * Format: task_<categorySlug>_<titleSlug>_<NNN>
+ * Generates a human-readable document ID for a task.
+ * Format: task_<shortUserId>_<categorySlug>_<titleSlug>_<random4>
  *
- * Algorithm:
- *  1. Query existing task documents with the same prefix to find the current
- *     highest suffix number. This seeds the counter on first use so that new
- *     IDs never collide with tasks written before this counter system existed.
- *  2. Run a Firestore transaction on a dedicated counter document at
- *     `task_counters/org_<uid>_<categorySlug>_<titleSlug>`. The transaction
- *     reads the stored count, takes the max of that and the queried max
- *     (protecting against stale counter docs), increments it, and writes it
- *     back.
- *  3. Because Firestore serializes concurrent transactions on the same
- *     document, two simultaneous callers always receive different numbers —
- *     no retry loop is needed once a counter document exists.
- *  4. The counter document is scoped to the user's org ID so Firestore rules
- *     can enforce that users only read/write their own counter documents.
- *
- * @param {import("firebase/firestore").Firestore} db - Firestore instance
+ * @param {import("firebase/firestore").Firestore} _db - Firestore instance (unused, kept for call-site compatibility)
  * @param {string} userId   - Firebase Auth UID of the current user
  * @param {string} category - Task category name (will be slugified)
  * @param {string} title    - Task title (will be slugified)
- * @returns {Promise<string>}  e.g. "task_school_unity-notes_002"
+ * @returns {Promise<string>}  e.g. "task_abc1_school_unity-notes_v3kD"
  */
-export async function generateTaskId(db, userId, category, title) {
+const alphanumeric = customAlphabet("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", 4);
+
+export async function generateTaskId(_db, userId, category, title) {
+  const shortUserId = String(userId).slice(0, 6);
   const categorySlug = slugify(category);
   const titleSlug = slugify(title);
-  const prefix = `task_${categorySlug}_${titleSlug}_`;
-  const orgId = personalOrgId(userId);
-  const counterRef = doc(db, "task_counters", `${orgId}_${categorySlug}_${titleSlug}`);
-
-  const existingSnap = await getDocs(
-    query(
-      collection(db, "tasks"),
-      where(documentId(), ">=", prefix),
-      where(documentId(), "<", prefix + "\uf8ff")
-    )
-  );
-
-  let existingMax = 0;
-  existingSnap.forEach((docSnap) => {
-    const suffix = docSnap.id.slice(prefix.length);
-    const num = parseInt(suffix, 10);
-    if (!isNaN(num) && num > existingMax) {
-      existingMax = num;
-    }
-  });
-
-  const nextCount = await runTransaction(db, async (transaction) => {
-    const counterSnap = await transaction.get(counterRef);
-    const storedCount = counterSnap.exists() ? counterSnap.data().count : 0;
-    const next = Math.max(storedCount, existingMax) + 1;
-    transaction.set(counterRef, { count: next });
-    return next;
-  });
-
-  return `${prefix}${String(nextCount).padStart(3, "0")}`;
+  const random4 = alphanumeric();
+  return `task_${shortUserId}_${categorySlug}_${titleSlug}_${random4}`;
 }
 
 /**

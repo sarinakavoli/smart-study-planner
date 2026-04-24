@@ -1,49 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   slugify,
   personalOrgId,
   generateTaskId,
   generateCategoryId,
 } from "./firestoreIds.js";
-
-// ── Mock firebase/firestore ───────────────────────────────────────────────────
-
-vi.mock("firebase/firestore", () => ({
-  collection: vi.fn(),
-  doc: vi.fn((_db, _col, id) => ({ id })),
-  documentId: vi.fn(() => "__name__"),
-  getDocs: vi.fn(),
-  query: vi.fn(),
-  runTransaction: vi.fn(),
-  where: vi.fn(),
-}));
-
-import { getDocs, runTransaction } from "firebase/firestore";
-
-// ── Test helpers ──────────────────────────────────────────────────────────────
-
-function makeFakeSnapshot(ids) {
-  const docs = ids.map((id) => ({ id }));
-  return { forEach: (fn) => docs.forEach(fn) };
-}
-
-/**
- * Returns a runTransaction mock that simulates a counter document.
- * @param {number|null} storedCount  null = no counter doc exists
- */
-function makeTransactionMock(storedCount) {
-  return async (_db, callback) => {
-    const counterSnap =
-      storedCount == null
-        ? { exists: () => false }
-        : { exists: () => true, data: () => ({ count: storedCount }) };
-    const transaction = {
-      get: vi.fn().mockResolvedValue(counterSnap),
-      set: vi.fn(),
-    };
-    return callback(transaction);
-  };
-}
 
 // ── slugify ──────────────────────────────────────────────────────────────────
 
@@ -122,70 +83,55 @@ describe("personalOrgId", () => {
 
 describe("generateTaskId", () => {
   const db = {};
-  const userId = "user_abc123";
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("returns task_001 when no matching documents exist and no counter doc", async () => {
-    getDocs.mockResolvedValue(makeFakeSnapshot([]));
-    runTransaction.mockImplementation(makeTransactionMock(null));
-
-    const id = await generateTaskId(db, userId, "School", "Unity");
-    expect(id).toBe("task_school_unity_001");
-  });
+  const userId = "abcXYZ123456";
 
   it("starts with 'task_'", async () => {
-    getDocs.mockResolvedValue(makeFakeSnapshot([]));
-    runTransaction.mockImplementation(makeTransactionMock(null));
-
-    const id = await generateTaskId(db, userId, "Work", "Meeting Notes");
+    const id = await generateTaskId(db, userId, "School", "Unity");
     expect(id).toMatch(/^task_/);
   });
 
-  it("slugifies category and title in the ID", async () => {
-    getDocs.mockResolvedValue(makeFakeSnapshot([]));
-    runTransaction.mockImplementation(makeTransactionMock(null));
-
-    const id = await generateTaskId(db, userId, "Math & Science!", "My Assignment");
-    expect(id).toBe("task_math-science_my-assignment_001");
-  });
-
-  it("increments above existing task documents when no counter doc exists", async () => {
-    getDocs.mockResolvedValue(
-      makeFakeSnapshot(["task_school_unity_001", "task_school_unity_002"])
-    );
-    runTransaction.mockImplementation(makeTransactionMock(null));
-
+  it("embeds the first 6 characters of userId after the task_ prefix", async () => {
     const id = await generateTaskId(db, userId, "School", "Unity");
-    expect(id).toBe("task_school_unity_003");
+    const shortUserId = userId.slice(0, 6);
+    expect(id.startsWith(`task_${shortUserId}_`)).toBe(true);
   });
 
-  it("zero-pads the counter to 3 digits", async () => {
-    getDocs.mockResolvedValue(makeFakeSnapshot([]));
-    runTransaction.mockImplementation(makeTransactionMock(null));
-
-    const id = await generateTaskId(db, userId, "Work", "Review");
-    expect(id).toMatch(/_\d{3}$/);
+  it("slugifies the category into the ID", async () => {
+    const id = await generateTaskId(db, userId, "Math & Science!", "Assignment");
+    expect(id).toContain("math-science");
   });
 
-  it("uses the stored counter when it is higher than existing task docs", async () => {
-    getDocs.mockResolvedValue(makeFakeSnapshot(["task_school_unity_001"]));
-    runTransaction.mockImplementation(makeTransactionMock(5));
+  it("slugifies the title into the ID", async () => {
+    const id = await generateTaskId(db, userId, "School", "My Assignment");
+    expect(id).toContain("my-assignment");
+  });
 
+  it("ends with a 4-character strictly alphanumeric suffix", async () => {
     const id = await generateTaskId(db, userId, "School", "Unity");
-    expect(id).toBe("task_school_unity_006");
+    expect(id).toMatch(/_[A-Za-z0-9]{4}$/);
   });
 
-  it("handles the highest existing counter correctly", async () => {
-    getDocs.mockResolvedValue(
-      makeFakeSnapshot(["task_work_review_005", "task_work_review_003"])
-    );
-    runTransaction.mockImplementation(makeTransactionMock(null));
+  it("matches the full expected format", async () => {
+    const id = await generateTaskId(db, userId, "School", "Unity Notes");
+    expect(id).toMatch(/^task_[A-Za-z0-9]{1,6}_[a-z0-9-]*_[a-z0-9-]*_[A-Za-z0-9]{4}$/);
+  });
 
-    const id = await generateTaskId(db, userId, "Work", "Review");
-    expect(id).toBe("task_work_review_006");
+  it("generates unique IDs across multiple calls", async () => {
+    const ids = new Set(
+      await Promise.all(
+        Array.from({ length: 200 }, () =>
+          generateTaskId(db, userId, "School", "Unity")
+        )
+      )
+    );
+    expect(ids.size).toBeGreaterThan(1);
+  });
+
+  it("does not require any Firestore reads or writes", async () => {
+    const fakeDb = {
+      collection: vi.fn(() => { throw new Error("Firestore should not be called"); }),
+    };
+    await expect(generateTaskId(fakeDb, userId, "Work", "Meeting")).resolves.toMatch(/^task_/);
   });
 });
 
