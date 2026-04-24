@@ -17,8 +17,12 @@
 //   id            string   Mirrors the document ID
 //   name          string   "<user email>'s Workspace"
 //   ownerId       string   Full Firebase Auth UID of the creator
-//   memberIds     string[] Full UIDs of all org members
+//   ownerEmail    string   Email address of the creator (for debugging/display)
+//   memberIds     string[] Full UIDs of all org members — used by Firestore rules
 //                          (single-user orgs contain only the owner)
+//   memberEmails  string[] Email addresses of all members — parallel to memberIds
+//                          Kept in sync: memberEmails[i] matches memberIds[i]
+//                          For human-readable debugging only; not used in rules
 //   createdAt     Timestamp Firestore server timestamp — set once at creation
 //   updatedAt     Timestamp Firestore server timestamp — refreshed on changes
 //
@@ -26,7 +30,9 @@
 //   - Created exactly once per user, on their very first login/signup.
 //   - If the users/<uid> document already has an organizationId the org is
 //     NOT recreated. Only a missing organizationId triggers creation.
-//   - Members are stored as a flat array; for large orgs consider moving them
+//   - Firestore security rules use memberIds (UIDs) exclusively.
+//   - memberEmails is for debugging and display only — never trust it for auth.
+//   - Members are stored as flat arrays; for large orgs consider moving them
 //     to a sub-collection: organizations/<orgId>/members/<uid>
 //
 //
@@ -116,8 +122,9 @@
 //
 // When a user joins an existing organization:
 //   1. Add the user's UID to organizations/<orgId>.memberIds (arrayUnion).
-//   2. Update users/<uid>.organizationId to the existing orgId.
-//   3. Do NOT create a new org document.
+//   2. Add the user's email to organizations/<orgId>.memberEmails (arrayUnion).
+//   3. Update users/<uid>.organizationId to the existing orgId.
+//   4. Do NOT create a new org document.
 //
 //
 // ── FIRESTORE SECURITY RULES — ACCESS MODEL ──────────────────────────────────

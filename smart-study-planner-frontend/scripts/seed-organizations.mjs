@@ -112,6 +112,12 @@ async function seedOrganizations() {
     const orgId = personalOrgId(uid);
     const now = new Date().toISOString();
 
+    // For seed/test UIDs there is no real email — use a placeholder so the
+    // ownerEmail / memberEmails fields are always present on every org doc.
+    // When seeding real UIDs, fetch the user record from Firebase Auth first
+    // and pass the actual email here.
+    const placeholderEmail = `seed+${uid}@example.com`;
+
     // Write the organization document.
     // merge: true — safe to re-run; existing orgs are not overwritten.
     await db.collection("organizations").doc(orgId).set(
@@ -119,12 +125,15 @@ async function seedOrganizations() {
         id: orgId,
         name: `Personal org for ${uid}`,
         ownerId: uid,
+        ownerEmail: placeholderEmail,
         memberIds: [uid],
+        memberEmails: [placeholderEmail],
         createdAt: now,
         updatedAt: now,
         seedData: true,
         // When real multi-org support is added, remove seedData: true and
-        // replace name/memberIds with values from your org management UI.
+        // replace name/ownerEmail/memberIds/memberEmails with values from
+        // your org management UI / Firebase Auth lookup.
       },
       { merge: true }
     );
