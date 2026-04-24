@@ -63,6 +63,7 @@
 import { readFileSync, writeFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { join, dirname } from "path";
+import { verifySeedUsers } from "./seed-verify-helper.mjs";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -95,12 +96,9 @@ const TITLES     = [
 // match the actual Firebase Auth UIDs of your test accounts for the tasks
 // to appear in the UI).
 //
-// IMPORTANT: After seeding, run the verification script to confirm the seeded
-// userIds exist in Firebase Auth and that data will surface in the app:
-//
-//   npm run verify:seed-users          (from smart-study-planner-frontend/)
-//   -- or from workspace root:
-//   node smart-study-planner-frontend/scripts/verify-seed-users.mjs
+// NOTE: After inserting, this script automatically verifies that every seeded
+// userId exists in Firebase Auth and prints a PASS/FAIL summary. If any IDs
+// are mismatched the script exits with code 1.
 //
 // You can find a user's UID in the Firebase console under
 // Authentication → Users → copy the User UID column, then re-run:
@@ -210,10 +208,12 @@ if (usersArg) {
 // ── Bootstrap Admin SDK (skipped in dry-run mode) ─────────────────────────────
 
 let db;
+let auth;
 
 if (!dryRun) {
   const { initializeApp, cert } = await import("firebase-admin/app");
   const { getFirestore } = await import("firebase-admin/firestore");
+  const { getAuth } = await import("firebase-admin/auth");
 
   const serviceAccountJson = process.env.GCP_SERVICE_ACCOUNT_JSON;
   if (!serviceAccountJson) {
@@ -227,7 +227,8 @@ if (!dryRun) {
 
   const serviceAccount = JSON.parse(serviceAccountJson);
   initializeApp({ credential: cert(serviceAccount) });
-  db = getFirestore(DB_NAME);
+  db   = getFirestore(DB_NAME);
+  auth = getAuth();
 }
 
 // ── Mode dispatch ─────────────────────────────────────────────────────────────
@@ -527,4 +528,7 @@ async function insertTasks() {
     "  To wipe everything and start fresh:\n" +
     "    node smart-study-planner-frontend/scripts/seed-tasks.mjs --reset"
   );
+
+  const allPass = await verifySeedUsers(db, auth, COLLECTION);
+  if (!allPass) process.exit(1);
 }
