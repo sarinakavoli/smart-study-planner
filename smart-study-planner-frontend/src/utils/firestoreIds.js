@@ -84,3 +84,23 @@ export function generateCategoryId(userId, name) {
   const shortRandom = lowercase4();
   return `cat_${shortUserId}_${categorySlug}_${shortRandom}`;
 }
+
+/**
+ * Generates a human-readable document ID for an invitation.
+ * Format: invite_<shortOrgId>_<emailSlug>_<shortRandom>
+ *
+ * shortOrgId  = first 8 characters of the organization ID.
+ * emailSlug   = slugified local-part of the invited email (before @).
+ * shortRandom = 4 lowercase letters/numbers for uniqueness.
+ *
+ * @param {string} organizationId - The organization's Firestore document ID
+ * @param {string} email          - The invited user's email address
+ * @returns {string}  e.g. "invite_org_AvU4Op_alice_3kd9"
+ */
+export function generateInviteId(organizationId, email) {
+  const shortOrgId = String(organizationId).slice(0, 12);
+  const localPart = email ? email.split("@")[0] : "user";
+  const emailSlug = slugify(localPart).slice(0, 20);
+  const shortRandom = lowercase4();
+  return `invite_${shortOrgId}_${emailSlug}_${shortRandom}`;
+}

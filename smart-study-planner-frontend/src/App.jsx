@@ -23,6 +23,11 @@ import {
   generateCategoryId,
 } from "./utils/firestoreIds";
 import {
+  createInvitation,
+  getPendingInvitationsForEmail,
+  acceptInvitation,
+} from "./services/invitationService";
+import {
   ref as storageRef,
   uploadBytes,
   getDownloadURL,
@@ -62,6 +67,10 @@ function App() {
   const [replaceFile, setReplaceFile] = useState(null);
   const [attachmentSaving, setAttachmentSaving] = useState(false);
   const replaceFileInputRef = useRef(null);
+
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteStatus, setInviteStatus] = useState(null);
+  const [inviteSending, setInviteSending] = useState(false);
 
   const [newTask, setNewTask] = useState({
     title: "",
@@ -183,9 +192,32 @@ function App() {
           }
         }
 
-        console.log("[auth] Setup complete — resolvedOrgId:", resolvedOrgId);
-        setOrganizationId(resolvedOrgId);
-        setOrganizationName(`${firebaseUser.email || ""}'s Workspace`);
+        // ── Step 4: check for pending invitations ────────────────────────────
+        let finalOrgId = resolvedOrgId;
+        let finalOrgName = `${firebaseUser.email || ""}'s Workspace`;
+        try {
+          const pendingInvites = await getPendingInvitationsForEmail(firebaseUser.email);
+          if (pendingInvites.length > 0) {
+            const invite = pendingInvites[0];
+            console.log("[auth] Step 4 — pending invitation found:", invite.id, "for org:", invite.organizationId);
+            await acceptInvitation({
+              invitation: invite,
+              userId: firebaseUser.uid,
+              userEmail: firebaseUser.email,
+            });
+            finalOrgId = invite.organizationId;
+            finalOrgName = invite.organizationName || finalOrgName;
+            console.log("[auth] Step 4 — invitation accepted, new orgId:", finalOrgId);
+          } else {
+            console.log("[auth] Step 4 — no pending invitations for:", firebaseUser.email);
+          }
+        } catch (err) {
+          console.error("[auth] Step 4 FAILED — invitation check error:", err.code, err.message, err);
+        }
+
+        console.log("[auth] Setup complete — resolvedOrgId:", finalOrgId);
+        setOrganizationId(finalOrgId);
+        setOrganizationName(finalOrgName);
       } else {
         console.log("[auth] onAuthStateChanged fired — user signed out");
         setOrganizationId(null);
@@ -1437,6 +1469,17 @@ function App() {
           Calendar
         </button>
 
+        <button
+          onClick={() => {
+            setInviteEmail("");
+            setInviteStatus(null);
+            setActiveView("INVITE_USER");
+          }}
+          style={sidebarButtonStyle(activeView === "INVITE_USER")}
+        >
+          Invite User
+        </button>
+
         <div className="category-section">
           <h3 className="category-title">Category</h3>
 
@@ -1853,6 +1896,74 @@ function App() {
               <p>No tasks match your search/category.</p>
             ) : (
               <div>{filteredTasks.map((task) => renderTaskRow(task))}</div>
+            )}
+          </div>
+        )}
+
+        {activeView === "INVITE_USER" && (
+          <div className="panel-card">
+            <h2>Invite a User</h2>
+            <p className="helper-text">
+              Enter an email address to invite someone to your organization.
+              They will be added automatically the next time they sign in.
+            </p>
+
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const trimmed = inviteEmail.trim().toLowerCase();
+                if (!trimmed) {
+                  setInviteStatus({ type: "error", message: "Please enter an email address." });
+                  return;
+                }
+                if (trimmed === currentUser.email?.toLowerCase()) {
+                  setInviteStatus({ type: "error", message: "You cannot invite yourself." });
+                  return;
+                }
+                setInviteSending(true);
+                setInviteStatus(null);
+                try {
+                  await createInvitation({
+                    organizationId,
+                    organizationName: organizationName || `${currentUser.email}'s Workspace`,
+                    invitedEmail: trimmed,
+                    invitedByUserId: currentUser.uid,
+                    invitedByEmail: currentUser.email,
+                  });
+                  setInviteStatus({ type: "success", message: `Invitation sent to ${trimmed}. They will join your organization on their next sign-in.` });
+                  setInviteEmail("");
+                } catch (err) {
+                  console.error("[invite] Failed to send invitation:", err);
+                  setInviteStatus({ type: "error", message: `Could not send invitation: ${err.message}` });
+                } finally {
+                  setInviteSending(false);
+                }
+              }}
+              style={{ display: "flex", flexDirection: "column", gap: "12px", maxWidth: "420px", margin: "0 auto" }}
+            >
+              <input
+                type="email"
+                placeholder="colleague@example.com"
+                value={inviteEmail}
+                onChange={(e) => { setInviteEmail(e.target.value); setInviteStatus(null); }}
+                className="input-control"
+                required
+              />
+              <button type="submit" className="main-btn" disabled={inviteSending}>
+                {inviteSending ? "Sending..." : "Send Invitation"}
+              </button>
+            </form>
+
+            {inviteStatus && (
+              <p
+                style={{
+                  marginTop: "18px",
+                  textAlign: "center",
+                  color: inviteStatus.type === "success" ? "#4ade80" : "#f87171",
+                }}
+              >
+                {inviteStatus.message}
+              </p>
             )}
           </div>
         )}
