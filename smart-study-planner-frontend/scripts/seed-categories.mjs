@@ -69,8 +69,22 @@ const CATEGORY_NAMES = [
 const COLORS = ["#4f46e5", "#0891b2", "#16a34a", "#d97706", "#dc2626", "#7c3aed"];
 
 // Fake user IDs — replace with real Firebase Auth UIDs if you want to query
-// from the app (the app filters by userId, so these must match your real UID
-// for the categories to appear in the UI).
+// from the app (the app filters by userId == currentUser.uid, so these must
+// match the actual Firebase Auth UIDs of your test accounts for the categories
+// to appear in the UI).
+//
+// IMPORTANT: After seeding, run the verification script to confirm the seeded
+// userIds exist in Firebase Auth and that data will surface in the app:
+//
+//   npm run verify:seed-users          (from smart-study-planner-frontend/)
+//   -- or from workspace root:
+//   node smart-study-planner-frontend/scripts/verify-seed-users.mjs
+//
+// You can find a user's UID in the Firebase console under
+// Authentication → Users → copy the User UID column, then re-run:
+//
+//   node smart-study-planner-frontend/scripts/seed-categories.mjs \
+//     --users=<real-uid-1>,<real-uid-2>
 let USER_IDS = [
   "user_test_001",
   "user_test_002",
