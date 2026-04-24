@@ -125,26 +125,23 @@ function App() {
         // ── Step 2: ensure the organization document exists ──────────────────
         // Always run this step so that accounts whose org doc was never created
         // (e.g. due to a past permission error) are self-healed on next login.
-        console.log("[auth] creating organizations/", resolvedOrgId);
         try {
           const orgRef = doc(db, "organizations", resolvedOrgId);
-          await setDoc(
-            orgRef,
-            {
-              id: resolvedOrgId,
-              name: `${firebaseUser.email}'s Workspace`,
-              ownerId: firebaseUser.uid,
-              ownerEmail: firebaseUser.email,
-              memberIds: [firebaseUser.uid],
-              memberEmails: [firebaseUser.email],
-              createdAt: serverTimestamp(),
-              updatedAt: serverTimestamp(),
-            },
-            { merge: true }
-          );
-          console.log("[auth] organizations/", resolvedOrgId, "created OK");
+          const orgPayload = {
+            id: resolvedOrgId,
+            name: `${firebaseUser.email || ""}'s Workspace`,
+            ownerId: firebaseUser.uid,
+            ownerEmail: firebaseUser.email || "",
+            memberIds: [firebaseUser.uid],
+            memberEmails: [firebaseUser.email || ""],
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          };
+          console.log("[auth] org payload", orgPayload);
+          await setDoc(orgRef, orgPayload, { merge: true });
+          console.log("[auth] organizations/", resolvedOrgId, "written OK");
         } catch (err) {
-          console.error("[auth] organizations create failed:", err.code, err.message, err);
+          console.error("[auth] organizations write failed:", err.code, err.message, err);
         }
 
         // ── Step 3: write or refresh the user document ───────────────────────
