@@ -55,7 +55,7 @@ export async function collectSeedUserIds(db, collectionName) {
  * @param {string} uid
  * @returns {Promise<import("firebase-admin/auth").UserRecord | null>}
  */
-async function lookupAuthUser(auth, uid) {
+export async function lookupAuthUser(auth, uid) {
   try {
     return await auth.getUser(uid);
   } catch (err) {

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   collectSeedUserIds,
+  lookupAuthUser,
   verifySeedUsers,
   verifySeedUsersOrExit,
 } from "./seed-verify-helper.mjs";
@@ -167,6 +168,37 @@ describe("collectSeedUserIds", () => {
     const result = await collectSeedUserIds(db, "categories");
 
     expect(result.size).toBe(1);
+  });
+});
+
+// ── lookupAuthUser ────────────────────────────────────────────────────────────
+
+describe("lookupAuthUser", () => {
+  it("returns the UserRecord when auth.getUser resolves successfully", async () => {
+    const user = { uid: "uid-alice", email: "alice@example.com" };
+    const auth = { getUser: vi.fn().mockResolvedValue(user) };
+
+    const result = await lookupAuthUser(auth, "uid-alice");
+
+    expect(result).toBe(user);
+    expect(auth.getUser).toHaveBeenCalledWith("uid-alice");
+  });
+
+  it("returns null when auth.getUser throws auth/user-not-found", async () => {
+    const err = new Error("User not found");
+    err.code = "auth/user-not-found";
+    const auth = { getUser: vi.fn().mockRejectedValue(err) };
+
+    const result = await lookupAuthUser(auth, "uid-ghost");
+
+    expect(result).toBeNull();
+  });
+
+  it("re-throws unexpected errors that are not auth/user-not-found", async () => {
+    const err = new Error("network failure");
+    const auth = { getUser: vi.fn().mockRejectedValue(err) };
+
+    await expect(lookupAuthUser(auth, "uid-alice")).rejects.toThrow("network failure");
   });
 });
 

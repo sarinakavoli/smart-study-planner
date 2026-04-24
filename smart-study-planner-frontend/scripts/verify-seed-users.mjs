@@ -71,6 +71,7 @@ import { getAuth } from "firebase-admin/auth";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { join, dirname } from "path";
+import { collectSeedUserIds, lookupAuthUser } from "./seed-verify-helper.mjs";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -78,7 +79,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname  = dirname(__filename);
 
 const DB_NAME    = "smart-study";
-const BATCH_SIZE = 500;
 
 const ALL_COLLECTIONS = ["categories", "tasks"];
 
@@ -177,62 +177,6 @@ if (!getApps().length) {
 const db   = getFirestore(DB_NAME);
 const auth = getAuth();
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-/**
- * Returns every unique userId present in documents where seedData == true
- * for the given Firestore collection.
- *
- * @param {string} collectionName
- * @returns {Promise<Map<string, number>>}  userId → document count
- */
-async function collectSeedUserIds(collectionName) {
-  const userCounts = new Map(); // userId → count of seeded docs
-  let lastDoc = null;
-
-  while (true) {
-    let q = db
-      .collection(collectionName)
-      .where("seedData", "==", true)
-      .limit(BATCH_SIZE);
-
-    if (lastDoc) {
-      q = q.startAfter(lastDoc);
-    }
-
-    const snap = await q.get();
-    if (snap.empty) break;
-
-    for (const doc of snap.docs) {
-      const uid = doc.data().userId;
-      if (uid) {
-        userCounts.set(uid, (userCounts.get(uid) ?? 0) + 1);
-      }
-    }
-
-    lastDoc = snap.docs[snap.docs.length - 1];
-    if (snap.size < BATCH_SIZE) break;
-  }
-
-  return userCounts;
-}
-
-/**
- * Looks up a Firebase Auth user by UID.
- * Returns the UserRecord on success, or null if not found.
- *
- * @param {string} uid
- * @returns {Promise<import("firebase-admin/auth").UserRecord | null>}
- */
-async function lookupAuthUser(uid) {
-  try {
-    return await auth.getUser(uid);
-  } catch (err) {
-    if (err.code === "auth/user-not-found") return null;
-    throw err;
-  }
-}
-
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 console.log("=".repeat(60));
@@ -247,7 +191,7 @@ const perCollection  = {};        // collectionName → Map<userId, count>
 
 for (const col of collectionsToCheck) {
   process.stdout.write(`  Scanning "${col}" for seeded documents …`);
-  const counts = await collectSeedUserIds(col);
+  const counts = await collectSeedUserIds(db, col);
   perCollection[col] = counts;
 
   let totalInCol = 0;
@@ -280,7 +224,7 @@ const found    = []; // { uid, email, totalDocs }
 const notFound = []; // { uid, totalDocs }
 
 for (const [uid, totalDocs] of combinedCounts) {
-  const user = await lookupAuthUser(uid);
+  const user = await lookupAuthUser(auth, uid);
   if (user) {
     found.push({ uid, email: user.email ?? "(no email)", totalDocs });
   } else {
