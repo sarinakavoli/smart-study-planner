@@ -19,17 +19,22 @@ export function slugify(text) {
 }
 
 /**
- * Returns the "personal org" identifier for a single user.
- * Every user gets a personal org whose ID is just `org_<uid>`.
+ * Generates the default organization ID for a new user.
+ * Format: org_<shortUserId>_default
+ * where shortUserId = first 6 characters of the Firebase Auth UID.
  *
- * This keeps the door open for real multi-org support later:
- * when you add orgs, replace this with the user's actual org ID.
+ * Example: uid "AvU4Op9xKqZ..." → "org_AvU4Op_default"
+ *
+ * This is only used when creating a brand-new organization on first
+ * login. For existing users the organizationId is read from their
+ * Firestore profile document instead of being computed here.
  *
  * @param {string} uid - Firebase Auth UID
- * @returns {string}  e.g. "org_ABC123uid"
+ * @returns {string}  e.g. "org_AvU4Op_default"
  */
 export function personalOrgId(uid) {
-  return `org_${uid}`;
+  const shortUserId = String(uid).slice(0, 6);
+  return `org_${shortUserId}_default`;
 }
 
 /**

@@ -8,6 +8,7 @@ import {
   getDocs,
   addDoc,
   setDoc,
+  getDoc,
   updateDoc,
   deleteDoc,
   doc,
@@ -49,6 +50,7 @@ function App() {
   const [dragOverCategory, setDragOverCategory] = useState(null);
   const [theme, setTheme] = useState(localStorage.getItem("theme") || "dark");
   const [currentUser, setCurrentUser] = useState(null);
+  const [organizationId, setOrganizationId] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [loading, setLoading] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
@@ -101,31 +103,59 @@ function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        const orgId = personalOrgId(firebaseUser.uid);
-        const createdAt =
-          firebaseUser.metadata.creationTime ?? new Date().toISOString();
+        const userRef = doc(db, "users", firebaseUser.uid);
 
-        // Write (or refresh) the user's Firestore profile document.
-        // merge: true means existing fields are preserved — this is safe to
-        // call on every login, not just the first signup.
-        // organizationId defaults to the personal-org placeholder so that
-        // future multi-org code can simply swap this value to a real org ID.
         try {
-          await setDoc(
-            doc(db, "users", firebaseUser.uid),
-            {
+          const userSnap = await getDoc(userRef);
+          const existingData = userSnap.exists() ? userSnap.data() : null;
+
+          let resolvedOrgId = existingData?.organizationId ?? null;
+
+          if (!resolvedOrgId) {
+            // First login / signup: create the default organization document
+            // and write the full user profile for the first time.
+            resolvedOrgId = personalOrgId(firebaseUser.uid);
+            const orgRef = doc(db, "organizations", resolvedOrgId);
+
+            await setDoc(orgRef, {
+              id: resolvedOrgId,
+              name: `${firebaseUser.email}'s Workspace`,
+              ownerId: firebaseUser.uid,
+              memberIds: [firebaseUser.uid],
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            });
+
+            await setDoc(userRef, {
               uid: firebaseUser.uid,
               email: firebaseUser.email,
               displayName: firebaseUser.displayName ?? null,
-              organizationId: orgId,
-              createdAt,
+              organizationId: resolvedOrgId,
+              organizationIds: [resolvedOrgId],
+              createdAt: serverTimestamp(),
               updatedAt: serverTimestamp(),
-            },
-            { merge: true }
-          );
+            });
+          } else {
+            // Returning user: refresh mutable fields only.
+            // organizationId / organizationIds / createdAt are preserved.
+            await setDoc(
+              userRef,
+              {
+                uid: firebaseUser.uid,
+                email: firebaseUser.email,
+                displayName: firebaseUser.displayName ?? null,
+                updatedAt: serverTimestamp(),
+              },
+              { merge: true }
+            );
+          }
+
+          setOrganizationId(resolvedOrgId);
         } catch (profileErr) {
           console.error("Could not write user profile doc:", profileErr);
         }
+      } else {
+        setOrganizationId(null);
       }
       setCurrentUser(firebaseUser ?? null);
       setAuthLoading(false);
@@ -192,6 +222,7 @@ function App() {
     }
     setTasks([]);
     setCategoriesData([]);
+    setOrganizationId(null);
   };
 
   useEffect(() => {
@@ -685,7 +716,7 @@ function App() {
       ? Math.max(...customCategories.map((c) => c.displayOrder ?? 0))
       : 3;
 
-    const orgId = personalOrgId(currentUser.uid);
+    const orgId = organizationId ?? personalOrgId(currentUser.uid);
     const catId = generateCategoryId(orgId, normalizedName);
     await setDoc(doc(db, "categories", catId), {
       name: normalizedName,
@@ -732,7 +763,7 @@ function App() {
         throw new Error("User not logged in");
       }
 
-      const orgId = personalOrgId(currentUser.uid);
+      const orgId = organizationId ?? personalOrgId(currentUser.uid);
 
       const payload = {
         title: newTask.title.trim(),

@@ -2,29 +2,32 @@
 // firestoreSchema.js
 //
 // THIS FILE IS DOCUMENTATION ONLY — it is not imported anywhere.
-// It describes the intended Firestore data model for Smart Study Planner,
-// including fields, relationships, and how to extend the design for real
-// multi-organization support in the future.
+// It describes the Firestore data model for Smart Study Planner,
+// including fields, relationships, and multi-organization design.
 // ─────────────────────────────────────────────────────────────────────────────
 //
 //
 // ── COLLECTION: organizations ────────────────────────────────────────────────
 //
-// Document ID: org_<uid>  (personal orgs — one per user)
+// Document ID: org_<shortUserId>_default
+//   where shortUserId = first 6 characters of the Firebase Auth UID
+//   e.g. "org_AvU4Op_default"
 //
 // Fields:
-//   name          string   Display name of the organization
-//   createdAt     string   ISO-8601 timestamp
-//   ownerId       string   Firebase Auth UID of the creator
-//   memberUids    string[] List of UIDs who belong to this org
-//                          (single-user orgs have just the owner)
+//   id            string   Mirrors the document ID
+//   name          string   "<user email>'s Workspace"
+//   ownerId       string   Full Firebase Auth UID of the creator
+//   memberIds     string[] Full UIDs of all org members
+//                          (single-user orgs contain only the owner)
+//   createdAt     Timestamp Firestore server timestamp — set once at creation
+//   updatedAt     Timestamp Firestore server timestamp — refreshed on changes
 //
 // Notes:
-//   - Currently every user has exactly one "personal org": org_<uid>
-//   - When real multi-org support is added, create a real organization doc
-//     and update users.organizationId to point to it
-//   - Members are stored as a flat array here; for large orgs move them to
-//     a sub-collection: organizations/<orgId>/members/<uid>
+//   - Created exactly once per user, on their very first login/signup.
+//   - If the users/<uid> document already has an organizationId the org is
+//     NOT recreated. Only a missing organizationId triggers creation.
+//   - Members are stored as a flat array; for large orgs consider moving them
+//     to a sub-collection: organizations/<orgId>/members/<uid>
 //
 //
 // ── COLLECTION: users ────────────────────────────────────────────────────────
@@ -32,68 +35,45 @@
 // Document ID: <Firebase Auth UID>  (full UID, never the short user ID)
 //
 // Fields:
-//   uid            string    Full Firebase Auth UID (mirrors the document ID)
-//   email          string    User's email address
-//   displayName    string|null  Display name from Firebase Auth (null if not set)
-//   organizationId string    ID of the org this user currently belongs to
-//                            (defaults to personalOrgId(uid) = "org_<uid>")
-//   createdAt      string    ISO-8601 timestamp from Firebase Auth metadata
-//                            (set once on first login/signup)
-//   updatedAt      Timestamp Firestore server timestamp, refreshed on every login
+//   uid             string    Full Firebase Auth UID (mirrors the document ID)
+//   email           string    User's email address
+//   displayName     string|null  Display name from Firebase Auth (null if not set)
+//   organizationId  string    ID of the org this user currently belongs to
+//                             e.g. "org_AvU4Op_default"
+//   organizationIds string[]  All org IDs this user belongs to
+//                             Currently always [organizationId]
+//   createdAt       Timestamp Firestore server timestamp — set once at first login
+//   updatedAt       Timestamp Firestore server timestamp — refreshed on every login
 //
 // Notes:
-//   - Written (with merge: true) on every login so it is always up-to-date
-//   - updatedAt uses serverTimestamp() so it reflects the last login time
-//   - When multi-org support is added, organizationId will point to a real
-//     organization document instead of the personal org placeholder
-//   - The short user ID (used in readable task IDs) is NOT used here; the
-//     document ID is always the full Firebase Auth UID
+//   - Written in full on first login (when organizationId is not yet set).
+//   - On subsequent logins only uid, email, displayName, and updatedAt are
+//     refreshed (merge: true), preserving organizationId, organizationIds,
+//     and createdAt.
+//   - organizationId is the source of truth used by the app for scoping
+//     tasks and categories — it is loaded from Firestore, not computed.
 //
 //
 // ── COLLECTION: categories ───────────────────────────────────────────────────
 //
-// Document ID — two formats coexist until generateCategoryId() is updated:
-//
-//   Post-migration (existing docs renamed by migrate-to-readable-ids.mjs):
-//     cat_<orgSlug>_<categorySlug>_<counter>
-//     e.g. cat_org-abc123_work_1
-//
-//   Newly created docs (via generateCategoryId() in firestoreIds.js):
-//     cat_<orgId>_<categorySlug>_<nanoid(10)>
-//     e.g. cat_org_abc123_work_V3kD9pQrLm
-//
-//   NOTE: The audit script (audit-readable-ids.mjs) uses a counter-only regex
-//   for categories, so new nanoid-suffix docs will appear as WARN(malformed)
-//   until generateCategoryId() is updated to the counter format.  Track this
-//   in follow-up task #149.
-//
-//   where orgSlug = slugify(orgId)  e.g. "org_abc123" → "org-abc123"
+// Document ID: cat_<orgId>_<slug>_<nanoid(10)>
+//   Generated by generateCategoryId() in firestoreIds.js
+//   e.g. "cat_org_AvU4Op_default_math-science_V3kD9pQrLm"
 //
 // Fields:
 //   name           string   Normalized (UPPERCASED) category name
 //   color          string   Hex color string, or "" for no color
 //   displayOrder   number   Sort position in the sidebar
-//   userId         string   Firebase Auth UID of the owner
-//   organizationId string   Org this category belongs to (= "org_<uid>")
+//   userId         string   Full Firebase Auth UID of the owner
+//   organizationId string   Org this category belongs to
 //   readableId     string   Copy of the document ID (for debugging/logging)
-//
-// Uniqueness guarantee:
-//   nanoid(10) suffix provides ~1 quadrillion combinations; collisions are
-//   essentially impossible across any number of users.
 //
 //
 // ── COLLECTION: tasks ────────────────────────────────────────────────────────
 //
 // Document ID: task_<shortUserId>_<categorySlug>_<titleSlug>_<random4>
 //   Generated by generateTaskId() in firestoreIds.js
-//   where shortUserId  = first 6 characters of the Firebase Auth UID
-//         categorySlug = slugify(category name)  e.g. "Math & Science" → "math-science"
-//         titleSlug    = slugify(task title)      e.g. "Unity Notes"    → "unity-notes"
-//         random4      = 4-character alphanumeric suffix from customAlphabet()
-//
-// Examples:
-//   task_abc123_school_unity-notes_v3kD
-//   task_xyz789_math_algebra-review_Q2pR
+//   e.g. "task_AvU4Op_school_unity-notes_v3kD"
 //
 // Fields:
 //   title          string   Task title
@@ -101,15 +81,10 @@
 //   status         string   "PENDING" | "IN_PROGRESS" | "DONE"
 //   description    string   Optional longer description
 //   category       string   Matches a category name (UPPERCASED)
-//   userId         string   Firebase Auth UID of the owner
-//   organizationId string   Org this task belongs to (= "org_<uid>")
+//   userId         string   Full Firebase Auth UID of the owner
+//   organizationId string   Org this task belongs to
 //   readableId     string   Copy of the document ID (for debugging/logging)
 //   attachments    array    List of attachment objects (see below)
-//
-// Uniqueness guarantee:
-//   A short user ID prefix combined with slugified category/title and a
-//   4-character random alphanumeric suffix (via customAlphabet) makes
-//   collisions effectively impossible.  See generateTaskId() in firestoreIds.js.
 //
 // Attachment object shape:
 //   id             string   UUID
@@ -122,64 +97,42 @@
 //   size           number   File size in bytes
 //   uploadedAt     string   ISO-8601 timestamp
 //
-// Notes:
-//   - dueDate stored as a string so Firestore range queries work without
-//     Timestamp conversion (string comparison "2025-04-19" < "2025-04-20" is safe)
-//   - Currently queried by userId; to add org scoping later:
-//       where("organizationId", "==", orgId)
-//     alongside the existing where("userId", "==", uid) filter in taskService.js
-//   - Composite indexes for userId + category + status + dueDate range are
-//     defined in firestore.indexes.json
+//
+// ── MULTI-ORG FLOW ───────────────────────────────────────────────────────────
+//
+// On sign-up or first login (onAuthStateChanged in App.jsx):
+//   1. Read users/<uid> — check for an existing organizationId.
+//   2. If organizationId is missing:
+//      a. Generate resolvedOrgId = personalOrgId(uid)
+//              = "org_" + uid.slice(0, 6) + "_default"
+//      b. Create organizations/<resolvedOrgId> with id, name, ownerId,
+//         memberIds, createdAt, updatedAt (all server timestamps).
+//      c. Write users/<uid> with uid, email, displayName, organizationId,
+//         organizationIds, createdAt, updatedAt (all server timestamps).
+//   3. If organizationId already exists:
+//      a. Use the stored value (no new org is created).
+//      b. Merge-update uid, email, displayName, updatedAt only.
+//   4. Store resolvedOrgId in React state (organizationId).
+//      All subsequent task and category writes use this value.
 //
 //
-// ── QUERY SCOPING NOTES FOR MULTI-ORG ACTIVATION ─────────────────────────────
-//
-// When real multi-org support is turned on:
-//
-// 1. Replace personalOrgId(uid) calls with the user's real organization ID
-//    (loaded from the users/<uid> document's organizationId field)
-//
-// 2. In taskService.js — add to both loadUserTasks and loadOverdueTasks:
-//      where("organizationId", "==", orgId)
-//    This ensures members of the same org see shared tasks if you allow it,
-//    or keep the userId filter to keep tasks private per user within an org.
-//
-// 3. In loadCategories (App.jsx) — add:
-//      where("organizationId", "==", orgId)
-//    alongside the existing userId filter.
-//
-// 4. Update Firestore security rules to check organizationId membership
-//    (e.g. the requesting user's UID must be in the org's memberUids array).
-//
-// 5. Deploy new composite indexes that include organizationId as a field.
-//
-//
-// ── FIRESTORE SECURITY RULES — INTENDED ACCESS MODEL ─────────────────────────
-//
-// Rules live in firestore.rules (project root of the frontend package) and are
-// deployed to Firebase via firebase.json.
+// ── FIRESTORE SECURITY RULES — ACCESS MODEL ──────────────────────────────────
 //
 // users/<uid>
 //   read, write : request.auth.uid == uid
-//   Rationale   : Each user may only read or write their own profile document.
-//
-// tasks/<taskId>
-//   read, delete: resource.data.userId        == request.auth.uid
-//              && resource.data.organizationId == 'org_' + request.auth.uid
-//   create      : same checks on request.resource.data
-//   update      : both existing and incoming data must satisfy the above
-//   Rationale   : Double-check userId AND personal org so a user cannot read
-//                 tasks owned by someone else in the same org (future-proofing).
-//
-// categories/<categoryId>
-//   Same rule structure as tasks (userId + organizationId must match).
 //
 // organizations/<orgId>
-//   read        : request.auth.uid in resource.data.memberUids
-//   create      : ownerId == request.auth.uid && uid in memberUids
-//   update/delete: resource.data.ownerId == request.auth.uid
+//   read   : request.auth.uid in resource.data.memberIds
+//   create : ownerId == request.auth.uid && uid in memberIds
+//   update : resource.data.ownerId == request.auth.uid
+//   delete : false
 //
-// catch-all
-//   All other paths: allow read, write: if false;
+// tasks/<taskId>
+//   read        : resource.data.userId == request.auth.uid
+//   create      : request.resource.data.userId == request.auth.uid
+//   update/delete: existing and incoming userId == request.auth.uid
+//
+// categories/<categoryId>
+//   Same rule structure as tasks.
 //
 // ─────────────────────────────────────────────────────────────────────────────
