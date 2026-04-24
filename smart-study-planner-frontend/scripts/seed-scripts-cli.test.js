@@ -748,6 +748,27 @@ describe(".seed-users file: broken content causes exit 1 with ERROR message", ()
     expect(stderr).toMatch(/ERROR.*non-empty strings/i);
     expect(stderr).toMatch(/3 invalid/i);
   });
+
+  it("seed-tasks: exits 1 and prints ERROR when .seed-users contains invalid JSON", () => {
+    const env = writeBadSeedUsers("{ not valid json }");
+    const { exitCode, stderr } = run(TASKS_SCRIPT, ["--dry-run"], env);
+    expect(exitCode).toBe(1);
+    expect(stderr).toMatch(/ERROR.*Failed to parse/i);
+  });
+
+  it("seed-tasks: exits 1 and prints ERROR when .seed-users is missing the 'users' key", () => {
+    const env = writeBadSeedUsers(JSON.stringify({ items: ["uid_abc"] }));
+    const { exitCode, stderr } = run(TASKS_SCRIPT, ["--dry-run"], env);
+    expect(exitCode).toBe(1);
+    expect(stderr).toMatch(/ERROR.*non-empty "users" array/i);
+  });
+
+  it("seed-tasks: exits 1 and prints ERROR when .seed-users has an empty users array", () => {
+    const env = writeBadSeedUsers(JSON.stringify({ users: [] }));
+    const { exitCode, stderr } = run(TASKS_SCRIPT, ["--dry-run"], env);
+    expect(exitCode).toBe(1);
+    expect(stderr).toMatch(/ERROR.*non-empty "users" array/i);
+  });
 });
 
 // ── .seed-users file path tests ───────────────────────────────────────────────
