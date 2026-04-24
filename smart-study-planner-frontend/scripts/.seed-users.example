@@ -1,0 +1,7 @@
+{
+  "users": [
+    "alice@example.com",
+    "bob@example.com",
+    "some-firebase-uid-xyz"
+  ]
+}

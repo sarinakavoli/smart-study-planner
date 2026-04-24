@@ -38,16 +38,29 @@
  *
  * FIXING A MISMATCH
  * ─────────────────
- * Re-run the seed script with the real Firebase Auth UID(s) of your test accounts:
+ * The easiest fix is to pass your email address instead of a UID:
+ *
+ *   node smart-study-planner-frontend/scripts/seed-categories.mjs \
+ *     --email=you@example.com
+ *
+ *   node smart-study-planner-frontend/scripts/seed-tasks.mjs \
+ *     --email=you@example.com
+ *
+ * Or copy scripts/.seed-users.example to scripts/.seed-users, fill in your
+ * email address(es), and the seed scripts will pick them up automatically on
+ * every run (no flag needed):
+ *
+ *   cp smart-study-planner-frontend/scripts/.seed-users.example \
+ *      smart-study-planner-frontend/scripts/.seed-users
+ *
+ * If you prefer to look up UIDs manually (Firebase console →
+ * Authentication → Users → copy the UID column), pass them with --users:
  *
  *   node smart-study-planner-frontend/scripts/seed-categories.mjs \
  *     --users=<real-uid-1>,<real-uid-2>
  *
  *   node smart-study-planner-frontend/scripts/seed-tasks.mjs \
  *     --users=<real-uid-1>,<real-uid-2>
- *
- * You can find a user's UID in the Firebase console under
- * Authentication → Users → copy the User UID column.
  */
 
 import { initializeApp, cert, getApps } from "firebase-admin/app";
@@ -251,16 +264,23 @@ if (notFound.length > 0) {
 
   console.log("  HOW TO FIX");
   console.log("  ──────────");
-  console.log("  1. Find the real Firebase Auth UIDs for your test accounts:");
-  console.log("     Firebase console → Authentication → Users → copy the UID column.");
+  console.log("  Option A — pass your email address (no UID look-up needed):");
+  console.log("     node smart-study-planner-frontend/scripts/seed-categories.mjs \\");
+  console.log("       --email=you@example.com");
+  console.log("     node smart-study-planner-frontend/scripts/seed-tasks.mjs \\");
+  console.log("       --email=you@example.com");
   console.log();
-  console.log("  2. Re-run the seed scripts with those UIDs:");
+  console.log("  Option B — add your email to scripts/.seed-users so every run");
+  console.log("  picks it up automatically (copy .seed-users.example to get started).");
+  console.log();
+  console.log("  Option C — pass the raw UID (Firebase console → Authentication →");
+  console.log("  Users → copy the UID column):");
   console.log("     node smart-study-planner-frontend/scripts/seed-categories.mjs \\");
   console.log("       --users=<real-uid-1>,<real-uid-2>");
   console.log("     node smart-study-planner-frontend/scripts/seed-tasks.mjs \\");
   console.log("       --users=<real-uid-1>,<real-uid-2>");
   console.log();
-  console.log("  3. (Optional) Delete old mismatched seed data first:");
+  console.log("  (Optional) Delete old mismatched seed data first:");
   console.log("     node smart-study-planner-frontend/scripts/seed-categories.mjs --delete");
   console.log("     node smart-study-planner-frontend/scripts/seed-tasks.mjs --delete");
   console.log();

@@ -134,10 +134,15 @@ export async function verifySeedUsers(db, auth, collectionName) {
 
     console.log("  HOW TO FIX");
     console.log("  ──────────");
-    console.log("  1. Find the real Firebase Auth UIDs for your test accounts:");
-    console.log("     Firebase console → Authentication → Users → copy the UID column.");
+    console.log("  Option A — pass your email address (no UID look-up needed):");
+    console.log(`     node smart-study-planner-frontend/scripts/seed-${collectionName}.mjs \\`);
+    console.log("       --email=you@example.com");
     console.log();
-    console.log(`  2. Re-run the seed script with those UIDs:`);
+    console.log("  Option B — add your email to scripts/.seed-users so every run");
+    console.log("  picks it up automatically (copy .seed-users.example to get started).");
+    console.log();
+    console.log("  Option C — pass the raw UID (Firebase console → Authentication →");
+    console.log("  Users → copy the UID column):");
     console.log(`     node smart-study-planner-frontend/scripts/seed-${collectionName}.mjs \\`);
     console.log("       --users=<real-uid-1>,<real-uid-2>");
     console.log();

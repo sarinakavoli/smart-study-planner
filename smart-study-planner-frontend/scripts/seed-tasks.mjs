@@ -26,6 +26,10 @@
  *   (no flag)          Insert TOTAL_RECORDS fake task documents.
  *   --count=N          Override TOTAL_RECORDS; insert exactly N documents.
  *   --users=u1,u2,...  Override USER_IDS pool; seed only for the listed UIDs.
+ *   --email=a@b,...    Resolve one or more email addresses to Firebase Auth UIDs
+ *                      automatically, then seed for those UIDs.
+ *                      Requires GCP_SERVICE_ACCOUNT_JSON to be set.
+ *                      Cannot be combined with --users.
  *   --dry-run          Preview what would be inserted (count, user IDs, sample
  *                      document IDs) without writing anything to Firestore.
  *                      Does not require GCP_SERVICE_ACCOUNT_JSON to be set.
@@ -33,6 +37,8 @@
  *                      use higher counters if matching docs already exist.
  *                      Takes precedence over --undo-last, --delete, and --reset
  *                      when combined with those flags.
+ *                      Note: --email addresses are not resolved in dry-run mode;
+ *                      they are shown as-is in the user list.
  *   --undo-last        Delete only the documents written in the most recent
  *                      seeding run (identified by the run ID saved in
  *                      scripts/.last-seed-run-tasks.json). Leaves all other
@@ -41,8 +47,29 @@
  *   --reset            Delete ALL documents in the tasks collection (full wipe).
  *                      Use this to start completely fresh before reseeding.
  *
+ * .SEED-USERS CONFIG FILE
+ * ───────────────────────
+ *   If neither --users nor --email is supplied, the script looks for a
+ *   scripts/.seed-users file.  When found, the users listed there are used
+ *   instead of the default placeholder IDs.
+ *
+ *   Each entry can be an email address (resolved via Firebase Auth) or a raw UID.
+ *   Copy scripts/.seed-users.example to scripts/.seed-users and fill it in:
+ *
+ *   {
+ *     "users": [
+ *       "alice@example.com",
+ *       "bob@example.com"
+ *     ]
+ *   }
+ *
+ *   The .seed-users file is gitignored so personal account details stay local.
+ *
  * EXAMPLES
  * ────────
+ *   # Seed for a logged-in account using your email (no UID copy-paste needed):
+ *   node smart-study-planner-frontend/scripts/seed-tasks.mjs --email=you@example.com
+ *
  *   # Preview 200 tasks for one specific user (no Firestore writes):
  *   node smart-study-planner-frontend/scripts/seed-tasks.mjs --count=200 --users=uid_abc --dry-run
  *
@@ -64,6 +91,7 @@ import { readFileSync, writeFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { join, dirname } from "path";
 import { verifySeedUsers } from "./seed-verify-helper.mjs";
+import { loadSeedUsersFile, resolveMixedEntries } from "./seed-user-resolver.mjs";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -194,7 +222,7 @@ if (countArg) {
   TOTAL_RECORDS = parseInt(raw, 10);
 }
 
-// --users=uid1,uid2,...  → override USER_IDS
+// --users=uid1,uid2,...  → override USER_IDS with raw UIDs
 const usersArg = args.find((a) => a.startsWith("--users="));
 if (usersArg) {
   const ids = usersArg.slice("--users=".length).split(",").map((s) => s.trim()).filter(Boolean);
@@ -203,6 +231,42 @@ if (usersArg) {
     process.exit(1);
   }
   USER_IDS = ids;
+}
+
+// --email=a@b.com,...  → resolve email addresses to UIDs after SDK init
+const emailArg = args.find((a) => a.startsWith("--email="));
+let EMAIL_ENTRIES = null; // non-null means we need to resolve after SDK init
+
+if (emailArg) {
+  if (usersArg) {
+    console.error("ERROR: --email and --users cannot be used together. Pick one.");
+    process.exit(1);
+  }
+  const entries = emailArg.slice("--email=".length).split(",").map((s) => s.trim()).filter(Boolean);
+  if (entries.length === 0) {
+    console.error("ERROR: --email must contain at least one address (e.g. --email=you@example.com)");
+    process.exit(1);
+  }
+  EMAIL_ENTRIES = entries;
+  // In dry-run mode show the emails as-is (cannot resolve without credentials)
+  if (dryRun) {
+    USER_IDS = entries;
+  }
+}
+
+// If neither --users nor --email was given, check for a .seed-users config file
+let SEED_FILE_ENTRIES = null; // non-null means file was loaded and may need resolving
+
+if (!usersArg && !emailArg) {
+  const fileEntries = loadSeedUsersFile();
+  if (fileEntries) {
+    console.log(`  Loading users from scripts/.seed-users (${fileEntries.length} entry/entries) …`);
+    SEED_FILE_ENTRIES = fileEntries;
+    // In dry-run mode use entries as-is (emails won't be resolved)
+    if (dryRun) {
+      USER_IDS = fileEntries;
+    }
+  }
 }
 
 // ── Bootstrap Admin SDK (skipped in dry-run mode) ─────────────────────────────
@@ -229,6 +293,18 @@ if (!dryRun) {
   initializeApp({ credential: cert(serviceAccount) });
   db   = getFirestore(DB_NAME);
   auth = getAuth();
+
+  // Resolve --email entries to UIDs now that the Auth SDK is ready
+  if (EMAIL_ENTRIES) {
+    USER_IDS = await resolveMixedEntries(auth, EMAIL_ENTRIES);
+    console.log();
+  }
+
+  // Resolve .seed-users file entries (may include emails) to UIDs
+  if (SEED_FILE_ENTRIES) {
+    USER_IDS = await resolveMixedEntries(auth, SEED_FILE_ENTRIES);
+    console.log();
+  }
 }
 
 // ── Mode dispatch ─────────────────────────────────────────────────────────────
