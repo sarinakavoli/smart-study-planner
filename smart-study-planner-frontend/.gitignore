@@ -19,6 +19,9 @@ scripts/serviceAccountKey.json
 scripts/.last-seed-run-categories.json
 scripts/.last-seed-run-tasks.json
 
+# Seed count metadata — auto-updated after each seed run
+scripts/.seed-counts.json
+
 # Personal seed users config — keep account details off of version control
 scripts/.seed-users
 
