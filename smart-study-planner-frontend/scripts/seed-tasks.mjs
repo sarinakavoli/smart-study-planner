@@ -22,14 +22,19 @@
  *
  * FLAGS
  * ─────
- *   (no flag)   Insert TOTAL_RECORDS fake task documents.
- *   --delete    Delete only documents where seedData == true.
- *   --reset     Delete ALL documents in the tasks collection (full wipe).
- *               Use this to start completely fresh before reseeding.
+ *   (no flag)          Insert TOTAL_RECORDS fake task documents.
+ *   --count=N          Override TOTAL_RECORDS; insert exactly N documents.
+ *   --users=u1,u2,...  Override USER_IDS pool; seed only for the listed UIDs.
+ *   --delete           Delete only documents where seedData == true.
+ *   --reset            Delete ALL documents in the tasks collection (full wipe).
+ *                      Use this to start completely fresh before reseeding.
  *
  * EXAMPLES
  * ────────
- *   # Full wipe, then reseed:
+ *   # Seed 200 tasks for one specific user:
+ *   node smart-study-planner-frontend/scripts/seed-tasks.mjs --count=200 --users=uid_abc
+ *
+ *   # Full wipe, then reseed with defaults:
  *   node smart-study-planner-frontend/scripts/seed-tasks.mjs --reset
  *   node smart-study-planner-frontend/scripts/seed-tasks.mjs
  *
@@ -42,8 +47,8 @@ import { getFirestore } from "firebase-admin/firestore";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
-const TOTAL_RECORDS = 10_000;
-const BATCH_SIZE    = 250;
+let TOTAL_RECORDS = 10_000;
+const BATCH_SIZE  = 250;
 const COLLECTION    = "tasks";
 const DB_NAME       = "smart-study";
 
@@ -64,7 +69,7 @@ const TITLES     = [
 // Fake user IDs — replace with real Firebase Auth UIDs if you want to query
 // from the app (the app filters by userId, so these must match your real UID
 // for the tasks to appear in the UI).
-const USER_IDS = [
+let USER_IDS = [
   "user_test_001",
   "user_test_002",
   "user_test_003",
@@ -132,9 +137,33 @@ const serviceAccount = JSON.parse(serviceAccountJson);
 initializeApp({ credential: cert(serviceAccount) });
 const db = getFirestore(DB_NAME);
 
-// ── Mode dispatch ─────────────────────────────────────────────────────────────
+// ── CLI flag parsing ──────────────────────────────────────────────────────────
 
 const args = process.argv.slice(2);
+
+// --count=N  → override TOTAL_RECORDS
+const countArg = args.find((a) => a.startsWith("--count="));
+if (countArg) {
+  const raw = countArg.slice("--count=".length);
+  if (!/^\d+$/.test(raw) || parseInt(raw, 10) < 1) {
+    console.error("ERROR: --count must be a positive integer (e.g. --count=200)");
+    process.exit(1);
+  }
+  TOTAL_RECORDS = parseInt(raw, 10);
+}
+
+// --users=uid1,uid2,...  → override USER_IDS
+const usersArg = args.find((a) => a.startsWith("--users="));
+if (usersArg) {
+  const ids = usersArg.slice("--users=".length).split(",").map((s) => s.trim()).filter(Boolean);
+  if (ids.length === 0) {
+    console.error("ERROR: --users must contain at least one UID (e.g. --users=uid_abc,uid_xyz)");
+    process.exit(1);
+  }
+  USER_IDS = ids;
+}
+
+// ── Mode dispatch ─────────────────────────────────────────────────────────────
 
 if (args.includes("--reset")) {
   await resetCollection();
