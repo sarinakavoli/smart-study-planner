@@ -13,8 +13,10 @@
  */
 
 import { spawnSync } from "child_process";
+import { writeFileSync, unlinkSync } from "fs";
 import { fileURLToPath } from "url";
 import { join, dirname } from "path";
+import { tmpdir } from "os";
 import { describe, it, expect } from "vitest";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -209,5 +211,122 @@ describe("verify-seed-users.mjs: malformed credentials JSON", () => {
     const { stdout } = run([], { GCP_SERVICE_ACCOUNT_JSON: "not-valid-json" });
     expect(stdout).not.toMatch(/ALL PASS/i);
     expect(stdout).not.toMatch(/Result:/i);
+  });
+});
+
+// ── --dry-run metadata file (estimated document counts) ───────────────────────
+
+describe("verify-seed-users.mjs --dry-run: metadata file absent", () => {
+  it("states counts are unknown when no metadata file is found", () => {
+    const { stdout } = run(["--dry-run"], { SEED_COUNTS_FILE: "/tmp/__nonexistent_seed_counts__.json" });
+    expect(stdout).toMatch(/unknown/i);
+  });
+
+  it("mentions that no metadata file was found", () => {
+    const { stdout } = run(["--dry-run"], { SEED_COUNTS_FILE: "/tmp/__nonexistent_seed_counts__.json" });
+    expect(stdout).toMatch(/no metadata file/i);
+  });
+
+  it("still exits 0 when no metadata file is present", () => {
+    const { exitCode } = run(["--dry-run"], { SEED_COUNTS_FILE: "/tmp/__nonexistent_seed_counts__.json" });
+    expect(exitCode).toBe(0);
+  });
+});
+
+describe("verify-seed-users.mjs --dry-run: metadata file present", () => {
+  function withTempCountsFile(counts, fn) {
+    const file = join(tmpdir(), `seed-counts-test-${Date.now()}.json`);
+    writeFileSync(file, JSON.stringify(counts), "utf8");
+    try {
+      fn(file);
+    } finally {
+      try { unlinkSync(file); } catch { /* ignore */ }
+    }
+  }
+
+  it("shows the document count for each collection from the metadata file", () => {
+    withTempCountsFile({ categories: 12, tasks: 34 }, (file) => {
+      const { stdout } = run(["--dry-run"], { SEED_COUNTS_FILE: file });
+      expect(stdout).toMatch(/12/);
+      expect(stdout).toMatch(/34/);
+    });
+  });
+
+  it("labels the counts as estimated from the last recorded run", () => {
+    withTempCountsFile({ categories: 5, tasks: 10 }, (file) => {
+      const { stdout } = run(["--dry-run"], { SEED_COUNTS_FILE: file });
+      expect(stdout).toMatch(/estimated|last recorded/i);
+    });
+  });
+
+  it("shows updatedAt timestamp when present in the metadata file", () => {
+    withTempCountsFile({ categories: 3, tasks: 7, updatedAt: "2025-06-01T00:00:00Z" }, (file) => {
+      const { stdout } = run(["--dry-run"], { SEED_COUNTS_FILE: file });
+      expect(stdout).toMatch(/2025-06-01/);
+    });
+  });
+
+  it("shows 'unknown' for a collection missing from the metadata file", () => {
+    withTempCountsFile({ categories: 9 }, (file) => {
+      const { stdout } = run(["--dry-run"], { SEED_COUNTS_FILE: file });
+      expect(stdout).toMatch(/tasks: unknown/i);
+    });
+  });
+
+  it("only shows counts for the requested collection when --collection is supplied", () => {
+    withTempCountsFile({ categories: 42, tasks: 99 }, (file) => {
+      const { stdout } = run(["--dry-run", "--collection=categories"], { SEED_COUNTS_FILE: file });
+      expect(stdout).toMatch(/42/);
+      expect(stdout).not.toMatch(/99/);
+    });
+  });
+
+  it("exits 0 when a valid metadata file is present", () => {
+    withTempCountsFile({ categories: 1, tasks: 2 }, (file) => {
+      const { exitCode } = run(["--dry-run"], { SEED_COUNTS_FILE: file });
+      expect(exitCode).toBe(0);
+    });
+  });
+
+  it("does not produce any stderr output when a valid metadata file is present", () => {
+    withTempCountsFile({ categories: 1, tasks: 2 }, (file) => {
+      const { stderr } = run(["--dry-run"], { SEED_COUNTS_FILE: file });
+      expect(stderr).toBe("");
+    });
+  });
+});
+
+describe("verify-seed-users.mjs --dry-run: malformed metadata JSON", () => {
+  it("exits 0 when the metadata file contains invalid JSON", () => {
+    const file = join(tmpdir(), `seed-counts-bad-${Date.now()}.json`);
+    writeFileSync(file, "not-valid-json", "utf8");
+    try {
+      const { exitCode } = run(["--dry-run"], { SEED_COUNTS_FILE: file });
+      expect(exitCode).toBe(0);
+    } finally {
+      try { unlinkSync(file); } catch { /* ignore */ }
+    }
+  });
+
+  it("states counts are unknown when the metadata file contains invalid JSON", () => {
+    const file = join(tmpdir(), `seed-counts-bad-${Date.now()}.json`);
+    writeFileSync(file, "{bad json", "utf8");
+    try {
+      const { stdout } = run(["--dry-run"], { SEED_COUNTS_FILE: file });
+      expect(stdout).toMatch(/unknown/i);
+    } finally {
+      try { unlinkSync(file); } catch { /* ignore */ }
+    }
+  });
+
+  it("mentions invalid JSON in the diagnostic message for a malformed metadata file", () => {
+    const file = join(tmpdir(), `seed-counts-bad-${Date.now()}.json`);
+    writeFileSync(file, "{bad json", "utf8");
+    try {
+      const { stdout } = run(["--dry-run"], { SEED_COUNTS_FILE: file });
+      expect(stdout).toMatch(/invalid json/i);
+    } finally {
+      try { unlinkSync(file); } catch { /* ignore */ }
+    }
   });
 });

@@ -68,13 +68,21 @@
 import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
+import { readFileSync } from "fs";
+import { fileURLToPath } from "url";
+import { join, dirname } from "path";
 
 // ── Config ────────────────────────────────────────────────────────────────────
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname  = dirname(__filename);
 
 const DB_NAME    = "smart-study";
 const BATCH_SIZE = 500;
 
 const ALL_COLLECTIONS = ["categories", "tasks"];
+
+const DEFAULT_COUNTS_FILE = join(__dirname, ".seed-counts.json");
 
 // ── CLI flag parsing ──────────────────────────────────────────────────────────
 
@@ -99,10 +107,45 @@ if (collectionArg) {
 // ── Dry-run early exit ────────────────────────────────────────────────────────
 
 if (dryRun) {
+  const countsFilePath = process.env.SEED_COUNTS_FILE ?? DEFAULT_COUNTS_FILE;
+  let metaCounts = null;
+  let metaLoadError = null;
+
+  try {
+    const raw = readFileSync(countsFilePath, "utf8");
+    try {
+      metaCounts = JSON.parse(raw);
+    } catch {
+      metaLoadError = `metadata file contains invalid JSON (${countsFilePath})`;
+    }
+  } catch {
+    metaLoadError = `no metadata file found at ${countsFilePath}`;
+  }
+
   console.log("=".repeat(60));
   console.log("  Seed-user verification smoke test  [DRY RUN]");
   console.log("=".repeat(60));
   console.log(`  Collections to be checked: ${collectionsToCheck.join(", ")}`);
+  console.log();
+
+  if (metaCounts) {
+    console.log("  Estimated document counts (from last recorded run):");
+    for (const col of collectionsToCheck) {
+      const count = metaCounts[col];
+      if (typeof count === "number") {
+        console.log(`    ${col}: ${count.toLocaleString()} document(s)`);
+      } else {
+        console.log(`    ${col}: unknown`);
+      }
+    }
+    if (metaCounts.updatedAt) {
+      console.log(`  (counts last recorded: ${metaCounts.updatedAt})`);
+    }
+  } else {
+    console.log("  Estimated document counts: unknown");
+    console.log(`  (${metaLoadError})`);
+  }
+
   console.log();
   console.log("  DRY RUN — no network calls will be made.");
   console.log("  In a real run the script would:");
