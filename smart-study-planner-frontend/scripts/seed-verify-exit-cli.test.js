@@ -30,9 +30,10 @@ import { fileURLToPath } from "url";
 import { join, dirname } from "path";
 import { describe, it, expect } from "vitest";
 
-const __dirname        = dirname(fileURLToPath(import.meta.url));
-const CATEGORIES_SCRIPT = join(__dirname, "seed-categories.mjs");
-const TASKS_SCRIPT      = join(__dirname, "seed-tasks.mjs");
+const __dirname           = dirname(fileURLToPath(import.meta.url));
+const CATEGORIES_SCRIPT   = join(__dirname, "seed-categories.mjs");
+const TASKS_SCRIPT        = join(__dirname, "seed-tasks.mjs");
+const ORGS_SCRIPT         = join(__dirname, "seed-organizations.mjs");
 
 /**
  * Spawns a seed script with SEED_VERIFY_MOCK_JSON set so that mock mode
@@ -223,6 +224,97 @@ describe("seed-tasks.mjs: exits 0 when all seeded userIds match Firebase Auth", 
 
   it("exits 0 and notes nothing to verify when no UIDs are seeded", () => {
     const { exitCode, stdout } = run(TASKS_SCRIPT, [], []);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/Nothing to verify/);
+  });
+});
+
+// ── seed-organizations.mjs — bad ownerId ──────────────────────────────────────
+
+describe("seed-organizations.mjs: exits 1 when a seeded UID is not in Firebase Auth", () => {
+  it("exits with code 1 for a single missing UID", () => {
+    const { exitCode } = run(ORGS_SCRIPT, ["ghost-uid-org-001"], ["ghost-uid-org-001"]);
+    expect(exitCode).toBe(1);
+  });
+
+  it("prints FAIL when the UID is missing from Auth", () => {
+    const { stdout } = run(ORGS_SCRIPT, ["ghost-uid-org-001"], ["ghost-uid-org-001"]);
+    expect(stdout).toMatch(/FAIL/);
+  });
+
+  it("prints HOW TO FIX when the UID is missing from Auth", () => {
+    const { stdout } = run(ORGS_SCRIPT, ["ghost-uid-org-001"], ["ghost-uid-org-001"]);
+    expect(stdout).toMatch(/HOW TO FIX/);
+  });
+
+  it("marks the missing UID as [MISSING] in the report", () => {
+    const { stdout } = run(ORGS_SCRIPT, ["ghost-uid-org-001"], ["ghost-uid-org-001"]);
+    expect(stdout).toMatch(/\[MISSING\]/);
+  });
+
+  it("mentions the bad UID by value in the output", () => {
+    const { stdout } = run(ORGS_SCRIPT, ["ghost-uid-org-001"], ["ghost-uid-org-001"]);
+    expect(stdout).toMatch(/ghost-uid-org-001/);
+  });
+
+  it("exits 1 when multiple UIDs are all missing from Auth", () => {
+    const { exitCode } = run(
+      ORGS_SCRIPT,
+      ["ghost-uid-a", "ghost-uid-b"],
+      ["ghost-uid-a", "ghost-uid-b"]
+    );
+    expect(exitCode).toBe(1);
+  });
+
+  it("exits 1 on a partial mismatch (some UIDs present, some missing)", () => {
+    const { exitCode } = run(
+      ORGS_SCRIPT,
+      ["real-uid-org", "ghost-uid-org"],
+      ["ghost-uid-org"]
+    );
+    expect(exitCode).toBe(1);
+  });
+
+  it("still prints FAIL on a partial mismatch even when some UIDs are OK", () => {
+    const { stdout } = run(
+      ORGS_SCRIPT,
+      ["real-uid-org", "ghost-uid-org"],
+      ["ghost-uid-org"]
+    );
+    expect(stdout).toMatch(/FAIL/);
+  });
+
+  it("does not print ALL PASS when there are mismatches", () => {
+    const { stdout } = run(ORGS_SCRIPT, ["ghost-uid-org-001"], ["ghost-uid-org-001"]);
+    expect(stdout).not.toMatch(/ALL PASS/);
+  });
+});
+
+// ── seed-organizations.mjs — matching ownerId ─────────────────────────────────
+
+describe("seed-organizations.mjs: exits 0 when all seeded UIDs match Firebase Auth", () => {
+  it("exits with code 0 when the seeded UID exists in Auth", () => {
+    const { exitCode } = run(ORGS_SCRIPT, ["real-uid-org"], []);
+    expect(exitCode).toBe(0);
+  });
+
+  it("prints ALL PASS when all UIDs are found in Auth", () => {
+    const { stdout } = run(ORGS_SCRIPT, ["real-uid-org"], []);
+    expect(stdout).toMatch(/ALL PASS/);
+  });
+
+  it("does not print FAIL when all UIDs match Auth", () => {
+    const { stdout } = run(ORGS_SCRIPT, ["real-uid-org"], []);
+    expect(stdout).not.toMatch(/FAIL/);
+  });
+
+  it("exits 0 when multiple UIDs are all present in Auth", () => {
+    const { exitCode } = run(ORGS_SCRIPT, ["real-uid-org-a", "real-uid-org-b"], []);
+    expect(exitCode).toBe(0);
+  });
+
+  it("exits 0 and notes nothing to verify when no UIDs are provided via mock", () => {
+    const { exitCode, stdout } = run(ORGS_SCRIPT, [], []);
     expect(exitCode).toBe(0);
     expect(stdout).toMatch(/Nothing to verify/);
   });

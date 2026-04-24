@@ -32,6 +32,11 @@
  * Run with the --delete flag to remove only those documents:
  *      node smart-study-planner-frontend/scripts/seed-organizations.mjs --delete
  *
+ * FLAGS
+ * ─────
+ *   --delete       Remove seed documents (seedData: true) instead of writing.
+ *   --skip-verify  Skip the post-insert Auth verification step.
+ *
  * EXTENDING FOR REAL MULTI-ORG SUPPORT
  * ──────────────────────────────────────
  * When you add real organizations (e.g. a school or team):
@@ -45,8 +50,7 @@
  *      the existing userId filter (see MULTI-ORG NOTE comments in that file).
  */
 
-import { initializeApp, cert } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
+import { lookupAuthUser } from "./seed-verify-helper.mjs";
 
 // ── Config ─────────────────────────────────────────────────────────────────
 
@@ -62,25 +66,32 @@ const USER_IDS = [
   // "abc123realuid",
 ];
 
-// ── Bootstrap Admin SDK ─────────────────────────────────────────────────────
+// ── Bootstrap Admin SDK (skipped in mock mode) ───────────────────────────────
 
-const serviceAccountJson = process.env.GCP_SERVICE_ACCOUNT_JSON;
-if (!serviceAccountJson) {
-  console.error("ERROR: GCP_SERVICE_ACCOUNT_JSON environment variable is not set.");
-  console.error("       Add it as a Replit Secret (the full JSON content of your service account key).");
-  process.exit(1);
+let db;
+
+if (!process.env.SEED_VERIFY_MOCK_JSON) {
+  const { initializeApp, cert } = await import("firebase-admin/app");
+  const { getFirestore } = await import("firebase-admin/firestore");
+
+  const serviceAccountJson = process.env.GCP_SERVICE_ACCOUNT_JSON;
+  if (!serviceAccountJson) {
+    console.error("ERROR: GCP_SERVICE_ACCOUNT_JSON environment variable is not set.");
+    console.error("       Add it as a Replit Secret (the full JSON content of your service account key).");
+    process.exit(1);
+  }
+
+  let serviceAccount;
+  try {
+    serviceAccount = JSON.parse(serviceAccountJson);
+  } catch {
+    console.error("ERROR: GCP_SERVICE_ACCOUNT_JSON is not valid JSON.");
+    process.exit(1);
+  }
+
+  initializeApp({ credential: cert(serviceAccount) });
+  db = getFirestore(DB_NAME);
 }
-
-let serviceAccount;
-try {
-  serviceAccount = JSON.parse(serviceAccountJson);
-} catch {
-  console.error("ERROR: GCP_SERVICE_ACCOUNT_JSON is not valid JSON.");
-  process.exit(1);
-}
-
-initializeApp({ credential: cert(serviceAccount) });
-const db = getFirestore(DB_NAME);
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -108,14 +119,25 @@ function personalOrgId(uid, email = "") {
 // ── Main ────────────────────────────────────────────────────────────────────
 
 const isDelete = process.argv.includes("--delete");
+const skipVerify = process.argv.includes("--skip-verify");
 
 if (isDelete) {
   await deleteOrgSeedData();
 } else {
   await seedOrganizations();
+  if (skipVerify) {
+    console.log("\n  (Skipping post-insert verification — --skip-verify flag is set.)");
+  } else {
+    await verifyOrgUsersOrExit(USER_IDS);
+  }
 }
 
 async function seedOrganizations() {
+  if (process.env.SEED_VERIFY_MOCK_JSON) {
+    console.log("(Mock mode: skipping Firestore writes, running post-insert verification only.)");
+    return;
+  }
+
   console.log(`Seeding personal org documents for ${USER_IDS.length} user(s)…`);
 
   let created = 0;
@@ -191,4 +213,116 @@ async function deleteOrgSeedData() {
   }
 
   console.log(`\nDone. Deleted ${deleted} seed document(s).`);
+}
+
+/**
+ * Verifies that each UID in `uids` exists in Firebase Auth.
+ * Prints a PASS / FAIL summary and exits with code 1 if any are missing.
+ *
+ * The organizations and users collections written by this script use `ownerId`
+ * (not `userId`), so we verify the in-memory UID list directly rather than
+ * scanning Firestore — the result is equivalent and avoids a field-name mismatch.
+ *
+ * When SEED_VERIFY_MOCK_JSON is set the real Auth service is replaced with an
+ * in-process mock so the function can be exercised in tests without real GCP
+ * credentials.  Expected shape:
+ *   { "users": ["uid1", "uid2"], "missing": ["uid2"] }
+ * where `users` is used as the effective uid list and `missing` are absent from
+ * mock Auth.
+ *
+ * @param {string[]} uids
+ * @returns {Promise<void>}
+ */
+async function verifyOrgUsersOrExit(uids) {
+  const mockJson = process.env.SEED_VERIFY_MOCK_JSON;
+
+  let authLookup;
+  let effectiveUids = uids;
+
+  if (mockJson) {
+    const { users: seededUids = [], missing: missingUids = [] } = JSON.parse(mockJson);
+    effectiveUids = seededUids;
+    authLookup = async (uid) => {
+      if (missingUids.includes(uid)) return null;
+      return { uid, email: `${uid}@example.com` };
+    };
+  } else {
+    const { getAuth } = await import("firebase-admin/auth");
+    const auth = getAuth();
+    authLookup = (uid) => lookupAuthUser(auth, uid);
+  }
+
+  console.log();
+  console.log("=".repeat(60));
+  console.log("  Seed-user verification");
+  console.log("=".repeat(60));
+
+  if (effectiveUids.length === 0) {
+    console.log("  No seeded UIDs found. Nothing to verify.");
+    console.log("=".repeat(60));
+    return;
+  }
+
+  console.log(`  Checking ${effectiveUids.length} seeded UID(s) against Firebase Auth …`);
+  console.log();
+
+  const found    = [];
+  const notFound = [];
+
+  for (const uid of effectiveUids) {
+    const user = await authLookup(uid);
+    if (user) {
+      found.push({ uid, email: user.email ?? "(no email)" });
+    } else {
+      notFound.push({ uid });
+    }
+  }
+
+  if (found.length > 0) {
+    console.log(`  PASS — ${found.length} userId(s) exist in Firebase Auth:`);
+    console.log("  (Seeded data for these users WILL appear in the app)");
+    console.log();
+    for (const { uid, email } of found) {
+      console.log(`    [OK] ${uid}`);
+      console.log(`         Auth email : ${email}`);
+      console.log();
+    }
+  }
+
+  if (notFound.length > 0) {
+    console.log(`  FAIL — ${notFound.length} userId(s) NOT found in Firebase Auth:`);
+    console.log("  (Seeded data for these IDs will NOT appear in the app)");
+    console.log();
+    for (const { uid } of notFound) {
+      console.log(`    [MISSING] ${uid}`);
+      console.log();
+    }
+
+    console.log("  HOW TO FIX");
+    console.log("  ──────────");
+    console.log("  Replace the placeholder IDs in the USER_IDS array at the top of");
+    console.log("  this script with real Firebase Auth UIDs (Firebase Console →");
+    console.log("  Authentication → Users → copy the UID column), then re-run:");
+    console.log("     node smart-study-planner-frontend/scripts/seed-organizations.mjs");
+    console.log();
+    console.log("  (Optional) Delete mismatched seed data first:");
+    console.log("     node smart-study-planner-frontend/scripts/seed-organizations.mjs --delete");
+    console.log();
+  }
+
+  console.log("=".repeat(60));
+  if (notFound.length === 0) {
+    console.log("  Result: ALL PASS — seeded data matches real Auth accounts.");
+  } else {
+    const failCount = notFound.length;
+    const passCount = found.length;
+    console.log(
+      `  Result: ${failCount} MISMATCH(ES) detected` +
+      (passCount > 0 ? `, ${passCount} OK.` : ".")
+    );
+    console.log("  Seeded data for mismatched IDs will NOT appear in the app.");
+  }
+  console.log("=".repeat(60));
+
+  if (notFound.length > 0) process.exit(1);
 }
