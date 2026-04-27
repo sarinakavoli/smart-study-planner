@@ -105,8 +105,10 @@ export async function createMembership({
     throw new Error("[membership] Cannot create membership — organizationId is missing.");
   }
 
-  // Predictable ID for Firestore security rules
-  const membershipId = `membership_${userId}_${organizationId}`;
+  // Predictable ID for Firestore security rules:  <userId>_<organizationId>
+  // e.g. "eaq31bob6sTKpvZrL0CNklNJ4Uw1_org_york-university"
+  // Rules check: exists(memberships/$(request.auth.uid + "_" + orgId))
+  const membershipId = `${userId}_${organizationId}`;
 
   // Human-readable ID stored as a field for debugging
   const schoolSlug = orgIdToSchoolSlug(organizationId);
