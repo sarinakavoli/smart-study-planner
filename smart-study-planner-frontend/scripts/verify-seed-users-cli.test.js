@@ -457,6 +457,14 @@ describe("verify-seed-users.mjs --dry-run: metadata file present", () => {
     expect(stderr).toMatch(/--collection/i);
   });
 
+  it("accepts a valid collection name surrounded by leading/trailing spaces and exits 0", () => {
+    withTempCountsFile({ categories: 3, tasks: 5 }, (file) => {
+      const { exitCode, stderr } = run(["--dry-run", "--collection=  categories  "], { SEED_COUNTS_FILE: file });
+      expect(exitCode).toBe(0);
+      expect(stderr).toBe("");
+    });
+  });
+
   it("only shows counts for the requested collection when --collection is supplied", () => {
     withTempCountsFile({ categories: 42, tasks: 99 }, (file) => {
       const { stdout } = run(["--dry-run", "--collection=categories"], { SEED_COUNTS_FILE: file });
