@@ -15,6 +15,7 @@ export default defineConfig({
     }
   },
   test: {
+    setupFiles: ['./scripts/test-setup.js'],
     reporters: ['default', 'junit'],
     outputFile: {
       junit: 'test-results/junit.xml',
