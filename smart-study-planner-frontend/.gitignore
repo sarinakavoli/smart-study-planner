@@ -32,6 +32,7 @@ test-results
 .test-cache
 .seed-test-cache
 .audit-helper-test-cache
+.audit-readable-ids-test-cache
 
 # Editor directories and files
 .vscode/*
