@@ -381,26 +381,37 @@ function App() {
   });
 
   useEffect(() => {
-    if (!currentUser?.uid || !organizationId) {
-      delete window.testComplexTaskQuery;
+    if (!currentUser || !organizationId) {
+      console.log("[testComplexTaskQuery] not registered yet", {
+        hasCurrentUser: !!currentUser,
+        activeOrganizationId: organizationId
+      });
       return;
     }
 
-    window.testComplexTaskQuery = async () => {
+    window.testComplexTaskQuery = async (status = "PENDING") => {
+      console.log("[testComplexTaskQuery] running", {
+        activeOrganizationId: organizationId,
+        uid: currentUser.uid,
+        status
+      });
+
       console.time("complexTaskQuery");
 
       const results = await loadOrgTasksForCurrentUser(
         organizationId,
         currentUser.uid,
-        "PENDING"
+        status
       );
 
       console.timeEnd("complexTaskQuery");
-      console.log("Complex query result count:", results.length);
-      console.log("Complex query results:", results);
+      console.log("[testComplexTaskQuery] result count:", results.length);
+      console.log("[testComplexTaskQuery] results:", results);
 
       return results;
     };
+
+    console.log("[testComplexTaskQuery] registered. Run: await window.testComplexTaskQuery()");
 
     return () => {
       delete window.testComplexTaskQuery;
