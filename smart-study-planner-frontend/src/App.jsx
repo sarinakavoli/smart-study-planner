@@ -18,7 +18,7 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import {
-  personalOrgId,
+  generateOrgId,
   readableUserId,
   generateTaskId,
   generateCategoryId,
@@ -452,7 +452,8 @@ function App() {
     setCreateOrgLoading(true);
     setCreateOrgError("");
     try {
-      const orgId = personalOrgId(currentUser.uid, currentUser.email);
+      const orgId = generateOrgId(currentUser.uid, name);
+      console.log("[createOrg] creating org — name:", name, "| orgId:", orgId, "| adminUid:", currentUser.uid);
       const orgRef = doc(db, "organizations", orgId);
       await setDoc(orgRef, {
         id: orgId,
@@ -466,22 +467,32 @@ function App() {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
+      console.log("[createOrg] organization document written — orgId:", orgId);
       await createMembership({
         organizationId: orgId,
         userId: currentUser.uid,
         email: currentUser.email || "",
         role: "admin",
       });
+      console.log("[createOrg] admin membership created — userId:", currentUser.uid, "| orgId:", orgId);
       await setDoc(
         doc(db, "users", currentUser.uid),
         { organizationId: orgId, updatedAt: serverTimestamp() },
         { merge: true }
       );
-      console.log("[createOrg] Organization created — orgId:", orgId, "| role: admin");
+      console.log("[createOrg] activeOrganizationId:", orgId, "| currentUserRole: admin");
       setOrganizationId(orgId);
       setOrganizationName(name);
       setCurrentUserRole("admin");
       setCreateOrgName("");
+      // Reload tasks scoped to the new org
+      try {
+        const { loadUserTasks } = await import("./services/taskService");
+        const freshTasks = await loadUserTasks(currentUser.uid, orgId);
+        setTasks(freshTasks);
+      } catch (taskErr) {
+        console.warn("[createOrg] Could not reload tasks:", taskErr.message);
+      }
       setActiveView("ALL_TASKS");
     } catch (err) {
       console.error("[createOrg] Failed:", err);
@@ -1016,7 +1027,10 @@ function App() {
       ? Math.max(...customCategories.map((c) => c.displayOrder ?? 0))
       : 3;
 
-    const orgId = organizationId ?? personalOrgId(currentUser.uid, currentUser.email);
+    const orgId = organizationId;
+    if (!orgId) {
+      console.warn("[categories] createCategoryInBackend — no active org, category will not be org-scoped");
+    }
     const catId = generateCategoryId(currentUser.uid, normalizedName);
     await setDoc(doc(db, "categories", catId), {
       name: normalizedName,
@@ -1065,7 +1079,10 @@ function App() {
         throw new Error("User not logged in");
       }
 
-      const orgId = organizationId ?? personalOrgId(currentUser.uid, currentUser.email);
+      const orgId = organizationId;
+      if (!orgId) {
+        console.warn("[tasks] handleSubmit — no active org, task will not be org-scoped");
+      }
 
       const payload = {
         title: newTask.title.trim(),
@@ -2367,7 +2384,10 @@ function App() {
                 setInviteSending(true);
                 setInviteStatus(null);
                 try {
-                  await createInvitation({
+                  console.log("[invite] currentUser.uid:", currentUser.uid, "| email:", currentUser.email);
+                  console.log("[invite] organizationId used for invitation:", organizationId);
+                  console.log("[invite] inviting:", trimmed, "| role:", inviteRole);
+                  const inviteDocId = await createInvitation({
                     organizationId,
                     organizationName: organizationName || "School Organization",
                     invitedEmail: trimmed,
@@ -2375,6 +2395,7 @@ function App() {
                     invitedByEmail: currentUser.email,
                     role: inviteRole,
                   });
+                  console.log("[invite] invitation document created — id:", inviteDocId, "| org:", organizationId, "| role:", inviteRole);
                   setInviteStatus({ type: "success", message: `Invitation sent to ${trimmed} as ${inviteRole}. They will join automatically on their next sign-in.` });
                   setInviteEmail("");
                 } catch (err) {

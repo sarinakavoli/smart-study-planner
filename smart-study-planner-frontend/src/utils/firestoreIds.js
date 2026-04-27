@@ -25,13 +25,6 @@ export function slugify(text) {
  * and emailSlug = slugified local-part of the owner's email (before @),
  * falling back to "workspace" when no email is available.
  *
- * Example: uid "AvU4Op9xKqZ...", email "sarina.kavoli@example.com"
- *          → "org_AvU4Op_sarinakavoli_default"
- *
- * This is only used when creating a brand-new organization on first
- * login. For existing users the organizationId is read from their
- * Firestore profile document instead of being computed here.
- *
  * @param {string} uid   - Firebase Auth UID
  * @param {string} email - Owner's email address (optional)
  * @returns {string}  e.g. "org_AvU4Op_sarinakavoli_default"
@@ -41,6 +34,28 @@ export function personalOrgId(uid, email = "") {
   const localPart = email ? email.split("@")[0] : "";
   const emailSlug = localPart ? slugify(localPart).slice(0, 20) : "workspace";
   return `org_${shortOwnerId}_${emailSlug}_default`;
+}
+
+/**
+ * Generates a readable organization ID based on the school name and admin UID.
+ * Format: org_<schoolSlug>_<shortOwnerId>_<random4>
+ *
+ * This replaces personalOrgId for new org creation so the ID is meaningful
+ * and does not include "_default".
+ *
+ * Examples:
+ *   generateOrgId("AvU4Op9xKqZ...", "Springfield High School") → "org_springfield-high-school_AvU4Op_3kd9"
+ *   generateOrgId("AvU4Op9xKqZ...", "Lincoln Academy")         → "org_lincoln-academy_AvU4Op_8xq1"
+ *
+ * @param {string} uid       - Firebase Auth UID of the admin
+ * @param {string} orgName   - Human-readable school/org name
+ * @returns {string}
+ */
+export function generateOrgId(uid, orgName = "") {
+  const shortOwnerId = String(uid).slice(0, 6);
+  const nameSlug = orgName ? slugify(orgName).slice(0, 28) : "school";
+  const shortRandom = lowercase4();
+  return `org_${nameSlug}_${shortOwnerId}_${shortRandom}`;
 }
 
 /**

@@ -140,12 +140,15 @@ The app uses a **school-org model**: one admin creates a school organization, th
 
 1. Read `users/<uid>` to get existing data.
 2. Query `memberships` for an active membership → if found, set `resolvedOrgId` and `resolvedRole`.
-3. If no membership:
-   - **Backward-compat**: if `users/<uid>.organizationId` exists (pre-membership users), auto-create an admin membership.
-   - **New user with invitation**: auto-accept the pending invitation, create a membership with the invited role.
-   - **New user, no invitation**: show the "Create school organization as admin" screen (`CREATE_ORG` view).
+3. If no membership found:
+   - Check `invitations` for a pending invite matching the user's email.
+   - If found: call `acceptInvitation()` + `createMembership()` with the invited role.
+   - If not found: show the `CREATE_ORG` screen ("only if you are the school/admin owner").
 4. Refresh the `users/<uid>` doc.
 5. Write the debugging `userIndex/<readableId>` entry.
+
+> **No auto-org, no auto-admin.** There is no automatic personal workspace or admin role assignment.
+> Every user must either have an active membership, accept an invitation, or explicitly create a school org.
 
 ## Organization Invitation System
 

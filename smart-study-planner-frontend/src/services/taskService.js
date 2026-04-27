@@ -1,22 +1,23 @@
 import { collection, getDocs, orderBy, query, where } from "firebase/firestore";
 import { db } from "../firebase";
 
-// ─── IMPORTANT: INDEX REQUIREMENT ────────────────────────────────────────────
+// ─── IMPORTANT: INDEX REQUIREMENTS ───────────────────────────────────────────
 //
 // `loadOverdueTasks` uses a composite Firestore query:
 //   userId (==) + category (==) + status (==) + dueDate (<) + orderBy dueDate
 //
-// This REQUIRES a composite index deployed to Firebase before it will work.
-// See firestore.indexes.json for the index definition.
+// `loadOrgTasks` uses a composite Firestore query:
+//   organizationId (==) + assignedTo (==) + status (==) + orderBy dueDate asc
+//
+// Both REQUIRE composite indexes deployed to Firebase.
+// See firestore.indexes.json for the index definitions.
 // How to deploy: run `firebase deploy --only firestore:indexes`
 //   from the smart-study-planner-frontend/ directory.
 //
-// Until deployed, calling loadOverdueTasks will throw a FirebaseError
-// with a link in the browser console — clicking that link creates the index
-// automatically in ~1 minute.
+// Until deployed, these functions will throw a FirebaseError with a link in
+// the browser console — clicking that link creates the index automatically.
 //
-// `loadUserTasks` only uses a single equality filter (userId ==) so it
-// works without any composite index.
+// `loadUserTasks` only uses equality filters so it works without a composite index.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -101,6 +102,43 @@ export async function loadOverdueTasks(
     where("dueDate", "<", cutoffString),
     orderBy("dueDate", "asc"),
   );
+
+  const q = query(collection(db, "tasks"), ...constraints);
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map((docSnap) => ({
+    id: docSnap.id,
+    ...docSnap.data(),
+  }));
+}
+
+/**
+ * Loads tasks scoped to an organization, filtered by assignee and status,
+ * ordered by dueDate ascending (soonest due first).
+ *
+ * ⚠️  REQUIRES a composite Firestore index (see firestore.indexes.json):
+ *     organizationId (ASC) + assignedTo (ASC) + status (ASC) + dueDate (ASC)
+ *     Deploy with: firebase deploy --only firestore:indexes
+ *
+ * @param {string} orgId       - Active organization ID (mandatory)
+ * @param {string} assignedTo  - UID of the user the task is assigned to
+ * @param {string} [status]    - Task status filter, e.g. "todo", "PENDING" (optional)
+ * @returns {Promise<Array<{id: string, [key: string]: any}>>}
+ */
+export async function loadOrgTasks(orgId, assignedTo, status) {
+  console.log("[taskService] loadOrgTasks — organizationId:", orgId, "| assignedTo:", assignedTo, "| status:", status ?? "(all)");
+
+  const constraints = [
+    where("organizationId", "==", orgId),
+    where("assignedTo", "==", assignedTo),
+  ];
+
+  if (status) {
+    constraints.push(where("status", "==", status));
+  }
+
+  constraints.push(orderBy("dueDate", "asc"));
+
+  console.log("[taskService] loadOrgTasks — query filters: organizationId ==", orgId, ", assignedTo ==", assignedTo, status ? `, status == ${status}` : "", ", orderBy dueDate asc");
 
   const q = query(collection(db, "tasks"), ...constraints);
   const snapshot = await getDocs(q);

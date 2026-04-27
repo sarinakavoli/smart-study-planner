@@ -1,0 +1,67 @@
+My mentor clarified the organization flow.
+
+Goal:
+The app should support different schools. A school admin signs up, creates an organization, and then invites teachers/students to that same organization.
+
+Main issue to fix:
+Invitations must not go to a default organization. If a user belongs to an organization, any invite they create must use that user's activeOrganizationId.
+
+Please implement/check the following:
+
+1. Organization creation:
+- If a signed-in user has no active membership and no pending invitation, show Create Organization.
+- When the user creates an organization, create an organization document.
+- Then create a membership for that same user with role: "admin", status: "active", and organizationId equal to the new organization ID.
+
+2. Active organization:
+- After login, find the user's active membership.
+- Set activeOrganizationId from membership.organizationId.
+- Set currentUserRole from membership.role.
+- Use this activeOrganizationId everywhere in the app.
+
+3. Invitation creation:
+- Only admins can invite users.
+- When admin invites a teacher/student, create the invitation with:
+  organizationId: activeOrganizationId
+  invitedBy: currentUser.uid
+  email: invited email
+  role: selected role
+  status: "pending"
+- Do not use org_default, default organization, or any hardcoded organizationId.
+
+4. Invitation acceptance:
+- When an invited user logs in, check invitations where:
+  email == currentUser.email
+  status == "pending"
+- If found, create a membership using invitation.organizationId and invitation.role.
+- Mark invitation as accepted.
+- The user should join the same organization that invited them.
+
+5. Data filtering:
+- Tasks, categories, members, and invitations must be filtered by activeOrganizationId.
+- A user should only see data from their own organization.
+
+6. Complex Firestore index:
+Create at least one complex query for tasks using:
+- organizationId
+- assignedTo or createdBy
+- status
+- orderBy dueDate or createdAt
+
+Example:
+where("organizationId", "==", activeOrganizationId)
+where("assignedTo", "==", currentUser.uid)
+where("status", "==", "todo")
+orderBy("dueDate", "asc")
+
+Then tell me the exact composite index I need to create in Firebase.
+
+7. Debug logs:
+Add console logs for:
+- currentUser.uid and email
+- activeOrganizationId
+- currentUserRole
+- organizationId used when creating invitation
+- invitation document created
+- membership created after invitation acceptance
+- task query filters

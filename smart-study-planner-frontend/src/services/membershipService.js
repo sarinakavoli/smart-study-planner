@@ -51,5 +51,6 @@ export async function createMembership({ organizationId, userId, email, role }) 
     },
     { merge: true }
   );
+  console.log("[membership] created — membershipId:", membershipId, "| userId:", userId, "| orgId:", organizationId, "| role:", role || "student");
   return membershipId;
 }

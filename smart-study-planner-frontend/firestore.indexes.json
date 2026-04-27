@@ -46,6 +46,16 @@
         { "fieldPath": "status",         "order": "ASCENDING" },
         { "fieldPath": "dueDate",        "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "tasks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "organizationId", "order": "ASCENDING" },
+        { "fieldPath": "assignedTo",     "order": "ASCENDING" },
+        { "fieldPath": "status",         "order": "ASCENDING" },
+        { "fieldPath": "dueDate",        "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []
