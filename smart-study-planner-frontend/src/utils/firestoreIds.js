@@ -150,7 +150,8 @@ export function generateCategoryId(userId, name) {
  * @returns {string}  e.g. "invite_org_AvU4Op_sa_alice_3kd9"
  */
 export function generateInviteId(organizationId, email) {
-  const shortOrgId = String(organizationId).slice(0, 12);
+  // Use 20 chars of the orgId so "org_waterloou" is never truncated to "org_waterloo"
+  const shortOrgId = String(organizationId).slice(0, 20);
   const localPart = email ? email.split("@")[0] : "user";
   const emailSlug = slugify(localPart).slice(0, 20);
   const shortRandom = lowercase4();

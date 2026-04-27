@@ -32,6 +32,7 @@ import {
 } from "./services/invitationService";
 import {
   getActiveMembership,
+  repairMembershipIfNeeded,
   getOrgMemberships,
   createMembership,
 } from "./services/membershipService";
@@ -157,9 +158,27 @@ function App() {
         // This is the ONLY way a user gets an org and role.
         // No automatic personal workspace or admin role is ever assigned.
         try {
-          const membership = await getActiveMembership(firebaseUser.uid);
+          let membership = await getActiveMembership(firebaseUser.uid);
           if (membership) {
-            console.log("[auth] membership found — orgId:", membership.organizationId, "| role:", membership.role);
+            console.log("[auth] membership found — docId:", membership.id, "| orgId:", membership.organizationId, "| role:", membership.role);
+
+            // If the doc is in the old format (uid_orgId), repair it now so that
+            // Firestore rules (which check orgId_uid) can find it for admin operations.
+            if (membership._needsRepair) {
+              console.log("[auth] membership needs repair — starting auto-repair...");
+              try {
+                const newId = await repairMembershipIfNeeded(membership);
+                membership = { ...membership, id: newId, _needsRepair: false };
+                console.log("[auth] membership repaired — new docId:", newId);
+              } catch (repairErr) {
+                console.error("[auth] membership repair FAILED:", repairErr.code, repairErr.message);
+              }
+            }
+
+            console.log(
+              "[auth] admin membership path for rules: memberships/" + membership.organizationId + "_" + firebaseUser.uid,
+            );
+
             resolvedOrgId = membership.organizationId;
             resolvedRole = membership.role;
           } else {
@@ -2531,6 +2550,9 @@ function App() {
                     activeOrganizationName: organizationName,
                     currentUserRole,
                   });
+                  console.log(
+                    "Expected admin membership path for rules: memberships/" + organizationId + "_" + currentUser.uid,
+                  );
                   console.log("[invite] inviting:", trimmed, "| role:", inviteRole);
                   const inviteDocId = await createInvitation({
                     organizationId,

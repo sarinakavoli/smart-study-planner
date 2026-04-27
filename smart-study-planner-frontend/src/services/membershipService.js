@@ -49,13 +49,28 @@ function orgIdToSchoolSlug(organizationId) {
 }
 
 /**
+ * Computes the canonical membership document ID.
+ * Format: <organizationId>_<userId>
+ * e.g. "org_waterloou_AvU4OpeL5WO79GRp67C6JiJUYUY2"
+ *
+ * This is the format the Firestore rules check:
+ *   exists(memberships/$(orgId + "_" + request.auth.uid))
+ */
+function canonicalMembershipId(organizationId, userId) {
+  return `${organizationId}_${userId}`;
+}
+
+/**
  * Returns the first active membership for a given user, or null if none found.
  *
  * Document ID format: <organizationId>_<userId>
- * e.g. "org_york-university_eaq31bob6sTKpvZrL0CNklNJ4Uw1"
+ * e.g. "org_waterloou_AvU4OpeL5WO79GRp67C6JiJUYUY2"
+ *
+ * If a legacy document in the old format (<userId>_<organizationId>) is found,
+ * it is returned with a warning. Call repairMembershipIfNeeded() to fix it.
  *
  * @param {string} userId - Firebase Auth UID
- * @returns {Promise<{id: string, organizationId: string, role: string, readableId: string, ...}|null>}
+ * @returns {Promise<{id: string, organizationId: string, role: string, readableId: string, _needsRepair: boolean, ...}|null>}
  */
 export async function getActiveMembership(userId) {
   const q = query(
@@ -65,15 +80,92 @@ export async function getActiveMembership(userId) {
   );
   const snapshot = await getDocs(q);
   if (snapshot.empty) return null;
+
   const doc0 = snapshot.docs[0];
   const data = doc0.data();
+  const orgId = data.organizationId;
+  const expectedId = orgId ? canonicalMembershipId(orgId, userId) : null;
+  const isCorrectFormat = doc0.id === expectedId;
+
   console.log(
     "[membership] getActiveMembership — membershipId:", doc0.id,
+    "| expectedId:", expectedId ?? "(unknown — organizationId missing in doc)",
+    "| formatOK:", isCorrectFormat,
     "| readableId:", data.readableId ?? "(missing)",
     "| role:", data.role,
-    "| orgId:", data.organizationId,
+    "| orgId:", orgId,
   );
-  return { id: doc0.id, ...data };
+
+  if (!isCorrectFormat && expectedId) {
+    console.warn(
+      "[membership] LEGACY FORMAT DETECTED — doc is at:", doc0.id,
+      "but rules need it at:", expectedId,
+      "— call repairMembershipIfNeeded() to fix. This user will NOT pass isAdminOfOrg checks until repaired.",
+    );
+  }
+
+  return { id: doc0.id, ...data, _needsRepair: !isCorrectFormat && !!expectedId };
+}
+
+/**
+ * Repairs a legacy membership document that uses the old ID format.
+ *
+ * Old format: <userId>_<organizationId>  (e.g. "AvU4Op..._org_waterloou")
+ * New format: <organizationId>_<userId>  (e.g. "org_waterloou_AvU4Op...")
+ *
+ * The Firestore rules check the NEW format. If the membership is in the old
+ * format, isAdminOfOrg() / hasActiveMembership() will always return false,
+ * blocking invitation creation and other admin operations.
+ *
+ * This function writes a new document at the correct path using the same data.
+ * The old document cannot be deleted from the client (rules block it), but it
+ * is harmless — the app will use the new document going forward.
+ *
+ * @param {object} membership - The membership object returned by getActiveMembership
+ * @returns {Promise<string>} The new canonical membership document ID
+ */
+export async function repairMembershipIfNeeded(membership) {
+  if (!membership._needsRepair) {
+    console.log("[membership] repairMembershipIfNeeded — no repair needed, ID is correct:", membership.id);
+    return membership.id;
+  }
+
+  const { organizationId, userId } = membership;
+  const newId = canonicalMembershipId(organizationId, userId);
+
+  // Strip the _needsRepair flag and use existing data, refreshing updatedAt
+  const {
+    _needsRepair,
+    id: _oldId,
+    createdAt: _oldCreatedAt,
+    updatedAt: _oldUpdatedAt,
+    ...restData
+  } = membership;
+
+  const repairedData = {
+    ...restData,
+    updatedAt: serverTimestamp(),
+  };
+
+  // Preserve createdAt from the original if it exists
+  if (_oldCreatedAt) {
+    repairedData.createdAt = _oldCreatedAt;
+  } else {
+    repairedData.createdAt = serverTimestamp();
+  }
+
+  console.log("[membership] REPAIR — writing correct membership doc");
+  console.log("[membership] REPAIR — old (legacy) ID:", membership.id);
+  console.log("[membership] REPAIR — new (correct) ID:", newId);
+  console.log("[membership] REPAIR — data:", { ...repairedData, updatedAt: "<serverTimestamp>" });
+
+  const ref = doc(db, "memberships", newId);
+  await setDoc(ref, repairedData, { merge: true });
+
+  console.log("[membership] REPAIR SUCCESS — new doc written at memberships/", newId);
+  console.log("[membership] REPAIR — old doc at memberships/", membership.id, "is now stale (delete it manually in Firebase Console if desired)");
+
+  return newId;
 }
 
 /**
@@ -81,7 +173,7 @@ export async function getActiveMembership(userId) {
  * Only admins can call this (enforced by Firestore rules).
  *
  * Each returned object includes:
- *   id          — Firestore document ID: <userId>_<organizationId>
+ *   id          — Firestore document ID: <organizationId>_<userId>
  *   readableId  — Human-readable: mbr_<schoolSlug>_<role>_<emailSlug>
  *   email, displayName, role, status, userId, organizationId, ...
  *
@@ -109,8 +201,8 @@ export async function getOrgMemberships(organizationId) {
  *   readableId: mbr_<schoolSlug>_<role>_<emailSlug>
  *
  * Examples:
- *   Document ID : org_york-school_UID123abc
- *   readableId  : mbr_york_school_admin_kavolisarina_gmail_com
+ *   Document ID : org_waterloou_AvU4OpeL5WO79GRp67C6JiJUYUY2
+ *   readableId  : mbr_waterloou_admin_sarinakavoli_icloud_com
  *
  * @param {object} params
  * @param {string}  params.organizationId
@@ -139,11 +231,10 @@ export async function createMembership({
     throw new Error("[membership] Cannot create membership — organizationId is missing.");
   }
 
-  // Predictable ID for Firestore security rules:  <organizationId>_<userId>
-  // e.g. "org_york-university_eaq31bob6sTKpvZrL0CNklNJ4Uw1"
-  // Org name is first so the document is immediately readable in the Firebase Console.
+  // Canonical ID: <organizationId>_<userId>
+  // e.g. "org_waterloou_AvU4OpeL5WO79GRp67C6JiJUYUY2"
   // Rules check: exists(memberships/$(orgId + "_" + request.auth.uid))
-  const membershipId = `${organizationId}_${userId}`;
+  const membershipId = canonicalMembershipId(organizationId, userId);
 
   // Human-readable ID stored as a field for debugging
   const schoolSlug = orgIdToSchoolSlug(organizationId);
@@ -172,8 +263,8 @@ export async function createMembership({
 
   const ref = doc(db, "memberships", membershipId);
 
-  console.log("ADMIN MEMBERSHIP WRITE PATH", `memberships/${membershipId}`);
-  console.log("ADMIN MEMBERSHIP WRITE DATA", {
+  console.log("MEMBERSHIP WRITE PATH", `memberships/${membershipId}`);
+  console.log("MEMBERSHIP WRITE DATA", {
     ...data,
     createdAt: "<serverTimestamp>",
     updatedAt: "<serverTimestamp>",
