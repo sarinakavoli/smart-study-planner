@@ -465,6 +465,17 @@ describe("verify-seed-users.mjs --dry-run: metadata file present", () => {
     });
   });
 
+  it("shows only the categories count in stdout when --collection has surrounding whitespace", () => {
+    withTempCountsFile({ categories: 3, tasks: 5, organizations: 7 }, (file) => {
+      const { stdout } = run(["--dry-run", "--collection=  categories  "], { SEED_COUNTS_FILE: file });
+      expect(stdout).toMatch(/categories.*3|3.*categories/i);
+      expect(stdout).not.toMatch(/\btasks\b/);
+      expect(stdout).not.toMatch(/\b5\b/);
+      expect(stdout).not.toMatch(/\borganizations\b/i);
+      expect(stdout).not.toMatch(/\b7\b/);
+    });
+  });
+
   it("only shows counts for the requested collection when --collection is supplied", () => {
     withTempCountsFile({ categories: 42, tasks: 99 }, (file) => {
       const { stdout } = run(["--dry-run", "--collection=categories"], { SEED_COUNTS_FILE: file });
