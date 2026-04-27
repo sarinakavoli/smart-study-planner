@@ -1,0 +1,70 @@
+My Firestore rules are still based on the old ownerId/memberIds model. Please update the rules and frontend writes for the new organization/membership model.
+
+Important:
+For security rules, use predictable membership document IDs:
+membership_<userUid>_<organizationId>
+
+Inside each membership document, also store:
+readableId: mbr_<schoolSlug>_<role>_<emailSlug>
+
+Reason:
+Firestore rules need a predictable path to check whether the current user is admin of an organization.
+
+Please update:
+
+1. Membership document IDs:
+- Use membership_<userUid>_<organizationId>
+- Add readableId field for debugging:
+  mbr_<schoolSlug>_<role>_<emailSlug>
+
+2. Organization creation:
+- Signed-in user can create organization if:
+  createdBy == currentUser.uid
+  createdByEmail == currentUser.email
+  source == "create_org_form"
+  schemaVersion == 2
+
+3. First admin membership:
+- After organization creation, create:
+  memberships/membership_<currentUser.uid>_<organizationId>
+- Fields:
+  organizationId
+  organizationName
+  schoolSlug
+  userId
+  email
+  displayName
+  role: "admin"
+  status: "active"
+  source: "create_org_form"
+  schemaVersion: 2
+  readableId
+
+4. Admin check:
+- A user is admin if this document exists:
+  memberships/membership_<currentUser.uid>_<organizationId>
+  and role == "admin"
+  and status == "active"
+
+5. Invitation creation:
+- Only allow if current user is admin of request.resource.data.organizationId.
+- invitation must use activeOrganizationId.
+- Do not use organization.memberIds anymore.
+
+6. Invitation acceptance:
+- Invited user can create their own membership only if there is a pending invitation for their email and organizationId.
+- membership ID should be:
+  membership_<currentUser.uid>_<organizationId>
+- source: "invitation"
+- role must match invitation.role.
+
+7. Remove all dependency on:
+- ownerId
+- memberIds
+- pendingInviteEmails
+- org_*_default
+- "[email]'s Workspace"
+
+8. Keep readable IDs as fields, not necessarily document IDs, if that makes rules safer.
+
+9. Give me the final firestore.rules and test steps.

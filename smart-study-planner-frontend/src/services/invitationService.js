@@ -7,16 +7,12 @@ import {
   query,
   where,
   serverTimestamp,
-  arrayUnion,
-  arrayRemove,
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { generateInviteId } from "../utils/firestoreIds";
 
 /**
  * Creates a pending invitation for an email address to join an organization.
- * Also adds the invited email to organizations/{orgId}.pendingInviteEmails
- * so that Firestore security rules can permit the invitee to join.
  *
  * @param {object} params
  * @param {string} params.organizationId
@@ -54,11 +50,6 @@ export async function createInvitation({
     expiresAt: null,
   });
 
-  const orgRef = doc(db, "organizations", organizationId);
-  await updateDoc(orgRef, {
-    pendingInviteEmails: arrayUnion(normalizedEmail),
-  });
-
   return inviteId;
 }
 
@@ -81,10 +72,10 @@ export async function getPendingInvitationsForEmail(email) {
 
 /**
  * Accepts a pending invitation:
- *  1. Adds the user's UID/email to the organization's memberIds/memberEmails.
- *  2. Removes the email from pendingInviteEmails.
- *  3. Updates the user's organizationId.
- *  4. Marks the invitation as accepted.
+ *  1. Updates the user's organizationId in their user document.
+ *  2. Marks the invitation as accepted.
+ *
+ * Note: membership creation is handled separately by createMembership().
  *
  * @param {object} params
  * @param {object} params.invitation  - Invitation document data
@@ -93,14 +84,7 @@ export async function getPendingInvitationsForEmail(email) {
  * @returns {Promise<{organizationId: string, organizationName: string, role: string}>}
  */
 export async function acceptInvitation({ invitation, userId, userEmail }) {
-  const { id: inviteId, organizationId, organizationName, invitedEmail, role } = invitation;
-
-  const orgRef = doc(db, "organizations", organizationId);
-  await updateDoc(orgRef, {
-    memberIds: arrayUnion(userId),
-    memberEmails: arrayUnion(userEmail),
-    pendingInviteEmails: arrayRemove(invitedEmail),
-  });
+  const { id: inviteId, organizationId, organizationName, role } = invitation;
 
   await updateDoc(doc(db, "users", userId), {
     organizationId,

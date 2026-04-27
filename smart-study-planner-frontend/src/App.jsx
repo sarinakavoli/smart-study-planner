@@ -481,11 +481,6 @@ function App() {
         name,
         createdBy: currentUser.uid,
         createdByEmail: currentUser.email || "",
-        ownerId: currentUser.uid,
-        ownerEmail: currentUser.email || "",
-        memberIds: [currentUser.uid],
-        memberEmails: [currentUser.email || ""],
-        pendingInviteEmails: [],
         source: "create_org_form",
         schemaVersion: 2,
         createdAt: serverTimestamp(),
@@ -547,8 +542,8 @@ function App() {
         const orgSnap = await getDoc(doc(db, "organizations", organizationId));
         if (orgSnap.exists()) {
           const data = orgSnap.data();
-          setOrgOwnerEmail(data.ownerEmail ?? null);
-          setOrgMembers(data.memberEmails ?? []);
+          setOrgOwnerEmail(data.createdByEmail ?? data.ownerEmail ?? null);
+          setOrgMembers([]);
           if (data.name) setOrganizationName(data.name);
         }
       } catch (err) {

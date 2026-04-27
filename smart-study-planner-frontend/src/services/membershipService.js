@@ -1,7 +1,6 @@
 import {
   collection,
   doc,
-  getDoc,
   setDoc,
   getDocs,
   query,
@@ -69,15 +68,15 @@ export async function getActiveMembership(userId) {
 /**
  * Creates (or upserts) a membership document for a user in an organization.
  *
- * Membership ID format: mbr_<schoolSlug>_<role>_<emailSlug>
+ * Document ID format (predictable, used by Firestore security rules):
+ *   membership_<userId>_<organizationId>
+ *
+ * The human-readable ID is stored as a field:
+ *   readableId: mbr_<schoolSlug>_<role>_<emailSlug>
  *
  * Examples:
- *   mbr_york_school_admin_kavolisarina_gmail_com
- *   mbr_york_school_student_sarinakavoli_icloud_com
- *   mbr_york_school_teacher_teacher1_yorku_ca
- *
- * If a collision occurs (same org/role/email already exists), a numeric
- * suffix is appended: _002, _003, etc.
+ *   Document ID : membership_UID123_org_york-school
+ *   readableId  : mbr_york_school_admin_kavolisarina_gmail_com
  *
  * @param {object} params
  * @param {string}  params.organizationId
@@ -106,26 +105,14 @@ export async function createMembership({
     throw new Error("[membership] Cannot create membership — organizationId is missing.");
   }
 
+  // Predictable ID for Firestore security rules
+  const membershipId = `membership_${userId}_${organizationId}`;
+
+  // Human-readable ID stored as a field for debugging
   const schoolSlug = orgIdToSchoolSlug(organizationId);
   const emailSlug = email ? emailToSlug(email) : "unknown";
   const normalizedRole = role || "student";
-
-  const baseId = `mbr_${schoolSlug}_${normalizedRole}_${emailSlug}`;
-
-  let membershipId = baseId;
-  const existingSnap = await getDoc(doc(db, "memberships", baseId));
-  if (existingSnap.exists() && existingSnap.data().userId !== userId) {
-    let suffix = 2;
-    while (suffix <= 99) {
-      const candidateId = `${baseId}_${String(suffix).padStart(3, "0")}`;
-      const snap = await getDoc(doc(db, "memberships", candidateId));
-      if (!snap.exists() || snap.data().userId === userId) {
-        membershipId = candidateId;
-        break;
-      }
-      suffix++;
-    }
-  }
+  const readableId = `mbr_${schoolSlug}_${normalizedRole}_${emailSlug}`;
 
   console.log("Creating membership", {
     membershipId,
@@ -151,6 +138,7 @@ export async function createMembership({
     updatedAt: serverTimestamp(),
     source: source || null,
     schemaVersion: 2,
+    readableId,
   };
 
   if (invitedBy)    data.invitedBy    = invitedBy;
@@ -160,6 +148,7 @@ export async function createMembership({
 
   console.log(
     "[membership] created — membershipId:", membershipId,
+    "| readableId:", readableId,
     "| userId:", userId,
     "| orgId:", organizationId,
     "| role:", normalizedRole,
