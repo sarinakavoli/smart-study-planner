@@ -257,10 +257,14 @@ const usersArg = args.find((a) => a.startsWith("--users="));
 let userFilterActive = false;
 
 if (usersArg) {
-  const ids = usersArg.slice("--users=".length).split(",").map((s) => s.trim()).filter(Boolean);
+  const rawEntries = usersArg.slice("--users=".length).split(",");
+  const ids = rawEntries.map((s) => s.trim()).filter(Boolean);
   if (ids.length === 0) {
     console.error("ERROR: --users must contain at least one UID (e.g. --users=uid_abc,uid_xyz)");
     process.exit(1);
+  }
+  if (rawEntries.some((s) => s !== s.trim())) {
+    console.log("Note: --users entries were trimmed of leading/trailing whitespace.");
   }
   USER_IDS = ids;
   userFilterActive = true;

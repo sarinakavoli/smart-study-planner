@@ -128,6 +128,31 @@ describe("seed-categories.mjs --dry-run --users", () => {
     expect(exitCode).toBe(1);
     expect(stderr).toMatch(/ERROR.*--users/i);
   });
+
+  it("prints a trimming note when a --users entry has leading whitespace", () => {
+    const { exitCode, stdout } = run(CATEGORIES_SCRIPT, ["--dry-run", "--users= uid_abc"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/trimmed/i);
+  });
+
+  it("prints a trimming note when a --users entry has trailing whitespace", () => {
+    const { exitCode, stdout } = run(CATEGORIES_SCRIPT, ["--dry-run", "--users=uid_abc "]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/trimmed/i);
+  });
+
+  it("prints a trimming note when one of several --users entries has surrounding whitespace", () => {
+    const { exitCode, stdout } = run(CATEGORIES_SCRIPT, ["--dry-run", "--users=uid_abc, uid_xyz"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/trimmed/i);
+    expect(stdout).toMatch(/uid_abc/);
+    expect(stdout).toMatch(/uid_xyz/);
+  });
+
+  it("does not print a trimming note when no --users entry has surrounding whitespace", () => {
+    const { stdout } = run(CATEGORIES_SCRIPT, ["--dry-run", "--users=uid_abc,uid_xyz"]);
+    expect(stdout).not.toMatch(/trimmed/i);
+  });
 });
 
 describe("seed-categories.mjs --dry-run --email", () => {
@@ -423,6 +448,31 @@ describe("seed-tasks.mjs --dry-run --users", () => {
     const { exitCode, stderr } = run(TASKS_SCRIPT, ["--dry-run", "--users="]);
     expect(exitCode).toBe(1);
     expect(stderr).toMatch(/ERROR.*--users/i);
+  });
+
+  it("prints a trimming note when a --users entry has leading whitespace", () => {
+    const { exitCode, stdout } = run(TASKS_SCRIPT, ["--dry-run", "--users= uid_abc"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/trimmed/i);
+  });
+
+  it("prints a trimming note when a --users entry has trailing whitespace", () => {
+    const { exitCode, stdout } = run(TASKS_SCRIPT, ["--dry-run", "--users=uid_abc "]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/trimmed/i);
+  });
+
+  it("prints a trimming note when one of several --users entries has surrounding whitespace", () => {
+    const { exitCode, stdout } = run(TASKS_SCRIPT, ["--dry-run", "--users=uid_abc, uid_xyz"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/trimmed/i);
+    expect(stdout).toMatch(/uid_abc/);
+    expect(stdout).toMatch(/uid_xyz/);
+  });
+
+  it("does not print a trimming note when no --users entry has surrounding whitespace", () => {
+    const { stdout } = run(TASKS_SCRIPT, ["--dry-run", "--users=uid_abc,uid_xyz"]);
+    expect(stdout).not.toMatch(/trimmed/i);
   });
 });
 
