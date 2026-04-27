@@ -353,6 +353,113 @@ jobs:
             echo "Download the \`seed-scripts-test-report\` artifact from this run for the full JUnit XML report." >> $GITHUB_STEP_SUMMARY
           fi
 
+  audit-helper-tests:
+    # Runs the 40 unit tests for the ID-classification helpers
+    # (classifyId / printList) in audit-id-helpers.mjs.  These tests must pass
+    # on every PR so that regressions in the helper logic are caught before
+    # merging.  A failure here blocks the deploy job just like the other test
+    # jobs do.
+    name: Audit Helper Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      # Sparse checkout fetches only the files needed to compute the cache key:
+      # the workflow file, package-lock.json, and the audit-helper source and
+      # test files.  This lets the cache lookup happen before a full checkout so
+      # that checkout, install, and tests can all be skipped on a cache hit.
+      - name: Sparse checkout for cache key computation
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            .github/workflows/ci.yml
+            smart-study-planner-frontend/package-lock.json
+            smart-study-planner-frontend/scripts/audit-id-helpers.mjs
+            smart-study-planner-frontend/scripts/audit-id-helpers.test.js
+          sparse-checkout-cone-mode: false
+
+      # Cache key is derived from the branch ref, Node version, the workflow
+      # file, package-lock.json, and the audit-helper source and test files
+      # only.  A cache hit means the exact same inputs produced a passing run
+      # previously, so full checkout, install, and tests can be safely skipped.
+      # restore-keys let a new branch warm up from main's cache instead of
+      # starting cold (see top-of-file cache strategy comment).
+      - name: Restore cached audit helper test results
+        id: cache-audit-helper-tests
+        uses: actions/cache@v4
+        with:
+          path: smart-study-planner-frontend/.audit-helper-test-cache
+          key: audit-helper-tests-${{ github.ref }}-node20-${{ hashFiles('.github/workflows/ci.yml', 'smart-study-planner-frontend/package-lock.json', 'smart-study-planner-frontend/scripts/audit-id-helpers.mjs', 'smart-study-planner-frontend/scripts/audit-id-helpers.test.js') }}
+          restore-keys: |
+            audit-helper-tests-${{ github.ref }}-node20-
+            audit-helper-tests-refs/heads/main-node20-
+            audit-helper-tests-node20-
+
+      # Full checkout is only needed when the cache misses.  The sparse checkout
+      # above already satisfies the key computation; this step upgrades it to
+      # the complete tree so install and tests can run against all project files.
+      - name: Full checkout
+        if: steps.cache-audit-helper-tests.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        if: steps.cache-audit-helper-tests.outputs.cache-hit != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Cache npm dependencies
+        if: steps.cache-audit-helper-tests.outputs.cache-hit != 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: frontend-npm-${{ github.ref }}-node20-${{ hashFiles('smart-study-planner-frontend/package-lock.json') }}
+          restore-keys: |
+            frontend-npm-${{ github.ref }}-node20-
+            frontend-npm-refs/heads/main-node20-
+            frontend-npm-node20-
+
+      - name: Install frontend dependencies
+        if: steps.cache-audit-helper-tests.outputs.cache-hit != 'true'
+        working-directory: smart-study-planner-frontend
+        run: npm ci
+
+      - name: Run audit helper tests
+        id: audit-helper-tests
+        if: steps.cache-audit-helper-tests.outputs.cache-hit != 'true'
+        working-directory: smart-study-planner-frontend
+        run: npx vitest run scripts/audit-id-helpers.test.js
+
+      - name: Upload audit helper test report on failure
+        if: steps.audit-helper-tests.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-helper-test-report
+          path: smart-study-planner-frontend/test-results/junit.xml
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Record successful test run
+        if: steps.cache-audit-helper-tests.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p smart-study-planner-frontend/.audit-helper-test-cache
+          echo "passed" > smart-study-planner-frontend/.audit-helper-test-cache/result.txt
+
+      - name: Summarise audit helper test execution
+        if: always()
+        run: |
+          if [ "${{ steps.cache-audit-helper-tests.outputs.cache-hit }}" = "true" ]; then
+            echo "## Audit Helper Tests: skipped (cache hit)" >> $GITHUB_STEP_SUMMARY
+            echo "All inputs matched a previous passing run. Audit helper tests were skipped." >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ job.status }}" = "success" ]; then
+            echo "## Audit Helper Tests: passed" >> $GITHUB_STEP_SUMMARY
+            echo "All 40 unit tests for classifyId() and printList() in audit-id-helpers.mjs passed." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## Audit Helper Tests: FAILED" >> $GITHUB_STEP_SUMMARY
+            echo "One or more audit-helper assertions failed. Check the test output above for details." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Download the \`audit-helper-test-report\` artifact from this run for the full JUnit XML report." >> $GITHUB_STEP_SUMMARY
+          fi
+
   deploy:
     # Builds the frontend and deploys Firestore security rules and indexes to
     # Firebase on every push to main.  The migration-audit job is a downstream
@@ -360,7 +467,7 @@ jobs:
     # just-deployed state of Firestore.
     name: Deploy
     runs-on: ubuntu-latest
-    needs: [backend-test, frontend-check, seed-scripts-tests]
+    needs: [backend-test, frontend-check, seed-scripts-tests, audit-helper-tests]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
     steps:
