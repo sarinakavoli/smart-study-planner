@@ -398,6 +398,7 @@ describe("verify-seed-users.mjs --dry-run: metadata file present", () => {
     withTempCountsFile({ categories: 9 }, (file) => {
       const { stdout } = run(["--dry-run"], { SEED_COUNTS_FILE: file });
       expect(stdout).toMatch(/tasks: unknown/i);
+      expect(stdout).toMatch(/organizations: unknown/i);
     });
   });
 
