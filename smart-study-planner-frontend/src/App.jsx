@@ -18,7 +18,7 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import {
-  generateOrgId,
+  schoolOrgId,
   readableUserId,
   generateTaskId,
   generateCategoryId,
@@ -472,18 +472,22 @@ function App() {
     setCreateOrgLoading(true);
     setCreateOrgError("");
     try {
-      const orgId = generateOrgId(currentUser.uid, name);
+      const orgId = schoolOrgId(name);
       console.log("[createOrg] creating org — name:", name, "| orgId:", orgId, "| adminUid:", currentUser.uid);
       const orgRef = doc(db, "organizations", orgId);
       await setDoc(orgRef, {
         id: orgId,
         readableId: orgId,
         name,
+        createdBy: currentUser.uid,
+        createdByEmail: currentUser.email || "",
         ownerId: currentUser.uid,
         ownerEmail: currentUser.email || "",
         memberIds: [currentUser.uid],
         memberEmails: [currentUser.email || ""],
         pendingInviteEmails: [],
+        source: "create_org_form",
+        schemaVersion: 2,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -495,7 +499,7 @@ function App() {
         role: "admin",
         organizationName: name,
         displayName: currentUser.displayName || null,
-        source: "org_creation",
+        source: "create_org_form",
       });
       console.log("[createOrg] admin membership created — userId:", currentUser.uid, "| orgId:", orgId);
       await setDoc(

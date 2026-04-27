@@ -8,6 +8,7 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { db } from "../firebase";
+import { slugify } from "../utils/firestoreIds";
 
 /**
  * Returns the first active membership for a given user, or null if none found.
@@ -38,7 +39,7 @@ export async function getActiveMembership(userId) {
  * @param {string}  [params.displayName]   - User's display name
  * @param {string}  [params.invitedBy]     - UID of the admin who sent the invitation
  * @param {string}  [params.invitationId]  - Firestore ID of the accepted invitation
- * @param {string}  [params.source]        - "invitation" | "org_creation"
+ * @param {string}  [params.source]        - "invitation" | "create_org_form"
  * @returns {Promise<string>} The membership document ID
  */
 export async function createMembership({
@@ -56,7 +57,15 @@ export async function createMembership({
     throw new Error("[membership] Cannot create membership — organizationId is missing.");
   }
 
-  const membershipId = `mbr_${userId.slice(0, 6)}_${organizationId.slice(-12).replace(/[^a-zA-Z0-9]/g, "_")}`;
+  let membershipId;
+  if (source === "create_org_form") {
+    const schoolSlug = String(organizationId).replace(/^org_/, "").slice(0, 40);
+    const emailLocalPart = email ? email.split("@")[0] : "user";
+    const emailSlug = slugify(emailLocalPart).slice(0, 20);
+    membershipId = `mbr_${schoolSlug}_admin_${emailSlug}`;
+  } else {
+    membershipId = `mbr_${userId.slice(0, 6)}_${organizationId.slice(-12).replace(/[^a-zA-Z0-9]/g, "_")}`;
+  }
   const ref = doc(db, "memberships", membershipId);
 
   const data = {

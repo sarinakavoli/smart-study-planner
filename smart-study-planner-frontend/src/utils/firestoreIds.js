@@ -28,6 +28,7 @@ export function slugify(text) {
  * @param {string} uid   - Firebase Auth UID
  * @param {string} email - Owner's email address (optional)
  * @returns {string}  e.g. "org_AvU4Op_sarinakavoli_default"
+ * @deprecated Use schoolOrgId() for new school organization creation.
  */
 export function personalOrgId(uid, email = "") {
   const shortOwnerId = String(uid).slice(0, 6);
@@ -37,19 +38,32 @@ export function personalOrgId(uid, email = "") {
 }
 
 /**
- * Generates a readable organization ID based on the school name and admin UID.
- * Format: org_<schoolSlug>_<shortOwnerId>_<random4>
+ * Generates a stable organization ID based purely on the school name.
+ * Format: org_<schoolSlug>
  *
- * This replaces personalOrgId for new org creation so the ID is meaningful
- * and does not include "_default".
+ * This is the canonical format for school organizations created via the
+ * Create School Organization form. The ID is deterministic and human-readable.
  *
  * Examples:
- *   generateOrgId("AvU4Op9xKqZ...", "Springfield High School") → "org_springfield-high-school_AvU4Op_3kd9"
- *   generateOrgId("AvU4Op9xKqZ...", "Lincoln Academy")         → "org_lincoln-academy_AvU4Op_8xq1"
+ *   schoolOrgId("York School")              → "org_york-school"
+ *   schoolOrgId("Springfield High School")  → "org_springfield-high-school"
+ *
+ * @param {string} orgName - Human-readable school/org name
+ * @returns {string}
+ */
+export function schoolOrgId(orgName = "") {
+  const nameSlug = orgName ? slugify(orgName).slice(0, 40) : "school";
+  return `org_${nameSlug}`;
+}
+
+/**
+ * Generates a readable organization ID based on the school name and admin UID.
+ * Format: org_<schoolSlug>_<shortOwnerId>_<random4>
  *
  * @param {string} uid       - Firebase Auth UID of the admin
  * @param {string} orgName   - Human-readable school/org name
  * @returns {string}
+ * @deprecated Use schoolOrgId() for new school organization creation.
  */
 export function generateOrgId(uid, orgName = "") {
   const shortOwnerId = String(uid).slice(0, 6);
