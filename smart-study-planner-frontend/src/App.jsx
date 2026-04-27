@@ -45,7 +45,7 @@ import {
 } from "firebase/storage";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { db, auth, storage } from "./firebase";
-import { loadUserTasks } from "./services/taskService";
+import { loadOrgTasksForCurrentUser, loadUserTasks } from "./services/taskService";
 
 function App() {
   const [tasks, setTasks] = useState([]);
@@ -379,6 +379,33 @@ function App() {
       delete window.cleanupOrphanedStorageFiles;
     };
   });
+
+  useEffect(() => {
+    if (!currentUser?.uid || !organizationId) {
+      delete window.testComplexTaskQuery;
+      return;
+    }
+
+    window.testComplexTaskQuery = async () => {
+      console.time("complexTaskQuery");
+
+      const results = await loadOrgTasksForCurrentUser(
+        organizationId,
+        currentUser.uid,
+        "PENDING"
+      );
+
+      console.timeEnd("complexTaskQuery");
+      console.log("Complex query result count:", results.length);
+      console.log("Complex query results:", results);
+
+      return results;
+    };
+
+    return () => {
+      delete window.testComplexTaskQuery;
+    };
+  }, [currentUser, organizationId]);
 
   const loadTasks = async () => {
     try {
