@@ -28,8 +28,10 @@ scripts/.seed-users
 # Vitest JUnit report output
 test-results
 
-# CI test cache sentinel file
+# CI test cache sentinel files
 .test-cache
+.seed-test-cache
+.audit-helper-test-cache
 
 # Editor directories and files
 .vscode/*
