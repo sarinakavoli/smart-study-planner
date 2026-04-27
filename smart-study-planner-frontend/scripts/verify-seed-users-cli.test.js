@@ -418,6 +418,13 @@ describe("verify-seed-users.mjs --dry-run: metadata file present", () => {
     });
   });
 
+  it("shows 'unknown' for the requested collection when --collection=categories and the metadata file is an empty object", () => {
+    withTempCountsFile({}, (file) => {
+      const { stdout } = run(["--dry-run", "--collection=categories"], { SEED_COUNTS_FILE: file });
+      expect(stdout).toMatch(/categories: unknown/i);
+    });
+  });
+
   it("only shows counts for the requested collection when --collection is supplied", () => {
     withTempCountsFile({ categories: 42, tasks: 99 }, (file) => {
       const { stdout } = run(["--dry-run", "--collection=categories"], { SEED_COUNTS_FILE: file });
