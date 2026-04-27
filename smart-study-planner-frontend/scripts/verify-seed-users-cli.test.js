@@ -54,10 +54,11 @@ describe("verify-seed-users.mjs --dry-run", () => {
     expect(stdout).toMatch(/DRY RUN/);
   });
 
-  it("shows both collections to be checked by default", () => {
+  it("shows all three collections to be checked by default", () => {
     const { stdout } = run(["--dry-run"]);
     expect(stdout).toMatch(/categories/i);
     expect(stdout).toMatch(/tasks/i);
+    expect(stdout).toMatch(/organizations/i);
   });
 
   it("shows only the specified collection when --collection is supplied", () => {
