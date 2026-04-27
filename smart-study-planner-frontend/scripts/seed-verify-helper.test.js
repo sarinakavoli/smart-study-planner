@@ -883,6 +883,60 @@ describe("verifyAllCollections", () => {
     expect(result).toBe(true);
     expect(auth.getUser).not.toHaveBeenCalled();
   });
+
+  it("HOW TO FIX mentions seed-organizations.mjs when organizations has a mismatch", async () => {
+    const db = makeDbMulti({
+      organizations: [[{ ownerId: "uid-ghost", seedData: true }]],
+    });
+    const auth = makeAuth({}, ["uid-ghost"]);
+
+    await verifyAllCollections(db, auth, ["organizations"]);
+
+    const logged = consoleSpy.mock.calls.flat().join("\n");
+    expect(logged).toMatch(/seed-organizations\.mjs/);
+  });
+
+  it("HOW TO FIX does not mention seed-organizations.mjs when only categories/tasks have mismatches", async () => {
+    const db = makeDbMulti({
+      categories:    [[{ userId: "uid-ghost", seedData: true }]],
+      tasks:         [[{ userId: "uid-ghost", seedData: true }]],
+      organizations: [[{ ownerId: "uid-alice", seedData: true }]],
+    });
+    const auth = makeAuth({ "uid-alice": { email: "alice@example.com" } }, ["uid-ghost"]);
+
+    await verifyAllCollections(db, auth, ["categories", "tasks", "organizations"]);
+
+    const logged = consoleSpy.mock.calls.flat().join("\n");
+    expect(logged).toMatch(/seed-categories\.mjs/);
+    expect(logged).toMatch(/seed-tasks\.mjs/);
+    expect(logged).not.toMatch(/seed-organizations\.mjs/);
+  });
+
+  it("HOW TO FIX mentions all scripts for collections that have mismatches", async () => {
+    const db = makeDbMulti({
+      categories:    [[{ userId: "uid-ghost", seedData: true }]],
+      organizations: [[{ ownerId: "uid-ghost", seedData: true }]],
+    });
+    const auth = makeAuth({}, ["uid-ghost"]);
+
+    await verifyAllCollections(db, auth, ["categories", "organizations"]);
+
+    const logged = consoleSpy.mock.calls.flat().join("\n");
+    expect(logged).toMatch(/seed-categories\.mjs/);
+    expect(logged).toMatch(/seed-organizations\.mjs/);
+  });
+
+  it("HOW TO FIX uses seed-<collection>.mjs fallback for unknown collections", async () => {
+    const db = makeDbMulti({
+      widgets: [[{ userId: "uid-ghost", seedData: true }]],
+    });
+    const auth = makeAuth({}, ["uid-ghost"]);
+
+    await verifyAllCollections(db, auth, ["widgets"]);
+
+    const logged = consoleSpy.mock.calls.flat().join("\n");
+    expect(logged).toMatch(/seed-widgets\.mjs/);
+  });
 });
 
 // ── verifyAllCollectionsOrExit ────────────────────────────────────────────────

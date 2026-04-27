@@ -19,6 +19,16 @@ const COLLECTION_FIELD_MAP = {
 };
 
 /**
+ * Maps collection names to their corresponding seed script filename.
+ * Collections not listed here fall back to "seed-<collectionName>.mjs".
+ */
+const COLLECTION_SCRIPT_MAP = {
+  categories:    "seed-categories.mjs",
+  tasks:         "seed-tasks.mjs",
+  organizations: "seed-organizations.mjs",
+};
+
+/**
  * Returns the UID field name for the given collection.
  *
  * @param {string} collectionName
@@ -26,6 +36,16 @@ const COLLECTION_FIELD_MAP = {
  */
 function getFieldName(collectionName) {
   return COLLECTION_FIELD_MAP[collectionName] ?? "userId";
+}
+
+/**
+ * Returns the seed script filename for the given collection.
+ *
+ * @param {string} collectionName
+ * @returns {string}
+ */
+function getScriptName(collectionName) {
+  return COLLECTION_SCRIPT_MAP[collectionName] ?? `seed-${collectionName}.mjs`;
 }
 
 /**
@@ -378,27 +398,36 @@ export async function verifyAllCollections(db, auth, collectionsToCheck) {
       console.log();
     }
 
+    const failedCollections = collectionsToCheck.filter((col) =>
+      notFound.some(({ uid }) => (perCollection[col].get(uid) ?? 0) > 0)
+    );
+    const scriptBase = "smart-study-planner-frontend/scripts";
+
     console.log("  HOW TO FIX");
     console.log("  ──────────");
     console.log("  Option A — pass your email address (no UID look-up needed):");
-    console.log("     node smart-study-planner-frontend/scripts/seed-categories.mjs \\");
-    console.log("       --email=you@example.com");
-    console.log("     node smart-study-planner-frontend/scripts/seed-tasks.mjs \\");
-    console.log("       --email=you@example.com");
+    for (const col of failedCollections) {
+      const script = getScriptName(col);
+      console.log(`     node ${scriptBase}/${script} \\`);
+      console.log(`       --email=you@example.com`);
+    }
     console.log();
     console.log("  Option B — add your email to scripts/.seed-users so every run");
     console.log("  picks it up automatically (copy .seed-users.example to get started).");
     console.log();
     console.log("  Option C — pass the raw UID (Firebase console → Authentication →");
     console.log("  Users → copy the UID column):");
-    console.log("     node smart-study-planner-frontend/scripts/seed-categories.mjs \\");
-    console.log("       --users=<real-uid-1>,<real-uid-2>");
-    console.log("     node smart-study-planner-frontend/scripts/seed-tasks.mjs \\");
-    console.log("       --users=<real-uid-1>,<real-uid-2>");
+    for (const col of failedCollections) {
+      const script = getScriptName(col);
+      console.log(`     node ${scriptBase}/${script} \\`);
+      console.log(`       --users=<real-uid-1>,<real-uid-2>`);
+    }
     console.log();
     console.log("  (Optional) Delete old mismatched seed data first:");
-    console.log("     node smart-study-planner-frontend/scripts/seed-categories.mjs --delete");
-    console.log("     node smart-study-planner-frontend/scripts/seed-tasks.mjs --delete");
+    for (const col of failedCollections) {
+      const script = getScriptName(col);
+      console.log(`     node ${scriptBase}/${script} --delete`);
+    }
     console.log();
   }
 
