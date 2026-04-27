@@ -1,0 +1,65 @@
+The invite flow is now technically working, but it is using the wrong organization.
+
+The log says:
+Creating invitation for org org_gzn8NV_default
+Accepting invitation into org org_gzn8NV_default
+
+This means the admin's activeOrganizationId is still a default/personal organization.
+
+Please fix the organization creation/login flow:
+
+1. Search the code for any logic that creates or uses:
+- org_*_default
+- "_default"
+- "[email]'s Workspace"
+- "Workspace"
+- defaultOrganization
+- createDefaultOrganization
+- ensureOrganization
+- getOrCreateOrganization
+
+2. Remove the automatic creation of default/personal organizations.
+
+3. If a user logs in and has no active membership and no pending invitation:
+- show the CREATE_ORG screen
+- do not create any organization automatically
+
+4. The only time an organization should be created is when the user submits the Create School Organization form.
+
+5. When the user creates a school organization, create:
+organizations/org_<school_slug>
+with:
+- name: submitted school name
+- createdBy: currentUser.uid
+- createdByEmail: currentUser.email
+- createdAt
+- updatedAt
+- source: "create_org_form"
+- schemaVersion: 2
+
+6. Then create admin membership:
+memberships/mbr_<school_slug>_admin_<email_slug>
+with:
+- organizationId: org_<school_slug>
+- organizationName: submitted school name
+- userId: currentUser.uid
+- email: currentUser.email
+- role: "admin"
+- status: "active"
+- source: "create_org_form"
+- schemaVersion: 2
+
+7. Add a dev cleanup script with dry-run and confirm mode to delete old default/personal organizations:
+- organizations where ID ends with "_default"
+- organizations where name contains "'s Workspace"
+- memberships using those organizationIds
+- invitations using those organizationIds
+- tasks/categories using those organizationIds
+
+8. After cleanup, test again:
+- sign in as admin
+- create "York School"
+- confirm activeOrganizationId is org_york_school
+- invite student
+- student signs in
+- confirm student membership uses org_york_school, not org_gzn8NV_default
