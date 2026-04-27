@@ -179,6 +179,7 @@ describe("verify-seed-users.mjs: --collection flag validation", () => {
     const { stderr } = run(["--collection=bogus"]);
     expect(stderr).toMatch(/categories/);
     expect(stderr).toMatch(/tasks/);
+    expect(stderr).toMatch(/organizations/);
   });
 });
 
