@@ -1,0 +1,60 @@
+My app already has an organizations collection, but the current behavior may be wrong for the school use case.
+
+Current issue:
+Every user can create their own organization and invite users. But the desired model is:
+- A school admin creates one organization for the school.
+- The admin invites teachers and students.
+- Invited teachers/students join the existing school organization.
+- Teachers/students should not automatically create their own organizations.
+
+Please update the app logic without deleting the existing organizations collection.
+
+Required changes:
+
+1. Keep the organizations collection.
+
+2. Add or verify a memberships collection that connects users to organizations:
+- organizationId
+- userId
+- email
+- role: admin, teacher, student
+- status: active
+- createdAt
+
+3. Add or verify an invitations collection:
+- organizationId
+- email
+- role: teacher or student
+- status: pending, accepted
+- invitedBy
+- createdAt
+- acceptedAt
+
+4. Update signup/login flow:
+- After login, check if the user already has an active membership.
+- If yes, set that organization as activeOrganizationId and load that organization’s data.
+- If no membership exists, check for a pending invitation matching the user’s email.
+- If invitation exists, create a membership for that user in the invited organization and mark invitation accepted.
+- If no invitation exists, only allow the user to create an organization if they choose “Create school organization as admin.”
+- Do not automatically create an organization for every new user.
+
+5. Add role-based behavior:
+- Admin can create organization and invite teachers/students.
+- Teacher can create/manage class tasks depending on current app features.
+- Student can only see their assigned tasks or organization tasks allowed to them.
+- Hide organization creation from invited teacher/student users.
+
+6. Make sure every task/category query uses organizationId:
+- tasks must include organizationId
+- categories must include organizationId
+- queries must filter by activeOrganizationId
+
+7. Add console logs:
+- current user email
+- active membership found or not
+- pending invitation found or not
+- activeOrganizationId
+- current user role
+- organizationId used in every tasks/categories query
+
+8. Do not remove existing working features. Refactor only the organization and membership flow.
