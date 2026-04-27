@@ -92,6 +92,10 @@ export function loadSeedUsersFile() {
     process.exit(1);
   }
 
+  if (parsed.users.some((u) => u !== u.trim())) {
+    console.log("Note: .seed-users entries were trimmed of leading/trailing whitespace.");
+  }
+
   return parsed.users.map((u) => u.trim());
 }
 

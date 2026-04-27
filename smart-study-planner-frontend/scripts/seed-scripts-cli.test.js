@@ -207,6 +207,54 @@ describe("seed-categories.mjs --dry-run --email", () => {
   });
 });
 
+describe("seed-categories.mjs --dry-run with .seed-users file trimming", () => {
+  let tmpDir;
+
+  afterEach(() => {
+    if (tmpDir) {
+      rmSync(tmpDir, { recursive: true, force: true });
+      tmpDir = null;
+    }
+  });
+
+  it("prints a trimming note when a .seed-users entry has leading whitespace", () => {
+    tmpDir = mkdtempSync(join(tmpdir(), "seed-users-"));
+    const filePath = join(tmpDir, "seed-users.json");
+    writeFileSync(filePath, JSON.stringify({ users: [" uid_padded"] }));
+    const { exitCode, stdout } = run(CATEGORIES_SCRIPT, ["--dry-run"], { SEED_USERS_PATH_OVERRIDE: filePath });
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/trimmed/i);
+  });
+
+  it("prints a trimming note when a .seed-users entry has trailing whitespace", () => {
+    tmpDir = mkdtempSync(join(tmpdir(), "seed-users-"));
+    const filePath = join(tmpDir, "seed-users.json");
+    writeFileSync(filePath, JSON.stringify({ users: ["uid_padded "] }));
+    const { exitCode, stdout } = run(CATEGORIES_SCRIPT, ["--dry-run"], { SEED_USERS_PATH_OVERRIDE: filePath });
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/trimmed/i);
+  });
+
+  it("prints a trimming note when one of several .seed-users entries has surrounding whitespace", () => {
+    tmpDir = mkdtempSync(join(tmpdir(), "seed-users-"));
+    const filePath = join(tmpDir, "seed-users.json");
+    writeFileSync(filePath, JSON.stringify({ users: ["uid_clean", " uid_padded"] }));
+    const { exitCode, stdout } = run(CATEGORIES_SCRIPT, ["--dry-run"], { SEED_USERS_PATH_OVERRIDE: filePath });
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/trimmed/i);
+    expect(stdout).toMatch(/uid_clean/);
+    expect(stdout).toMatch(/uid_padded/);
+  });
+
+  it("does not print a trimming note when no .seed-users entry has surrounding whitespace", () => {
+    tmpDir = mkdtempSync(join(tmpdir(), "seed-users-"));
+    const filePath = join(tmpDir, "seed-users.json");
+    writeFileSync(filePath, JSON.stringify({ users: ["uid_clean", "uid_other"] }));
+    const { stdout } = run(CATEGORIES_SCRIPT, ["--dry-run"], { SEED_USERS_PATH_OVERRIDE: filePath });
+    expect(stdout).not.toMatch(/trimmed/i);
+  });
+});
+
 describe("seed-categories.mjs --dry-run --delete", () => {
   it("exits 0 and shows delete-preview output", () => {
     const { exitCode, stdout } = run(CATEGORIES_SCRIPT, ["--dry-run", "--delete"]);
@@ -549,6 +597,54 @@ describe("seed-tasks.mjs --dry-run --email", () => {
 
   it("does not print a trimming note when no --email entry has surrounding whitespace", () => {
     const { stdout } = run(TASKS_SCRIPT, ["--dry-run", "--email=dev@example.com,other@example.com"]);
+    expect(stdout).not.toMatch(/trimmed/i);
+  });
+});
+
+describe("seed-tasks.mjs --dry-run with .seed-users file trimming", () => {
+  let tmpDir;
+
+  afterEach(() => {
+    if (tmpDir) {
+      rmSync(tmpDir, { recursive: true, force: true });
+      tmpDir = null;
+    }
+  });
+
+  it("prints a trimming note when a .seed-users entry has leading whitespace", () => {
+    tmpDir = mkdtempSync(join(tmpdir(), "seed-users-"));
+    const filePath = join(tmpDir, "seed-users.json");
+    writeFileSync(filePath, JSON.stringify({ users: [" uid_padded"] }));
+    const { exitCode, stdout } = run(TASKS_SCRIPT, ["--dry-run"], { SEED_USERS_PATH_OVERRIDE: filePath });
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/trimmed/i);
+  });
+
+  it("prints a trimming note when a .seed-users entry has trailing whitespace", () => {
+    tmpDir = mkdtempSync(join(tmpdir(), "seed-users-"));
+    const filePath = join(tmpDir, "seed-users.json");
+    writeFileSync(filePath, JSON.stringify({ users: ["uid_padded "] }));
+    const { exitCode, stdout } = run(TASKS_SCRIPT, ["--dry-run"], { SEED_USERS_PATH_OVERRIDE: filePath });
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/trimmed/i);
+  });
+
+  it("prints a trimming note when one of several .seed-users entries has surrounding whitespace", () => {
+    tmpDir = mkdtempSync(join(tmpdir(), "seed-users-"));
+    const filePath = join(tmpDir, "seed-users.json");
+    writeFileSync(filePath, JSON.stringify({ users: ["uid_clean", " uid_padded"] }));
+    const { exitCode, stdout } = run(TASKS_SCRIPT, ["--dry-run"], { SEED_USERS_PATH_OVERRIDE: filePath });
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/trimmed/i);
+    expect(stdout).toMatch(/uid_clean/);
+    expect(stdout).toMatch(/uid_padded/);
+  });
+
+  it("does not print a trimming note when no .seed-users entry has surrounding whitespace", () => {
+    tmpDir = mkdtempSync(join(tmpdir(), "seed-users-"));
+    const filePath = join(tmpDir, "seed-users.json");
+    writeFileSync(filePath, JSON.stringify({ users: ["uid_clean", "uid_other"] }));
+    const { stdout } = run(TASKS_SCRIPT, ["--dry-run"], { SEED_USERS_PATH_OVERRIDE: filePath });
     expect(stdout).not.toMatch(/trimmed/i);
   });
 });
