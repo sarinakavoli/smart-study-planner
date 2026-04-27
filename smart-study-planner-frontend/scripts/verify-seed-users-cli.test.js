@@ -476,6 +476,20 @@ describe("verify-seed-users.mjs --dry-run: metadata file present", () => {
     });
   });
 
+  it("shows a trimmed note in the header when --collection input has surrounding whitespace", () => {
+    withTempCountsFile({ categories: 3 }, (file) => {
+      const { stdout } = run(["--dry-run", "--collection=  categories  "], { SEED_COUNTS_FILE: file });
+      expect(stdout).toMatch(/trimmed from original input/i);
+    });
+  });
+
+  it("does not show a trimmed note when --collection input has no surrounding whitespace", () => {
+    withTempCountsFile({ categories: 3 }, (file) => {
+      const { stdout } = run(["--dry-run", "--collection=categories"], { SEED_COUNTS_FILE: file });
+      expect(stdout).not.toMatch(/trimmed from original input/i);
+    });
+  });
+
   it("only shows counts for the requested collection when --collection is supplied", () => {
     withTempCountsFile({ categories: 42, tasks: 99 }, (file) => {
       const { stdout } = run(["--dry-run", "--collection=categories"], { SEED_COUNTS_FILE: file });

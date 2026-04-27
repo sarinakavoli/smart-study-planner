@@ -129,8 +129,13 @@ const dryRun = args.includes("--dry-run");
 
 const collectionArg = args.find((a) => a.startsWith("--collection="));
 let collectionsToCheck = ALL_COLLECTIONS;
+let collectionWasTrimmed = false;
 if (collectionArg) {
-  const name = collectionArg.slice("--collection=".length).trim();
+  const raw = collectionArg.slice("--collection=".length);
+  const name = raw.trim();
+  if (raw !== name) {
+    collectionWasTrimmed = true;
+  }
   if (!ALL_COLLECTIONS.includes(name)) {
     console.error(
       `ERROR: --collection must be one of: ${ALL_COLLECTIONS.join(", ")}\n` +
@@ -162,7 +167,8 @@ if (dryRun) {
   console.log("=".repeat(60));
   console.log("  Seed-user verification smoke test  [DRY RUN]");
   console.log("=".repeat(60));
-  console.log(`  Collections to be checked: ${collectionsToCheck.join(", ")}`);
+  const trimmedNote = collectionWasTrimmed ? " (trimmed from original input)" : "";
+  console.log(`  Collections to be checked: ${collectionsToCheck.join(", ")}${trimmedNote}`);
   console.log();
 
   if (metaCounts) {
