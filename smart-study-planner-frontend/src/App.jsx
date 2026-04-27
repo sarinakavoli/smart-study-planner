@@ -2524,8 +2524,13 @@ function App() {
                 setInviteSending(true);
                 setInviteStatus(null);
                 try {
-                  console.log("[invite] currentUser.uid:", currentUser.uid, "| email:", currentUser.email);
-                  console.log("Creating invitation for org", organizationId);
+                  console.log("CURRENT ADMIN STATE", {
+                    uid: currentUser.uid,
+                    email: currentUser.email,
+                    activeOrganizationId: organizationId,
+                    activeOrganizationName: organizationName,
+                    currentUserRole,
+                  });
                   console.log("[invite] inviting:", trimmed, "| role:", inviteRole);
                   const inviteDocId = await createInvitation({
                     organizationId,

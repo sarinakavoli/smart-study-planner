@@ -14,6 +14,11 @@ import { generateInviteId } from "../utils/firestoreIds";
 /**
  * Creates a pending invitation for an email address to join an organization.
  *
+ * Required fields matched to Firestore rules:
+ *   organizationId, organizationName, invitedEmail, email (same as invitedEmail),
+ *   role, status: "pending", invitedByUserId, invitedByEmail,
+ *   source: "admin_invite", schemaVersion: 2, createdAt, updatedAt
+ *
  * @param {object} params
  * @param {string} params.organizationId
  * @param {string} params.organizationName
@@ -33,22 +38,47 @@ export async function createInvitation({
 }) {
   const normalizedEmail = invitedEmail.trim().toLowerCase();
   const inviteId = generateInviteId(organizationId, normalizedEmail);
+  const invitationPath = `invitations/${inviteId}`;
 
-  const inviteRef = doc(db, "invitations", inviteId);
-  await setDoc(inviteRef, {
+  const invitationData = {
     readableId: inviteId,
     organizationId,
-    organizationName,
+    organizationName: organizationName || null,
     invitedEmail: normalizedEmail,
-    invitedByUserId,
-    invitedByEmail,
+    email: normalizedEmail,
     role: role || "student",
     status: "pending",
+    invitedByUserId,
+    invitedByEmail,
+    source: "admin_invite",
+    schemaVersion: 2,
     createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
     acceptedAt: null,
     declinedAt: null,
     expiresAt: null,
-  });
+  };
+
+  console.log("INVITATION WRITE PATH", invitationPath);
+  console.log("INVITATION WRITE DATA", JSON.stringify(
+    {
+      ...invitationData,
+      createdAt: "<serverTimestamp>",
+      updatedAt: "<serverTimestamp>",
+    },
+    null,
+    2,
+  ));
+
+  const inviteRef = doc(db, "invitations", inviteId);
+
+  try {
+    await setDoc(inviteRef, invitationData);
+    console.log("INVITATION WRITE SUCCESS — id:", inviteId);
+  } catch (error) {
+    console.error("INVITATION WRITE FAILED", error.code, error.message);
+    throw error;
+  }
 
   return inviteId;
 }
@@ -94,6 +124,7 @@ export async function acceptInvitation({ invitation, userId, userEmail }) {
   await updateDoc(doc(db, "invitations", inviteId), {
     status: "accepted",
     acceptedAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
   });
 
   console.log("[invitation] Accepted:", inviteId, "→ org:", organizationId, "role:", role);
@@ -111,6 +142,7 @@ export async function declineInvitation(inviteId) {
   await updateDoc(doc(db, "invitations", inviteId), {
     status: "declined",
     declinedAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
   });
   console.log("[invitation] Declined:", inviteId);
 }

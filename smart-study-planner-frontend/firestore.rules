@@ -140,10 +140,15 @@ service cloud.firestore {
         );
 
       // Only active admins of the target org may create invitations.
+      // Membership document ID format is: <organizationId>_<userId>
+      // so isAdminOfOrg constructs: orgId + "_" + request.auth.uid
       allow create: if signedIn()
         && isAdminOfOrg(request.resource.data.organizationId)
         && request.resource.data.invitedByUserId == request.auth.uid
-        && request.resource.data.status == "pending";
+        && request.resource.data.invitedByEmail == userEmail()
+        && request.resource.data.status == "pending"
+        && request.resource.data.source == "admin_invite"
+        && request.resource.data.schemaVersion == 2;
 
       // Only the invited email address may accept or decline.
       allow update: if signedIn()
