@@ -15,6 +15,7 @@ import {
   query,
   where,
   arrayUnion,
+  arrayRemove,
   serverTimestamp,
 } from "firebase/firestore";
 import {
@@ -190,17 +191,42 @@ function App() {
                     userId: firebaseUser.uid,
                     userEmail: firebaseUser.email,
                   });
+                const autoEmail = firebaseUser.email || "";
+                const autoRole = invRole || "student";
                 await createMembership({
                   organizationId: newOrgId,
                   userId: firebaseUser.uid,
-                  email: firebaseUser.email || "",
-                  role: invRole || "student",
+                  email: autoEmail,
+                  role: autoRole,
                   organizationName: newOrgName || invite.organizationName || null,
                   displayName: firebaseUser.displayName || null,
                   invitedBy: invite.invitedByUserId || null,
                   invitationId: invite.id,
                   source: "invitation",
                 });
+
+                // Update org document: add member, remove from pending
+                try {
+                  const autoSchoolSlug = newOrgId.replace(/^org_/, "").replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40);
+                  const autoMembershipReadableId = `mbr_${autoSchoolSlug}_${autoRole}_${autoEmail.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 50)}`;
+                  await updateDoc(doc(db, "organizations", newOrgId), {
+                    memberIds: arrayUnion(firebaseUser.uid),
+                    memberEmails: arrayUnion(autoEmail),
+                    pendingInviteEmails: arrayRemove(autoEmail),
+                    membersSummary: arrayUnion({
+                      userId: firebaseUser.uid,
+                      email: autoEmail,
+                      role: autoRole,
+                      status: "active",
+                      membershipReadableId: autoMembershipReadableId,
+                    }),
+                    updatedAt: serverTimestamp(),
+                  });
+                  console.log("[auth] org doc updated — added auto-accepted member:", autoEmail);
+                } catch (orgErr) {
+                  console.warn("[auth] Could not update org doc on auto-accept (non-fatal):", orgErr.code, orgErr.message);
+                }
+
                 resolvedOrgId = newOrgId;
                 resolvedRole = invRole || "student";
                 console.log("[auth] invitation auto-accepted — activeOrganizationId:", resolvedOrgId, "| role:", resolvedRole);
@@ -306,9 +332,13 @@ function App() {
         setOrganizationId(resolvedOrgId);
         setCurrentUserRole(resolvedRole);
 
-        // If user has no org yet, direct them to the create-org screen
+        // If user has no org yet, direct them to the create-org screen.
+        // If they DO have an org, always land on ALL_TASKS so returning users
+        // never see a stale CREATE_ORG screen after sign-out → sign-in.
         if (!resolvedOrgId) {
           setActiveView("CREATE_ORG");
+        } else {
+          setActiveView("ALL_TASKS");
         }
       } else {
         console.log("[auth] onAuthStateChanged fired — user signed out");
@@ -412,17 +442,42 @@ function App() {
           userId: currentUser.uid,
           userEmail: currentUser.email,
         });
+      const acceptedEmail = currentUser.email || "";
+      const acceptedRole = invRole || "student";
       await createMembership({
         organizationId: newOrgId,
         userId: currentUser.uid,
-        email: currentUser.email || "",
-        role: invRole || "student",
+        email: acceptedEmail,
+        role: acceptedRole,
         organizationName: newOrgName || invite.organizationName || null,
         displayName: currentUser.displayName || null,
         invitedBy: invite.invitedByUserId || null,
         invitationId: invite.id,
         source: "invitation",
       });
+
+      // Update org document: add member, remove from pending
+      try {
+        const acceptedSchoolSlug = newOrgId.replace(/^org_/, "").replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40);
+        const acceptedMembershipReadableId = `mbr_${acceptedSchoolSlug}_${acceptedRole}_${acceptedEmail.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 50)}`;
+        await updateDoc(doc(db, "organizations", newOrgId), {
+          memberIds: arrayUnion(currentUser.uid),
+          memberEmails: arrayUnion(acceptedEmail),
+          pendingInviteEmails: arrayRemove(acceptedEmail),
+          membersSummary: arrayUnion({
+            userId: currentUser.uid,
+            email: acceptedEmail,
+            role: acceptedRole,
+            status: "active",
+            membershipReadableId: acceptedMembershipReadableId,
+          }),
+          updatedAt: serverTimestamp(),
+        });
+        console.log("[invite] org doc updated — added member:", acceptedEmail, "| removed from pending");
+      } catch (orgUpdateErr) {
+        console.warn("[invite] Could not update org doc (non-fatal):", orgUpdateErr.code, orgUpdateErr.message);
+      }
+
       setPendingInvites((prev) => prev.filter((i) => i.id !== invite.id));
       setInviteCardStatus((prev) => ({
         ...prev,
@@ -481,12 +536,31 @@ function App() {
     });
 
     const orgId = schoolOrgId(name);
+    const schoolSlug = orgId.replace(/^org_/, "").replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40);
+    const adminEmail = currentUser.email || "";
+    const membershipReadableId = `mbr_${schoolSlug}_admin_${adminEmail.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 50)}`;
+
     const orgData = {
       id: orgId,
       readableId: orgId,
       name,
+      schoolSlug,
       createdBy: currentUser.uid,
-      createdByEmail: currentUser.email || "",
+      createdByEmail: adminEmail,
+      ownerId: currentUser.uid,
+      ownerEmail: adminEmail,
+      memberIds: [currentUser.uid],
+      memberEmails: [adminEmail],
+      pendingInviteEmails: [],
+      membersSummary: [
+        {
+          userId: currentUser.uid,
+          email: adminEmail,
+          role: "admin",
+          status: "active",
+          membershipReadableId,
+        },
+      ],
       source: "create_org_form",
       schemaVersion: 2,
       createdAt: serverTimestamp(),
@@ -2462,6 +2536,18 @@ function App() {
                     role: inviteRole,
                   });
                   console.log("[invite] invitation document created — id:", inviteDocId, "| org:", organizationId, "| role:", inviteRole);
+
+                  // Add invited email to pendingInviteEmails on the org doc
+                  try {
+                    await updateDoc(doc(db, "organizations", organizationId), {
+                      pendingInviteEmails: arrayUnion(trimmed),
+                      updatedAt: serverTimestamp(),
+                    });
+                    console.log("[invite] org pendingInviteEmails updated — added:", trimmed);
+                  } catch (orgErr) {
+                    console.warn("[invite] Could not update org pendingInviteEmails (non-fatal):", orgErr.code, orgErr.message);
+                  }
+
                   setInviteStatus({ type: "success", message: `Invitation sent to ${trimmed} as ${inviteRole}. They will join automatically on their next sign-in.` });
                   setInviteEmail("");
                 } catch (err) {

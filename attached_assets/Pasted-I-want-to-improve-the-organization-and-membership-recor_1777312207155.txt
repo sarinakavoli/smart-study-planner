@@ -1,0 +1,90 @@
+I want to improve the organization and membership records for readability and debugging.
+
+Important:
+Do not break Firestore security rules. Keep the membership document ID as:
+<userId>_<organizationId>
+
+Example:
+dERLgNAke8O15YPanLtDNZ9sC6l1_org_yorku
+
+But inside the membership document, always store a readableId field:
+mbr_<schoolSlug>_<role>_<emailSlug>
+
+Example:
+mbr_yorku_admin_ariyan_azami84_gmail_com
+
+Also, I want the organizations collection to contain clear summary information.
+
+Please update organization creation and membership creation as follows:
+
+1. Fix email source:
+- Do not use manually typed or old stored email.
+- Always use currentUser.email from Firebase Auth.
+- Make sure email is correct, for example gmail.com not gamil.com.
+
+2. Organization document should include:
+- id
+- readableId
+- name
+- schoolSlug
+- createdBy
+- createdByEmail
+- ownerId
+- ownerEmail
+- memberIds
+- memberEmails
+- pendingInviteEmails
+- membersSummary
+- createdAt
+- updatedAt
+- source: "create_org_form"
+- schemaVersion: 2
+
+3. When an admin creates an organization, membersSummary should start with:
+membersSummary: [
+  {
+    userId: currentUser.uid,
+    email: currentUser.email,
+    role: "admin",
+    status: "active",
+    membershipReadableId: "mbr_<schoolSlug>_admin_<emailSlug>"
+  }
+]
+
+4. Membership document should include:
+- organizationId
+- organizationName
+- schoolSlug
+- userId
+- email
+- displayName
+- role
+- status
+- readableId
+- createdAt
+- updatedAt
+- source
+- schemaVersion
+
+5. When a teacher/student accepts an invitation:
+- Create their membership using document ID:
+  <userId>_<organizationId>
+- Add readableId:
+  mbr_<schoolSlug>_<role>_<emailSlug>
+- Also update the organization document:
+  - add userId to memberIds
+  - add email to memberEmails
+  - add member object to membersSummary
+  - remove email from pendingInviteEmails if present
+
+6. When an admin sends an invitation:
+- Add invited email to pendingInviteEmails in the organization document.
+- Create invitation with organizationId and organizationName.
+- Do not use default organization.
+
+7. In the UI and console logs:
+- Show readableId for humans.
+- Also log the real membership document ID for security/debugging.
+
+8. Fix the bug where after sign out/sign in, an existing admin still sees the Create Organization screen.
+If active membership exists, do not show CREATE_ORG.

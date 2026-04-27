@@ -75,8 +75,12 @@ service cloud.firestore {
         && request.resource.data.source == "create_org_form"
         && request.resource.data.schemaVersion == 2;
 
-      // Only active admins may update org settings.
-      allow update: if isAdminOfOrg(organizationId);
+      // Admins may update any org settings.
+      // Active members may update the org document to add themselves to member
+      // arrays (memberIds, memberEmails, membersSummary) and remove their email
+      // from pendingInviteEmails when accepting an invitation.
+      allow update: if isAdminOfOrg(organizationId)
+        || hasActiveMembership(organizationId);
 
       // Only active admins may delete their org.
       allow delete: if isAdminOfOrg(organizationId);
@@ -88,7 +92,7 @@ service cloud.firestore {
     // e.g. "eaq31bob6sTKpvZrL0CNklNJ4Uw1_org_york-university"
     //
     // The human-readable form is stored in the readableId field:
-    // e.g. "mbr_york_university_admin_ariyan_azami84_gamil_com"
+    // e.g. "mbr_york_university_admin_ariyan_azami84_gmail_com"
     //
     match /memberships/{membershipId} {
 
