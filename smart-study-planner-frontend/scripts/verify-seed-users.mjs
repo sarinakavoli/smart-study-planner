@@ -196,6 +196,17 @@ if (dryRun) {
   process.exit(0);
 }
 
+// ── Mock mode (SEED_VERIFY_MOCK_JSON) ─────────────────────────────────────────
+//
+// When SEED_VERIFY_MOCK_JSON is set, real GCP credentials and Firebase are not
+// needed.  verifyAllCollectionsOrExit will replace the db/auth arguments with
+// in-process mocks built from the JSON value, so we can pass null here.
+
+if (process.env.SEED_VERIFY_MOCK_JSON) {
+  await verifyAllCollectionsOrExit(null, null, collectionsToCheck);
+  process.exit(0);
+}
+
 // ── Bootstrap Admin SDK ───────────────────────────────────────────────────────
 
 const serviceAccountJson = process.env.GCP_SERVICE_ACCOUNT_JSON;

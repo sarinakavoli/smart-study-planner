@@ -197,6 +197,125 @@ describe("verify-seed-users.mjs: valid --collection with missing credentials", (
     const { stderr } = run(["--collection=tasks"]);
     expect(stderr).toMatch(/GCP_SERVICE_ACCOUNT_JSON/);
   });
+
+  it("exits 1 for --collection=organizations when credentials are missing", () => {
+    const { exitCode } = run(["--collection=organizations"]);
+    expect(exitCode).toBe(1);
+  });
+
+  it("reports credential error (not collection error) for --collection=organizations without credentials", () => {
+    const { stderr } = run(["--collection=organizations"]);
+    expect(stderr).toMatch(/GCP_SERVICE_ACCOUNT_JSON/);
+  });
+});
+
+// ── --collection=organizations with SEED_VERIFY_MOCK_JSON ─────────────────────
+//
+// These tests exercise the full verify-seed-users.mjs CLI with
+// --collection=organizations using mock Firestore / Auth so no real
+// GCP credentials are required.  The organizations collection uses
+// "ownerId" instead of "userId"; the mock path must honour that mapping.
+
+function runWithMock(args, seeded = [], missing = []) {
+  const mockJson = JSON.stringify({ users: seeded, missing });
+  return run(args, { SEED_VERIFY_MOCK_JSON: mockJson });
+}
+
+describe("verify-seed-users.mjs --collection=organizations: all ownerId values match Auth (exit 0)", () => {
+  it("exits 0 when the seeded ownerId exists in Auth", () => {
+    const { exitCode } = runWithMock(["--collection=organizations"], ["real-uid-org-001"], []);
+    expect(exitCode).toBe(0);
+  });
+
+  it("prints ALL PASS when the seeded ownerId is found in Auth", () => {
+    const { stdout } = runWithMock(["--collection=organizations"], ["real-uid-org-001"], []);
+    expect(stdout).toMatch(/ALL PASS/);
+  });
+
+  it("does not print FAIL when all ownerIds match Auth", () => {
+    const { stdout } = runWithMock(["--collection=organizations"], ["real-uid-org-001"], []);
+    expect(stdout).not.toMatch(/FAIL/);
+  });
+
+  it("exits 0 when multiple ownerIds all match Auth", () => {
+    const { exitCode } = runWithMock(
+      ["--collection=organizations"],
+      ["real-uid-org-a", "real-uid-org-b"],
+      []
+    );
+    expect(exitCode).toBe(0);
+  });
+
+  it("exits 0 and reports nothing to verify when no documents are seeded", () => {
+    const { exitCode, stdout } = runWithMock(["--collection=organizations"], [], []);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/Nothing to verify/);
+  });
+});
+
+describe("verify-seed-users.mjs --collection=organizations: ownerId mismatch detected (exit 1)", () => {
+  it("exits 1 when the seeded ownerId is not in Auth", () => {
+    const { exitCode } = runWithMock(
+      ["--collection=organizations"],
+      ["ghost-uid-org-001"],
+      ["ghost-uid-org-001"]
+    );
+    expect(exitCode).toBe(1);
+  });
+
+  it("prints FAIL or MISMATCH when the ownerId is missing from Auth", () => {
+    const { stdout } = runWithMock(
+      ["--collection=organizations"],
+      ["ghost-uid-org-001"],
+      ["ghost-uid-org-001"]
+    );
+    expect(stdout).toMatch(/FAIL|MISMATCH/);
+  });
+
+  it("mentions the missing ownerId value in the output", () => {
+    const { stdout } = runWithMock(
+      ["--collection=organizations"],
+      ["ghost-uid-org-001"],
+      ["ghost-uid-org-001"]
+    );
+    expect(stdout).toMatch(/ghost-uid-org-001/);
+  });
+
+  it("marks the missing ownerId as [MISSING] in the report", () => {
+    const { stdout } = runWithMock(
+      ["--collection=organizations"],
+      ["ghost-uid-org-001"],
+      ["ghost-uid-org-001"]
+    );
+    expect(stdout).toMatch(/\[MISSING\]/);
+  });
+
+  it("does not print ALL PASS when there is a mismatch", () => {
+    const { stdout } = runWithMock(
+      ["--collection=organizations"],
+      ["ghost-uid-org-001"],
+      ["ghost-uid-org-001"]
+    );
+    expect(stdout).not.toMatch(/ALL PASS/);
+  });
+
+  it("exits 1 on a partial mismatch (some ownerIds present, some missing)", () => {
+    const { exitCode } = runWithMock(
+      ["--collection=organizations"],
+      ["real-uid-org", "ghost-uid-org"],
+      ["ghost-uid-org"]
+    );
+    expect(exitCode).toBe(1);
+  });
+
+  it("still prints FAIL on a partial mismatch even when some ownerIds are OK", () => {
+    const { stdout } = runWithMock(
+      ["--collection=organizations"],
+      ["real-uid-org", "ghost-uid-org"],
+      ["ghost-uid-org"]
+    );
+    expect(stdout).toMatch(/FAIL|MISMATCH/);
+  });
 });
 
 // ── Malformed credentials JSON ────────────────────────────────────────────────

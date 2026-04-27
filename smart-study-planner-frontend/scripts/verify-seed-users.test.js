@@ -272,6 +272,121 @@ describe("verify-seed-users.mjs (CLI): empty / structurally-invalid service-acco
   });
 });
 
+// ── 3b. organizations collection — ownerId field mapping ──────────────────────
+//
+// The organizations collection stores the owner's UID in "ownerId" rather than
+// "userId".  collectSeedUserIds must read the right field; verifySeedUsers must
+// route Auth look-ups using those values.
+
+describe("collectSeedUserIds: organizations uses ownerId field (not userId)", () => {
+  it("returns the ownerId value when documents use ownerId", async () => {
+    const db = makeDb([[{ ownerId: "org-owner-001", seedData: true }]]);
+    const result = await collectSeedUserIds(db, "organizations");
+    expect(result.size).toBe(1);
+    expect(result.get("org-owner-001")).toBe(1);
+  });
+
+  it("does not pick up userId field for organizations (ignores wrong field)", async () => {
+    const db = makeDb([[{ userId: "wrong-field-uid", seedData: true }]]);
+    const result = await collectSeedUserIds(db, "organizations");
+    expect(result.size).toBe(0);
+  });
+
+  it("counts multiple documents with the same ownerId correctly", async () => {
+    const db = makeDb([
+      [
+        { ownerId: "org-owner-001", seedData: true },
+        { ownerId: "org-owner-001", seedData: true },
+        { ownerId: "org-owner-002", seedData: true },
+      ],
+    ]);
+    const result = await collectSeedUserIds(db, "organizations");
+    expect(result.size).toBe(2);
+    expect(result.get("org-owner-001")).toBe(2);
+    expect(result.get("org-owner-002")).toBe(1);
+  });
+
+  it("skips falsy ownerId values (null, empty string)", async () => {
+    const db = makeDb([
+      [
+        { ownerId: null,            seedData: true },
+        { ownerId: "",              seedData: true },
+        { ownerId: "org-real-uid",  seedData: true },
+      ],
+    ]);
+    const result = await collectSeedUserIds(db, "organizations");
+    expect(result.size).toBe(1);
+    expect(result.get("org-real-uid")).toBe(1);
+  });
+});
+
+describe("verifySeedUsers: organizations collection passes ownerId to Auth", () => {
+  let consoleSpy;
+  let stdoutSpy;
+
+  beforeEach(() => {
+    consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    stdoutSpy   = vi.spyOn(process.stdout, "write").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    consoleSpy.mockRestore();
+    stdoutSpy.mockRestore();
+  });
+
+  it("returns true when all ownerIds are found in Auth", async () => {
+    const db   = makeDb([[{ ownerId: "org-uid-match", seedData: true }]]);
+    const auth = makeAuth({ "org-uid-match": { email: "owner@example.com" } });
+    expect(await verifySeedUsers(db, auth, "organizations")).toBe(true);
+  });
+
+  it("calls auth.getUser with the ownerId value", async () => {
+    const db   = makeDb([[{ ownerId: "org-uid-match", seedData: true }]]);
+    const auth = makeAuth({ "org-uid-match": { email: "owner@example.com" } });
+    await verifySeedUsers(db, auth, "organizations");
+    expect(auth.getUser).toHaveBeenCalledWith("org-uid-match");
+  });
+
+  it("prints PASS output when the ownerId is found in Auth", async () => {
+    const db   = makeDb([[{ ownerId: "org-uid-match", seedData: true }]]);
+    const auth = makeAuth({ "org-uid-match": { email: "owner@example.com" } });
+    await verifySeedUsers(db, auth, "organizations");
+    const logged = consoleSpy.mock.calls.flat().join("\n");
+    expect(logged).toMatch(/PASS/);
+    expect(logged).toMatch(/org-uid-match/);
+  });
+
+  it("returns false when the ownerId is missing from Auth", async () => {
+    const db   = makeDb([[{ ownerId: "ghost-org-uid", seedData: true }]]);
+    const auth = makeAuth({}, ["ghost-org-uid"]);
+    expect(await verifySeedUsers(db, auth, "organizations")).toBe(false);
+  });
+
+  it("prints FAIL/MISMATCH when the ownerId is not in Auth", async () => {
+    const db   = makeDb([[{ ownerId: "ghost-org-uid", seedData: true }]]);
+    const auth = makeAuth({}, ["ghost-org-uid"]);
+    await verifySeedUsers(db, auth, "organizations");
+    const logged = consoleSpy.mock.calls.flat().join("\n");
+    expect(logged).toMatch(/FAIL|MISMATCH|MISSING/);
+    expect(logged).toMatch(/ghost-org-uid/);
+  });
+
+  it("does not call auth.getUser when all org documents have a falsy ownerId", async () => {
+    const db   = makeDb([[{ ownerId: null, seedData: true }]]);
+    const auth = makeAuth();
+    await verifySeedUsers(db, auth, "organizations");
+    expect(auth.getUser).not.toHaveBeenCalled();
+  });
+
+  it("never reads userId field for organizations — docs with only userId are treated as empty", async () => {
+    const db   = makeDb([[{ userId: "user-field-uid", seedData: true }]]);
+    const auth = makeAuth({ "user-field-uid": { email: "x@example.com" } });
+    const result = await verifySeedUsers(db, auth, "organizations");
+    expect(auth.getUser).not.toHaveBeenCalled();
+    expect(result).toBe(true);
+  });
+});
+
 // ── 4. "valid file" — mixed falsy / real UIDs, correct outcome reported ────────
 //
 // When seed documents contain a mix of falsy and real userIds, only the real

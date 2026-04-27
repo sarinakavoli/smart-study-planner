@@ -288,12 +288,37 @@ export async function verifySeedUsersOrExit(db, auth, collectionName) {
  * Convenience wrapper: runs verifyAllCollections and exits the process with
  * code 1 if any seeded userId is missing from Firebase Auth.
  *
+ * When the SEED_VERIFY_MOCK_JSON environment variable is set the real `db`
+ * and `auth` arguments are ignored and replaced with in-process mocks built
+ * from the JSON value.  Expected shape:
+ *
+ *   { "users": ["uid1", "uid2"], "missing": ["uid2"] }
+ *
+ * where `users` lists UIDs that appear as seeded documents in the mock
+ * Firestore collections and `missing` lists the subset absent from mock
+ * Firebase Auth.  Each collection uses the correct owner-UID field name
+ * (e.g. "ownerId" for organizations, "userId" for categories/tasks).
+ *
  * @param {FirebaseFirestore.Firestore}            db
  * @param {import("firebase-admin/auth").Auth}     auth
  * @param {string[]}                               collectionsToCheck
  * @returns {Promise<void>}
  */
 export async function verifyAllCollectionsOrExit(db, auth, collectionsToCheck) {
+  const mockJson = process.env.SEED_VERIFY_MOCK_JSON;
+  if (mockJson) {
+    const { users: seededUids = [], missing: missingUids = [] } = JSON.parse(mockJson);
+    const perColMocks = Object.fromEntries(
+      collectionsToCheck.map((col) => [col, buildMockDb(seededUids, getFieldName(col))])
+    );
+    db = {
+      collection: (name) => {
+        const mock = perColMocks[name] ?? buildMockDb(seededUids);
+        return mock.collection(name);
+      },
+    };
+    auth = buildMockAuth(missingUids);
+  }
   const allPass = await verifyAllCollections(db, auth, collectionsToCheck);
   if (!allPass) process.exit(1);
 }
