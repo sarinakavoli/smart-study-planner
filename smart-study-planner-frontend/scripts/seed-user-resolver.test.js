@@ -76,6 +76,38 @@ describe("loadSeedUsersFile", () => {
     expect(exitSpy).not.toHaveBeenCalled();
   });
 
+  it("logs the trimming note when at least one entry has surrounding whitespace", () => {
+    existsSync.mockReturnValue(true);
+    readFileSync.mockReturnValue(
+      JSON.stringify({ users: ["alice@example.com", "  bob-uid  "] })
+    );
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    loadSeedUsersFile();
+
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringContaining("trimmed")
+    );
+
+    logSpy.mockRestore();
+  });
+
+  it("does not log the trimming note when no entry needs trimming", () => {
+    existsSync.mockReturnValue(true);
+    readFileSync.mockReturnValue(
+      JSON.stringify({ users: ["alice@example.com", "bob-uid"] })
+    );
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    loadSeedUsersFile();
+
+    expect(logSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("trimmed")
+    );
+
+    logSpy.mockRestore();
+  });
+
   it("returns a users array that contains both emails and raw UIDs", () => {
     existsSync.mockReturnValue(true);
     readFileSync.mockReturnValue(
