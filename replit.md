@@ -93,31 +93,63 @@ Any successful response from `POST /api/generate` proves the key came from Googl
 since there is no other source for it. On the first request the backend log will print:
 `GEMINI_API_KEY retrieved from Secret Manager and cached.`
 
-## Organization Membership Model
+## School Organization & Membership Model
 
-Each organization document stores its members directly in a `memberIds` array, with a parallel `memberEmails` array for human-readable debugging:
+The app uses a **school-org model**: one admin creates a school organization, then invites teachers and students. Invited users auto-join on their next login. No organization is auto-created for every new user.
+
+### Organizations collection (`organizations/{organizationId}`)
 
 ```
-organizations/{organizationId}
-  id:                organizationId
-  name:              organization name
-  ownerId:           uid of creator        ← used by Firestore rules
-  ownerEmail:        email of creator      ← debugging/display only
-  memberIds:         [uid1, uid2, ...]     ← used by Firestore rules
-  memberEmails:      [email1, email2, ...] ← parallel to memberIds, debugging only
-  pendingInviteEmails: [email, ...]        ← emails with pending invitations, used by Firestore rules
-  createdAt:         serverTimestamp()
-  updatedAt:         serverTimestamp()
+  id:                  organizationId
+  name:                school name
+  ownerId:             uid of admin creator      ← used by Firestore rules
+  ownerEmail:          email of admin            ← debugging/display only
+  memberIds:           [uid1, uid2, ...]          ← used by Firestore rules
+  memberEmails:        [email1, email2, ...]      ← parallel to memberIds, debugging only
+  pendingInviteEmails: [email, ...]               ← emails with pending invitations, Firestore rules
+  createdAt:           serverTimestamp()
+  updatedAt:           serverTimestamp()
 ```
 
-- **Creating an org** (on first login): `ownerId/ownerEmail = currentUser`, `memberIds = [uid]`, `memberEmails = [email]`
-- **Joining an existing org**: `arrayUnion` the UID into `memberIds` and the email into `memberEmails`, update `users/{uid}.organizationId` — do NOT create a new org
-- **Access check**: Firestore rules use `memberIds` (UIDs) exclusively — `memberEmails` is never used for auth
-- `users/{uid}` stores a single `organizationId` field
+### Memberships collection (`memberships/{membershipId}`)
+
+```
+  organizationId:  target organization ID
+  userId:          Firebase Auth UID of the member
+  email:           member's email
+  role:            "admin" | "teacher" | "student"
+  status:          "active"
+  createdAt:       serverTimestamp()
+```
+
+- Membership ID format: `mbr_<shortUserId>_<shortOrgId>`
+- Service: `src/services/membershipService.js` — `getActiveMembership(uid)`, `createMembership({...})`
+
+### Role-based behavior
+
+| Role    | Can create org | Can invite | Can add/edit tasks | Can see tasks |
+|---------|---------------|------------|-------------------|---------------|
+| admin   | ✅             | ✅          | ✅                 | ✅             |
+| teacher | ❌             | ❌          | ✅                 | ✅             |
+| student | ❌             | ❌          | ✅                 | ✅             |
+
+- The **Invite User** sidebar button is only visible to admins.
+- Teachers and students never see the org creation screen.
+
+### Login flow (onAuthStateChanged in App.jsx)
+
+1. Read `users/<uid>` to get existing data.
+2. Query `memberships` for an active membership → if found, set `resolvedOrgId` and `resolvedRole`.
+3. If no membership:
+   - **Backward-compat**: if `users/<uid>.organizationId` exists (pre-membership users), auto-create an admin membership.
+   - **New user with invitation**: auto-accept the pending invitation, create a membership with the invited role.
+   - **New user, no invitation**: show the "Create school organization as admin" screen (`CREATE_ORG` view).
+4. Refresh the `users/<uid>` doc.
+5. Write the debugging `userIndex/<readableId>` entry.
 
 ## Organization Invitation System
 
-Any organization member can invite a user by email via the **Invite User** panel in the sidebar.
+Only admins can invite users. The **Invite User** panel lets admins choose a role (teacher or student).
 
 ### Invitation document schema (`invitations/{inviteId}`)
 
@@ -126,38 +158,30 @@ Any organization member can invite a user by email via the **Invite User** panel
   organizationId:   target organization ID
   organizationName: display name of the target org
   invitedEmail:     email being invited (normalized to lower-case)
-  invitedByUserId:  UID of the inviting user
-  invitedByEmail:   email of the inviting user
-  role:             "member"
-  status:           "pending" | "accepted"
+  invitedByUserId:  UID of the inviting admin
+  invitedByEmail:   email of the inviting admin
+  role:             "teacher" | "student"
+  status:           "pending" | "accepted" | "declined"
   createdAt:        serverTimestamp()
   acceptedAt:       null | serverTimestamp()
+  declinedAt:       null | serverTimestamp()
   expiresAt:        null (optional future use)
 ```
 
 ### Invitation document ID format
 
 `invite_<shortOrgId>_<emailSlug>_<shortRandom>`
-- `shortOrgId` = first 12 chars of the organization document ID
-- `emailSlug` = slugified local-part of the invited email (max 20 chars)
-- `shortRandom` = 4 random lowercase alphanumeric chars (nanoid)
 - Generated by `generateInviteId()` in `src/utils/firestoreIds.js`
 
 ### Flow
 
-1. Inviting user opens **Invite User** panel → enters an email.
-2. `createInvitation()` in `src/services/invitationService.js`:
-   - Writes the invitation doc to `invitations/{inviteId}` with `status: "pending"`.
-   - Adds the invited email to `organizations/{orgId}.pendingInviteEmails` (enables the Firestore join rule).
-3. On any user's next sign-in, the `onAuthStateChanged` handler (Step 4 in `App.jsx`) calls `getPendingInvitationsForEmail()`.
-4. If a pending invitation is found, `acceptInvitation()` is called:
-   - Checks if the user is already a member (idempotent — skips join if so).
-   - `arrayUnion` the user's UID into `organizations/{orgId}.memberIds`.
-   - `arrayUnion` the user's email into `organizations/{orgId}.memberEmails`.
-   - `arrayRemove` the email from `organizations/{orgId}.pendingInviteEmails`.
-   - `updateDoc` `users/{uid}.organizationId` to the invited org.
-   - Marks `invitations/{inviteId}.status = "accepted"` with `acceptedAt`.
-5. The user's app state is updated to the new org.
+1. Admin opens **Invite User** panel → enters email + selects role (teacher/student).
+2. `createInvitation()` writes the invitation with the chosen role and adds the email to `pendingInviteEmails`.
+3. On the invited user's next sign-in, `onAuthStateChanged` (Step 3):
+   - Detects pending invitation for their email.
+   - Calls `acceptInvitation()` — adds to `memberIds`, removes from `pendingInviteEmails`, updates `users/<uid>.organizationId`.
+   - Calls `createMembership()` with the invitation's role.
+4. User lands in the app with the correct org and role already set.
 
 ### Firestore security rules for invitations
 

@@ -30,6 +30,10 @@ import {
   declineInvitation,
 } from "./services/invitationService";
 import {
+  getActiveMembership,
+  createMembership,
+} from "./services/membershipService";
+import {
   ref as storageRef,
   uploadBytes,
   getDownloadURL,
@@ -61,6 +65,11 @@ function App() {
   const [organizationName, setOrganizationName] = useState(null);
   const [orgOwnerEmail, setOrgOwnerEmail] = useState(null);
   const [orgMembers, setOrgMembers] = useState([]);
+  const [currentUserRole, setCurrentUserRole] = useState(null);
+  const [inviteRole, setInviteRole] = useState("student");
+  const [createOrgName, setCreateOrgName] = useState("");
+  const [createOrgLoading, setCreateOrgLoading] = useState(false);
+  const [createOrgError, setCreateOrgError] = useState("");
   const [authLoading, setAuthLoading] = useState(true);
   const [loading, setLoading] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
@@ -123,10 +132,12 @@ function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        console.log("[auth] onAuthStateChanged fired — uid:", firebaseUser.uid, "email:", firebaseUser.email);
+        console.log("[auth] onAuthStateChanged fired — uid:", firebaseUser.uid);
+        console.log("[auth] current user email:", firebaseUser.email);
 
         const userRef = doc(db, "users", firebaseUser.uid);
         let resolvedOrgId = null;
+        let resolvedRole = null;
 
         // ── Step 1: read existing user document ──────────────────────────────
         let existingData = null;
@@ -139,52 +150,119 @@ function App() {
           console.error("[auth] Step 1 FAILED — could not read user doc:", err.code, err.message);
         }
 
-        // Use existing organizationId if present, otherwise generate a new one.
-        resolvedOrgId = existingData?.organizationId ?? personalOrgId(firebaseUser.uid, firebaseUser.email);
-
-        // ── Step 2: ensure the organization document exists ──────────────────
-        // Always run this step so that accounts whose org doc was never created
-        // (e.g. due to a past permission error) are self-healed on next login.
+        // ── Step 2: check for an active membership ────────────────────────────
         try {
-          const orgRef = doc(db, "organizations", resolvedOrgId);
-          const orgPayload = {
-            id: resolvedOrgId,
-            readableId: resolvedOrgId,
-            name: `${firebaseUser.email || ""}'s Workspace`,
-            ownerId: firebaseUser.uid,
-            ownerEmail: firebaseUser.email || "",
-            memberIds: [firebaseUser.uid],
-            memberEmails: [firebaseUser.email || ""],
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          };
-          console.log("[auth] org payload", orgPayload);
-          await setDoc(orgRef, orgPayload, { merge: true });
-          console.log("[auth] organizations/", resolvedOrgId, "written OK");
+          const membership = await getActiveMembership(firebaseUser.uid);
+          if (membership) {
+            console.log("[auth] active membership found — orgId:", membership.organizationId, "| role:", membership.role);
+            resolvedOrgId = membership.organizationId;
+            resolvedRole = membership.role;
+          } else {
+            console.log("[auth] no active membership found");
+          }
         } catch (err) {
-          console.error("[auth] organizations write failed:", err.code, err.message, err);
+          console.error("[auth] Step 2 FAILED — membership check error:", err.code, err.message);
         }
 
-        // ── Step 3: write or refresh the user document ───────────────────────
-        if (!existingData?.organizationId) {
-          // New user — write the full document for the first time.
-          console.log("[auth] Step 3 — writing users/", firebaseUser.uid, "for the first time");
+        // ── Step 3: if no membership, check backward-compat or invitations ────
+        if (!resolvedOrgId) {
+          // Backward-compat: existing users already have an organizationId in their
+          // user doc from before memberships were introduced — create an admin
+          // membership for them automatically so they don't hit the create-org screen.
+          if (existingData?.organizationId) {
+            console.log("[auth] Step 3 — backward-compat: creating admin membership for existing org:", existingData.organizationId);
+            try {
+              await createMembership({
+                organizationId: existingData.organizationId,
+                userId: firebaseUser.uid,
+                email: firebaseUser.email || "",
+                role: "admin",
+              });
+              resolvedOrgId = existingData.organizationId;
+              resolvedRole = "admin";
+              console.log("[auth] backward-compat membership created — role: admin");
+            } catch (err) {
+              console.error("[auth] Step 3 FAILED — could not create backward-compat membership:", err.code, err.message);
+            }
+          } else {
+            // Truly new user — check for a pending invitation
+            try {
+              const fetched = await getPendingInvitationsForEmail(firebaseUser.email);
+              if (fetched.length > 0) {
+                console.log("[auth] pending invitation found — org:", fetched[0].organizationId, "role:", fetched[0].role);
+                const invite = fetched[0];
+                // Auto-accept the first invitation and create a membership
+                const { organizationId: newOrgId, organizationName: newOrgName, role: invRole } =
+                  await acceptInvitation({
+                    invitation: invite,
+                    userId: firebaseUser.uid,
+                    userEmail: firebaseUser.email,
+                  });
+                await createMembership({
+                  organizationId: newOrgId,
+                  userId: firebaseUser.uid,
+                  email: firebaseUser.email || "",
+                  role: invRole || "student",
+                });
+                resolvedOrgId = newOrgId;
+                resolvedRole = invRole || "student";
+                console.log("[auth] invitation auto-accepted — activeOrganizationId:", resolvedOrgId, "| role:", resolvedRole);
+
+                // If there were additional pending invites, surface them in the UI
+                const remaining = fetched.slice(1);
+                if (remaining.length > 0) {
+                  setPendingInvites(remaining);
+                  setActiveView("PENDING_INVITATIONS");
+                } else {
+                  setPendingInvites([]);
+                }
+              } else {
+                console.log("[auth] pending invitation found: no");
+                console.log("[auth] no membership and no invitation — showing create org screen");
+                setPendingInvites([]);
+              }
+            } catch (err) {
+              console.error("[auth] Step 3 FAILED — invitation check error:", err.code, err.message, err);
+              setPendingInvites([]);
+            }
+          }
+        } else {
+          // User has a membership — still surface any additional pending invites
+          try {
+            const fetched = await getPendingInvitationsForEmail(firebaseUser.email);
+            if (fetched.length > 0) {
+              console.log("[auth]", fetched.length, "additional pending invitation(s) for:", firebaseUser.email);
+              setPendingInvites(fetched);
+            } else {
+              setPendingInvites([]);
+            }
+          } catch (err) {
+            console.error("[auth] Invitation fetch error:", err.code, err.message);
+            setPendingInvites([]);
+          }
+        }
+
+        console.log("[auth] activeOrganizationId:", resolvedOrgId ?? "(none — will show create org)");
+        console.log("[auth] current user role:", resolvedRole ?? "(none)");
+
+        // ── Step 4: write or refresh the user document ───────────────────────
+        if (!existingData) {
+          console.log("[auth] Step 4 — writing users/", firebaseUser.uid, "for the first time");
           try {
             await setDoc(userRef, {
               uid: firebaseUser.uid,
               email: firebaseUser.email,
               displayName: firebaseUser.displayName ?? null,
-              organizationId: resolvedOrgId,
+              organizationId: resolvedOrgId ?? null,
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp(),
             });
-            console.log("[auth] Step 3 — users/", firebaseUser.uid, "written OK");
+            console.log("[auth] Step 4 — users/", firebaseUser.uid, "written OK");
           } catch (err) {
-            console.error("[auth] Step 3 FAILED — could not write user doc:", err.code, err.message, err);
+            console.error("[auth] Step 4 FAILED — could not write user doc:", err.code, err.message, err);
           }
         } else {
-          // Returning user — refresh mutable fields only.
-          console.log("[auth] Step 3 — returning user, merging into users/", firebaseUser.uid);
+          console.log("[auth] Step 4 — returning user, merging into users/", firebaseUser.uid);
           try {
             await setDoc(
               userRef,
@@ -192,35 +270,18 @@ function App() {
                 uid: firebaseUser.uid,
                 email: firebaseUser.email,
                 displayName: firebaseUser.displayName ?? null,
+                ...(resolvedOrgId && !existingData.organizationId ? { organizationId: resolvedOrgId } : {}),
                 updatedAt: serverTimestamp(),
               },
               { merge: true }
             );
-            console.log("[auth] Step 3 — users/", firebaseUser.uid, "merge-updated OK");
+            console.log("[auth] Step 4 — users/", firebaseUser.uid, "merge-updated OK");
           } catch (err) {
-            console.error("[auth] Step 3 FAILED — could not merge-update user doc:", err.code, err.message, err);
+            console.error("[auth] Step 4 FAILED — could not merge-update user doc:", err.code, err.message, err);
           }
-        }
-
-        // ── Step 4: fetch pending invitations (shown in UI, not auto-accepted) ─
-        try {
-          const fetched = await getPendingInvitationsForEmail(firebaseUser.email);
-          if (fetched.length > 0) {
-            console.log("[auth] Step 4 —", fetched.length, "pending invitation(s) for:", firebaseUser.email);
-            setPendingInvites(fetched);
-            setActiveView("PENDING_INVITATIONS");
-          } else {
-            console.log("[auth] Step 4 — no pending invitations for:", firebaseUser.email);
-            setPendingInvites([]);
-          }
-        } catch (err) {
-          console.error("[auth] Step 4 FAILED — invitation fetch error:", err.code, err.message, err);
-          setPendingInvites([]);
         }
 
         // ── Step 5: write the debugging-only userIndex entry ─────────────────
-        // userIndex/{readableId} is NOT used for auth — it exists purely so
-        // a human can find a user by readable name in the Firebase Console.
         try {
           const userIndexId = readableUserId(firebaseUser.uid, firebaseUser.email);
           const userIndexRef = doc(db, "userIndex", userIndexId);
@@ -231,7 +292,8 @@ function App() {
               uid: firebaseUser.uid,
               email: firebaseUser.email || "",
               displayName: firebaseUser.displayName ?? null,
-              organizationId: resolvedOrgId,
+              organizationId: resolvedOrgId ?? null,
+              role: resolvedRole ?? null,
               readableId: userIndexId,
               updatedAt: serverTimestamp(),
             },
@@ -242,13 +304,21 @@ function App() {
           console.error("[auth] userIndex failed:", err.code, err.message);
         }
 
-        console.log("[auth] Setup complete — resolvedOrgId:", resolvedOrgId);
+        console.log("[auth] Setup complete — resolvedOrgId:", resolvedOrgId, "| role:", resolvedRole);
         setOrganizationId(resolvedOrgId);
-        setOrganizationName(`${firebaseUser.email || ""}'s Workspace`);
+        setCurrentUserRole(resolvedRole);
+
+        // If user has no org yet, direct them to the create-org screen
+        if (!resolvedOrgId) {
+          setActiveView("CREATE_ORG");
+        }
       } else {
         console.log("[auth] onAuthStateChanged fired — user signed out");
         setOrganizationId(null);
         setOrganizationName(null);
+        setCurrentUserRole(null);
+        setPendingInvites([]);
+        setInviteCardStatus({});
       }
       setCurrentUser(firebaseUser ?? null);
       setAuthLoading(false);
@@ -272,7 +342,8 @@ function App() {
         return;
       }
 
-      const data = await loadUserTasks(currentUser.uid);
+      console.log("[tasks] loadTasks — userId:", currentUser.uid, "| organizationId used in query:", organizationId ?? "(none)");
+      const data = await loadUserTasks(currentUser.uid, organizationId);
       setTasks(data);
     } catch (err) {
       console.error(err);
@@ -286,10 +357,12 @@ function App() {
         setCategoriesData([]);
         return;
       }
-      const q = query(
-        collection(db, "categories"),
-        where("userId", "==", currentUser.uid)
-      );
+      console.log("[categories] loadCategories — userId:", currentUser.uid, "| organizationId used in query:", organizationId ?? "(none)");
+      const constraints = [where("userId", "==", currentUser.uid)];
+      if (organizationId) {
+        constraints.push(where("organizationId", "==", organizationId));
+      }
+      const q = query(collection(db, "categories"), ...constraints);
       const snapshot = await getDocs(q);
       const data = snapshot.docs.map((docSnap) => ({
         id: docSnap.id,
@@ -319,27 +392,39 @@ function App() {
     setOrganizationName(null);
     setOrgOwnerEmail(null);
     setOrgMembers([]);
+    setCurrentUserRole(null);
     setPendingInvites([]);
     setInviteCardStatus({});
+    setCreateOrgName("");
+    setCreateOrgError("");
   };
 
   const handleAcceptInvitation = async (invite) => {
     setInviteActionLoading(invite.id);
     setInviteCardStatus((prev) => ({ ...prev, [invite.id]: null }));
     try {
-      const { organizationId: newOrgId, organizationName: newOrgName } =
+      const { organizationId: newOrgId, organizationName: newOrgName, role: invRole } =
         await acceptInvitation({
           invitation: invite,
           userId: currentUser.uid,
           userEmail: currentUser.email,
         });
+      // Create membership with the role specified in the invitation
+      await createMembership({
+        organizationId: newOrgId,
+        userId: currentUser.uid,
+        email: currentUser.email || "",
+        role: invRole || "student",
+      });
       setPendingInvites((prev) => prev.filter((i) => i.id !== invite.id));
       setInviteCardStatus((prev) => ({
         ...prev,
-        [invite.id]: { type: "success", message: `You joined ${invite.organizationName || "the organization"}.` },
+        [invite.id]: { type: "success", message: `You joined ${invite.organizationName || "the organization"} as ${invRole || "student"}.` },
       }));
       setOrganizationId(newOrgId);
-      setOrganizationName(newOrgName || `${currentUser.email}'s Workspace`);
+      setOrganizationName(newOrgName || invite.organizationName || "School Organization");
+      setCurrentUserRole(invRole || "student");
+      console.log("[invite] Accepted — activeOrganizationId:", newOrgId, "| role:", invRole || "student");
     } catch (err) {
       console.error("[invite] Accept failed:", err);
       setInviteCardStatus((prev) => ({
@@ -369,6 +454,56 @@ function App() {
       }));
     } finally {
       setInviteActionLoading(null);
+    }
+  };
+
+  const handleCreateOrg = async (e) => {
+    e.preventDefault();
+    const name = createOrgName.trim();
+    if (!name) {
+      setCreateOrgError("Please enter a school name.");
+      return;
+    }
+    if (!currentUser?.uid) return;
+    setCreateOrgLoading(true);
+    setCreateOrgError("");
+    try {
+      const orgId = personalOrgId(currentUser.uid, currentUser.email);
+      const orgRef = doc(db, "organizations", orgId);
+      await setDoc(orgRef, {
+        id: orgId,
+        readableId: orgId,
+        name,
+        ownerId: currentUser.uid,
+        ownerEmail: currentUser.email || "",
+        memberIds: [currentUser.uid],
+        memberEmails: [currentUser.email || ""],
+        pendingInviteEmails: [],
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      await createMembership({
+        organizationId: orgId,
+        userId: currentUser.uid,
+        email: currentUser.email || "",
+        role: "admin",
+      });
+      await setDoc(
+        doc(db, "users", currentUser.uid),
+        { organizationId: orgId, updatedAt: serverTimestamp() },
+        { merge: true }
+      );
+      console.log("[createOrg] Organization created — orgId:", orgId, "| role: admin");
+      setOrganizationId(orgId);
+      setOrganizationName(name);
+      setCurrentUserRole("admin");
+      setCreateOrgName("");
+      setActiveView("ALL_TASKS");
+    } catch (err) {
+      console.error("[createOrg] Failed:", err);
+      setCreateOrgError(`Could not create organization: ${err.message}`);
+    } finally {
+      setCreateOrgLoading(false);
     }
   };
 
@@ -1215,6 +1350,8 @@ function App() {
           color: color || "",
           displayOrder: maxOrder + 1,
           userId: currentUser?.uid ?? null,
+          organizationId: organizationId ?? null,
+          organizationName: organizationName ?? null,
         });
 
         await loadCategories();
@@ -1555,8 +1692,13 @@ function App() {
 
         {organizationName && (
           <div className="org-context">
-            <p className="org-context-label">Workspace</p>
+            <p className="org-context-label">Organization</p>
             <p className="org-context-name">{organizationName}</p>
+            {currentUserRole && (
+              <p className="org-context-members" style={{ textTransform: "capitalize" }}>
+                Role: {currentUserRole}
+              </p>
+            )}
             {orgMembers.length > 0 && (
               <p className="org-context-members">Members: {orgMembers.length}</p>
             )}
@@ -1622,16 +1764,19 @@ function App() {
           </button>
         )}
 
-        <button
-          onClick={() => {
-            setInviteEmail("");
-            setInviteStatus(null);
-            setActiveView("INVITE_USER");
-          }}
-          style={sidebarButtonStyle(activeView === "INVITE_USER")}
-        >
-          Invite User
-        </button>
+        {currentUserRole === "admin" && (
+          <button
+            onClick={() => {
+              setInviteEmail("");
+              setInviteStatus(null);
+              setInviteRole("student");
+              setActiveView("INVITE_USER");
+            }}
+            style={sidebarButtonStyle(activeView === "INVITE_USER")}
+          >
+            Invite User
+          </button>
+        )}
 
         <div className="category-section">
           <h3 className="category-title">Category</h3>
@@ -2201,12 +2346,12 @@ function App() {
           </div>
         )}
 
-        {activeView === "INVITE_USER" && (
+        {activeView === "INVITE_USER" && currentUserRole === "admin" && (
           <div className="panel-card">
-            <h2>Invite a User</h2>
+            <h2>Invite a Teacher or Student</h2>
             <p className="helper-text">
-              Enter an email address to invite someone to your organization.
-              They will see the invitation the next time they sign in.
+              Enter an email address and role to invite someone to your school organization.
+              They will be auto-joined the next time they sign in.
             </p>
 
             <form
@@ -2226,12 +2371,13 @@ function App() {
                 try {
                   await createInvitation({
                     organizationId,
-                    organizationName: organizationName || `${currentUser.email}'s Workspace`,
+                    organizationName: organizationName || "School Organization",
                     invitedEmail: trimmed,
                     invitedByUserId: currentUser.uid,
                     invitedByEmail: currentUser.email,
+                    role: inviteRole,
                   });
-                  setInviteStatus({ type: "success", message: `Invitation sent to ${trimmed}. They will join your organization on their next sign-in.` });
+                  setInviteStatus({ type: "success", message: `Invitation sent to ${trimmed} as ${inviteRole}. They will join automatically on their next sign-in.` });
                   setInviteEmail("");
                 } catch (err) {
                   console.error("[invite] Failed to send invitation:", err);
@@ -2244,12 +2390,20 @@ function App() {
             >
               <input
                 type="email"
-                placeholder="colleague@example.com"
+                placeholder="teacher@school.com or student@school.com"
                 value={inviteEmail}
                 onChange={(e) => { setInviteEmail(e.target.value); setInviteStatus(null); }}
                 className="input-control"
                 required
               />
+              <select
+                value={inviteRole}
+                onChange={(e) => setInviteRole(e.target.value)}
+                className="input-control"
+              >
+                <option value="teacher">Teacher</option>
+                <option value="student">Student</option>
+              </select>
               <button type="submit" className="main-btn" disabled={inviteSending}>
                 {inviteSending ? "Sending..." : "Send Invitation"}
               </button>
@@ -2266,6 +2420,41 @@ function App() {
                 {inviteStatus.message}
               </p>
             )}
+          </div>
+        )}
+
+        {activeView === "CREATE_ORG" && (
+          <div className="panel-card">
+            <h2>Set Up Your School Organization</h2>
+            <p className="helper-text">
+              You don't belong to any organization yet. If you are a school admin,
+              create your school's organization below. Teachers and students will
+              join automatically when invited.
+            </p>
+            <form
+              onSubmit={handleCreateOrg}
+              style={{ display: "flex", flexDirection: "column", gap: "12px", maxWidth: "420px", margin: "0 auto" }}
+            >
+              <input
+                type="text"
+                placeholder="School name (e.g. Springfield High School)"
+                value={createOrgName}
+                onChange={(e) => { setCreateOrgName(e.target.value); setCreateOrgError(""); }}
+                className="input-control"
+                required
+              />
+              <button type="submit" className="main-btn" disabled={createOrgLoading}>
+                {createOrgLoading ? "Creating..." : "Create School Organization as Admin"}
+              </button>
+            </form>
+            {createOrgError && (
+              <p style={{ marginTop: "12px", textAlign: "center", color: "#f87171" }}>
+                {createOrgError}
+              </p>
+            )}
+            <p style={{ marginTop: "24px", textAlign: "center", fontSize: "13px", color: "var(--text-soft)" }}>
+              If you were invited by an admin, please sign out and sign back in — your invitation will be applied automatically.
+            </p>
           </div>
         )}
 

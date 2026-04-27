@@ -20,23 +20,23 @@ import { db } from "../firebase";
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Loads all tasks for a user.
- * No composite index required — uses only a single equality filter.
+ * Loads all tasks for a user, scoped to their active organization.
+ * No composite index required — uses only equality filters.
  *
- * @param {string} uid - Firebase Auth UID of the current user.
+ * @param {string} uid    - Firebase Auth UID of the current user.
+ * @param {string} [orgId] - Active organization ID to scope the query.
  * @param {{ status?: string, category?: string }} [filters={}]
  *   Optional equality filters applied after the userId filter.
  * @returns {Promise<Array<{id: string, [key: string]: any}>>}
  */
-export async function loadUserTasks(uid, filters = {}) {
-  // ── MULTI-ORG NOTE ──────────────────────────────────────────────────────
-  // Currently filtering by userId only (single-user / personal-org mode).
-  // When real multi-org support is activated, add:
-  //   where("organizationId", "==", orgId)
-  // to scope tasks to the user's organization. The orgId should be loaded
-  // from the users/<uid> Firestore document's organizationId field.
-  // ────────────────────────────────────────────────────────────────────────
+export async function loadUserTasks(uid, orgId, filters = {}) {
+  console.log("[taskService] loadUserTasks — userId:", uid, "| organizationId used in query:", orgId ?? "(none, filtering by userId only)");
+
   const constraints = [where("userId", "==", uid)];
+
+  if (orgId) {
+    constraints.push(where("organizationId", "==", orgId));
+  }
 
   if (filters.status) {
     constraints.push(where("status", "==", filters.status));
@@ -63,49 +63,44 @@ export async function loadUserTasks(uid, filters = {}) {
  *     Without the index this throws a FirebaseError — the console error
  *     includes a link to auto-create the index in one click.
  *
- * Firestore can filter by userId, category, status, and dueDate range
- * all in one server-side query — nothing is fetched unnecessarily.
- *
  * Results are ordered by dueDate ascending (most overdue first).
  *
- * @param {string} uid        Firebase Auth UID of the task owner.
- * @param {string} category   Exact category string (e.g. "Math").
- * @param {string} status     Exact status string (e.g. "PENDING").
- *   Pass an array like ["PENDING","IN_PROGRESS"] to match multiple statuses
- *   using Firestore's `in` operator.
+ * @param {string} uid          Firebase Auth UID of the task owner.
+ * @param {string} [orgId]      Active organization ID to scope the query.
+ * @param {string} category     Exact category string (e.g. "Math").
+ * @param {string} status       Exact status string (e.g. "PENDING").
  * @param {number} [overdueByDays=0]
- *   How many days past the due date to look. 0 = any overdue task,
- *   3 = tasks that were due more than 3 days ago.
  * @returns {Promise<Array<{id: string, [key: string]: any}>>}
  */
 export async function loadOverdueTasks(
   uid,
+  orgId,
   category,
   status,
   overdueByDays = 0,
 ) {
-  // Build the cutoff date string in YYYY-MM-DD format.
-  // dueDate is stored as a plain string in that format so string comparison works.
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - overdueByDays);
-  const cutoffString = cutoff.toISOString().split("T")[0]; // e.g. "2025-04-19"
+  const cutoffString = cutoff.toISOString().split("T")[0];
 
-  // ── MULTI-ORG NOTE ──────────────────────────────────────────────────────
-  // Currently filtering by userId only (single-user / personal-org mode).
-  // When real multi-org support is activated, add:
-  //   where("organizationId", "==", orgId)
-  // alongside the userId filter to scope results to the user's organization.
-  // ────────────────────────────────────────────────────────────────────────
+  console.log("[taskService] loadOverdueTasks — userId:", uid, "| organizationId used in query:", orgId ?? "(none)");
+
   const constraints = [
     where("userId", "==", uid),
+  ];
+
+  if (orgId) {
+    constraints.push(where("organizationId", "==", orgId));
+  }
+
+  constraints.push(
     where("category", "==", category),
-    // Support single status string OR an array of statuses (OR logic via `in`).
     Array.isArray(status)
       ? where("status", "in", status)
       : where("status", "==", status),
     where("dueDate", "<", cutoffString),
     orderBy("dueDate", "asc"),
-  ];
+  );
 
   const q = query(collection(db, "tasks"), ...constraints);
   const snapshot = await getDocs(q);

@@ -24,6 +24,7 @@ import { generateInviteId } from "../utils/firestoreIds";
  * @param {string} params.invitedEmail       - Email being invited (lower-cased)
  * @param {string} params.invitedByUserId
  * @param {string} params.invitedByEmail
+ * @param {string} [params.role]             - "teacher" | "student" (default: "student")
  * @returns {Promise<string>}  The new invitation document ID
  */
 export async function createInvitation({
@@ -32,6 +33,7 @@ export async function createInvitation({
   invitedEmail,
   invitedByUserId,
   invitedByEmail,
+  role = "student",
 }) {
   const normalizedEmail = invitedEmail.trim().toLowerCase();
   const inviteId = generateInviteId(organizationId, normalizedEmail);
@@ -44,7 +46,7 @@ export async function createInvitation({
     invitedEmail: normalizedEmail,
     invitedByUserId,
     invitedByEmail,
-    role: "member",
+    role: role || "student",
     status: "pending",
     createdAt: serverTimestamp(),
     acceptedAt: null,
@@ -79,23 +81,20 @@ export async function getPendingInvitationsForEmail(email) {
 
 /**
  * Accepts a pending invitation:
- *  1. Checks that the user is not already a member (skips org update if so).
- *  2. Adds the user's UID/email to the organization's memberIds/memberEmails.
- *  3. Removes the email from pendingInviteEmails.
- *  4. Updates the user's organizationId.
- *  5. Marks the invitation as accepted.
+ *  1. Adds the user's UID/email to the organization's memberIds/memberEmails.
+ *  2. Removes the email from pendingInviteEmails.
+ *  3. Updates the user's organizationId.
+ *  4. Marks the invitation as accepted.
  *
  * @param {object} params
  * @param {object} params.invitation  - Invitation document data
  * @param {string} params.userId      - Firebase Auth UID of the accepting user
  * @param {string} params.userEmail   - Email of the accepting user
- * @returns {Promise<{organizationId: string, organizationName: string}>}
+ * @returns {Promise<{organizationId: string, organizationName: string, role: string}>}
  */
 export async function acceptInvitation({ invitation, userId, userEmail }) {
-  const { id: inviteId, organizationId, organizationName, invitedEmail } = invitation;
+  const { id: inviteId, organizationId, organizationName, invitedEmail, role } = invitation;
 
-  // arrayUnion/arrayRemove are idempotent — no need to read the org first.
-  // (Reading it would fail anyway since the invitee is not yet a member.)
   const orgRef = doc(db, "organizations", organizationId);
   await updateDoc(orgRef, {
     memberIds: arrayUnion(userId),
@@ -113,14 +112,13 @@ export async function acceptInvitation({ invitation, userId, userEmail }) {
     acceptedAt: serverTimestamp(),
   });
 
-  console.log("[invitation] Accepted:", inviteId, "→ org:", organizationId);
-  return { organizationId, organizationName };
+  console.log("[invitation] Accepted:", inviteId, "→ org:", organizationId, "role:", role);
+  return { organizationId, organizationName, role: role || "student" };
 }
 
 /**
  * Declines a pending invitation.
  * Updates the invitation status to "declined" only.
- * Does not modify the organization or user documents.
  *
  * @param {string} inviteId - The invitation document ID
  * @returns {Promise<void>}
