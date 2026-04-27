@@ -10,15 +10,12 @@ import {
 import { db } from "../firebase";
 
 /**
- * Converts an email address into a membership-safe slug.
- * Replaces @, ., and any non-alphanumeric characters with underscores.
+ * Converts an email address into a membership readableId slug.
+ * Used only for the human-readable readableId FIELD — not the document ID.
  *
  * Examples:
- *   emailToSlug("kavolisarina@gmail.com")  → "kavolisarina_gmail_com"
- *   emailToSlug("teacher1@yorku.ca")       → "teacher1_yorku_ca"
- *
- * @param {string} email
- * @returns {string}
+ *   emailToSlug("sarinakavoli@icloud.com")  → "sarinakavoli_icloud_com"
+ *   emailToSlug("teacher1@yorku.ca")        → "teacher1_yorku_ca"
  */
 function emailToSlug(email) {
   return String(email)
@@ -26,19 +23,15 @@ function emailToSlug(email) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "")
-    .slice(0, 50);
+    .slice(0, 60);
 }
 
 /**
  * Extracts a clean school slug from an organization ID.
- * Strips the "org_" prefix and converts hyphens to underscores.
+ * Used only for the human-readable readableId FIELD — not the document ID.
  *
  * Examples:
  *   orgIdToSchoolSlug("org_york-school")  → "york_school"
- *   orgIdToSchoolSlug("org_springfield-high-school")  → "springfield_high_school"
- *
- * @param {string} organizationId
- * @returns {string}
  */
 function orgIdToSchoolSlug(organizationId) {
   return String(organizationId)
@@ -50,29 +43,34 @@ function orgIdToSchoolSlug(organizationId) {
 
 /**
  * Computes the canonical membership document ID.
- * Format: <organizationId>_<userId>
- * e.g. "org_waterloou_AvU4OpeL5WO79GRp67C6JiJUYUY2"
  *
- * This is the format the Firestore rules check:
- *   exists(memberships/$(orgId + "_" + request.auth.uid))
+ * Format: <organizationId>_<email.toLowerCase()>
+ * Example: "org_waterloou_sarinakavoli@icloud.com"
+ *
+ * @ and . are valid in Firestore document IDs.
+ * The Firestore rules check this path using:
+ *   exists(memberships/$(orgId + "_" + request.auth.token.email.lower()))
+ *
+ * This makes every membership document immediately human-readable in the
+ * Firebase Console without any slugification.
  */
-function canonicalMembershipId(organizationId, userId) {
-  return `${organizationId}_${userId}`;
+function canonicalMembershipId(organizationId, email) {
+  return `${organizationId}_${String(email).trim().toLowerCase()}`;
 }
 
 /**
  * Returns the first active membership for a given user, or null if none found.
  *
- * Document ID format: <organizationId>_<userId>
- * e.g. "org_waterloou_AvU4OpeL5WO79GRp67C6JiJUYUY2"
- *
- * If a legacy document in the old format (<userId>_<organizationId>) is found,
- * it is returned with a warning. Call repairMembershipIfNeeded() to fix it.
+ * Queries by userId field (works regardless of document ID format), then
+ * checks whether the document ID matches the canonical format
+ * orgId_email.lower(). If not, sets _needsRepair: true so the caller can
+ * invoke repairMembershipIfNeeded().
  *
  * @param {string} userId - Firebase Auth UID
+ * @param {string} email  - Firebase Auth email (used to verify canonical ID)
  * @returns {Promise<{id: string, organizationId: string, role: string, readableId: string, _needsRepair: boolean, ...}|null>}
  */
-export async function getActiveMembership(userId) {
+export async function getActiveMembership(userId, email) {
   const q = query(
     collection(db, "memberships"),
     where("userId", "==", userId),
@@ -81,60 +79,62 @@ export async function getActiveMembership(userId) {
   const snapshot = await getDocs(q);
   if (snapshot.empty) return null;
 
-  const doc0 = snapshot.docs[0];
-  const data = doc0.data();
-  const orgId = data.organizationId;
-  const expectedId = orgId ? canonicalMembershipId(orgId, userId) : null;
-  const isCorrectFormat = doc0.id === expectedId;
+  // Prefer the doc with the canonical ID if multiple exist (e.g. after repair)
+  const orgId = snapshot.docs[0].data().organizationId;
+  const canonical = orgId && email ? canonicalMembershipId(orgId, email) : null;
+  const preferred = canonical
+    ? snapshot.docs.find((d) => d.id === canonical) ?? snapshot.docs[0]
+    : snapshot.docs[0];
+
+  const data = preferred.data();
+  const resolvedOrgId = data.organizationId;
+  const expectedId = resolvedOrgId && email
+    ? canonicalMembershipId(resolvedOrgId, email)
+    : null;
+  const isCorrectFormat = preferred.id === expectedId;
 
   console.log(
     "[membership] found ——",
     "readableId:", data.readableId ?? "(missing)",
-    "| docId:", doc0.id,
-    "| expectedDocId:", expectedId ?? "(unknown)",
+    "| docId:", preferred.id,
+    "| expectedDocId:", expectedId ?? "(unknown — email not provided)",
     "| formatOK:", isCorrectFormat,
     "| role:", data.role,
-    "| orgId:", orgId,
+    "| orgId:", resolvedOrgId,
   );
 
   if (!isCorrectFormat && expectedId) {
     console.warn(
-      "[membership] LEGACY FORMAT DETECTED — doc is at:", doc0.id,
-      "but rules need it at:", expectedId,
-      "— call repairMembershipIfNeeded() to fix. This user will NOT pass isAdminOfOrg checks until repaired.",
+      "[membership] LEGACY FORMAT DETECTED — doc is at:", preferred.id,
+      "| rules need it at:", expectedId,
+      "→ auto-repair will run now.",
     );
   }
 
-  return { id: doc0.id, ...data, _needsRepair: !isCorrectFormat && !!expectedId };
+  return { id: preferred.id, ...data, _needsRepair: !isCorrectFormat && !!expectedId };
 }
 
 /**
- * Repairs a legacy membership document that uses the old ID format.
+ * Repairs a membership document that uses an old ID format by writing a new
+ * document at the canonical path: <organizationId>_<email.toLowerCase()>
  *
- * Old format: <userId>_<organizationId>  (e.g. "AvU4Op..._org_waterloou")
- * New format: <organizationId>_<userId>  (e.g. "org_waterloou_AvU4Op...")
- *
- * The Firestore rules check the NEW format. If the membership is in the old
- * format, isAdminOfOrg() / hasActiveMembership() will always return false,
- * blocking invitation creation and other admin operations.
- *
- * This function writes a new document at the correct path using the same data.
  * The old document cannot be deleted from the client (rules block it), but it
- * is harmless — the app will use the new document going forward.
+ * is harmless — the app and rules will use the new document going forward.
  *
  * @param {object} membership - The membership object returned by getActiveMembership
  * @returns {Promise<string>} The new canonical membership document ID
  */
 export async function repairMembershipIfNeeded(membership) {
   if (!membership._needsRepair) {
-    console.log("[membership] repairMembershipIfNeeded — no repair needed, ID is correct:", membership.id);
+    console.log(
+      "[membership] no repair needed — ID is already canonical:", membership.id,
+    );
     return membership.id;
   }
 
-  const { organizationId, userId } = membership;
-  const newId = canonicalMembershipId(organizationId, userId);
+  const { organizationId, email } = membership;
+  const newId = canonicalMembershipId(organizationId, email);
 
-  // Strip the _needsRepair flag and use existing data, refreshing updatedAt
   const {
     _needsRepair,
     id: _oldId,
@@ -146,20 +146,14 @@ export async function repairMembershipIfNeeded(membership) {
   const repairedData = {
     ...restData,
     updatedAt: serverTimestamp(),
+    createdAt: _oldCreatedAt ?? serverTimestamp(),
   };
-
-  // Preserve createdAt from the original if it exists
-  if (_oldCreatedAt) {
-    repairedData.createdAt = _oldCreatedAt;
-  } else {
-    repairedData.createdAt = serverTimestamp();
-  }
 
   console.log(
     "[membership] REPAIR ——",
     "readableId:", repairedData.readableId ?? "(missing)",
-    "| oldDocId (legacy):", membership.id,
-    "| newDocId (correct):", newId,
+    "| oldDocId (stale):", membership.id,
+    "| newDocId (canonical):", newId,
   );
 
   const ref = doc(db, "memberships", newId);
@@ -168,8 +162,8 @@ export async function repairMembershipIfNeeded(membership) {
   console.log(
     "[membership] REPAIR SUCCESS ——",
     "readableId:", repairedData.readableId ?? "(missing)",
-    "| new docId:", newId,
-    "| old (stale) docId:", membership.id, "(safe to delete in Firebase Console)",
+    "| canonical docId:", newId,
+    "| stale docId:", membership.id, "(delete in Firebase Console when convenient)",
   );
 
   return newId;
@@ -180,7 +174,7 @@ export async function repairMembershipIfNeeded(membership) {
  * Only admins can call this (enforced by Firestore rules).
  *
  * Each returned object includes:
- *   id          — Firestore document ID: <organizationId>_<userId>
+ *   id          — Firestore document ID: <organizationId>_<email>
  *   readableId  — Human-readable: mbr_<schoolSlug>_<role>_<emailSlug>
  *   email, displayName, role, status, userId, organizationId, ...
  *
@@ -200,15 +194,16 @@ export async function getOrgMemberships(organizationId) {
 /**
  * Creates (or upserts) a membership document for a user in an organization.
  *
- * Document ID format (predictable, used by Firestore security rules):
- *   <organizationId>_<userId>
+ * Document ID format (used by Firestore security rules):
+ *   <organizationId>_<email.toLowerCase()>
  *
- * Org name is first so the document is immediately readable in the Firebase Console.
- * The human-readable role+email ID is stored as a field:
- *   readableId: mbr_<schoolSlug>_<role>_<emailSlug>
+ * @ and . are valid Firestore document ID characters, so the raw lowercase
+ * email is used directly — no slugification needed for the ID itself.
+ * The rules construct the same path via:
+ *   orgId + "_" + request.auth.token.email.lower()
  *
  * Examples:
- *   Document ID : org_waterloou_AvU4OpeL5WO79GRp67C6JiJUYUY2
+ *   Document ID : org_waterloou_sarinakavoli@icloud.com
  *   readableId  : mbr_waterloou_admin_sarinakavoli_icloud_com
  *
  * @param {object} params
@@ -217,9 +212,9 @@ export async function getOrgMemberships(organizationId) {
  * @param {string}  params.email
  * @param {string}  params.role            - "admin" | "teacher" | "student"
  * @param {string}  [params.organizationName]
- * @param {string}  [params.displayName]   - User's display name
- * @param {string}  [params.invitedBy]     - UID of the admin who sent the invitation
- * @param {string}  [params.invitationId]  - Firestore ID of the accepted invitation
+ * @param {string}  [params.displayName]
+ * @param {string}  [params.invitedBy]
+ * @param {string}  [params.invitationId]
  * @param {string}  [params.source]        - "invitation" | "create_org_form"
  * @returns {Promise<string>} The membership document ID
  */
@@ -237,15 +232,18 @@ export async function createMembership({
   if (!organizationId) {
     throw new Error("[membership] Cannot create membership — organizationId is missing.");
   }
+  if (!email) {
+    throw new Error("[membership] Cannot create membership — email is missing.");
+  }
 
-  // Canonical ID: <organizationId>_<userId>
-  // e.g. "org_waterloou_AvU4OpeL5WO79GRp67C6JiJUYUY2"
-  // Rules check: exists(memberships/$(orgId + "_" + request.auth.uid))
-  const membershipId = canonicalMembershipId(organizationId, userId);
+  // Canonical ID: orgId_email.toLowerCase()
+  // e.g. "org_waterloou_sarinakavoli@icloud.com"
+  // Rules check: exists(memberships/$(orgId + "_" + request.auth.token.email.lower()))
+  const membershipId = canonicalMembershipId(organizationId, email);
 
-  // Human-readable ID stored as a field for debugging
+  // Human-readable ID stored as a field (slugified for readability in logs/UI)
   const schoolSlug = orgIdToSchoolSlug(organizationId);
-  const emailSlug = email ? emailToSlug(email) : "unknown";
+  const emailSlug = emailToSlug(email);
   const normalizedRole = role || "student";
   const readableId = `mbr_${schoolSlug}_${normalizedRole}_${emailSlug}`;
 
@@ -254,7 +252,7 @@ export async function createMembership({
     organizationName: organizationName || null,
     schoolSlug,
     userId,
-    email: email || "",
+    email: email.trim().toLowerCase(),
     displayName: displayName || null,
     role: normalizedRole,
     status: "active",

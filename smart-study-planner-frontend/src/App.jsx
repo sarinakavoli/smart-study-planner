@@ -158,7 +158,7 @@ function App() {
         // This is the ONLY way a user gets an org and role.
         // No automatic personal workspace or admin role is ever assigned.
         try {
-          let membership = await getActiveMembership(firebaseUser.uid);
+          let membership = await getActiveMembership(firebaseUser.uid, firebaseUser.email);
           if (membership) {
             console.log("[auth] membership found — docId:", membership.id, "| orgId:", membership.organizationId, "| role:", membership.role);
 
@@ -176,7 +176,7 @@ function App() {
             }
 
             console.log(
-              "[auth] admin membership path for rules: memberships/" + membership.organizationId + "_" + firebaseUser.uid,
+              "[auth] membership path for rules: memberships/" + membership.organizationId + "_" + (firebaseUser.email || "").toLowerCase(),
             );
 
             resolvedOrgId = membership.organizationId;
@@ -2551,7 +2551,7 @@ function App() {
                     currentUserRole,
                   });
                   console.log(
-                    "Expected admin membership path for rules: memberships/" + organizationId + "_" + currentUser.uid,
+                    "Expected admin membership path for rules: memberships/" + organizationId + "_" + (currentUser.email || "").toLowerCase(),
                   );
                   console.log("[invite] inviting:", trimmed, "| role:", inviteRole);
                   const inviteDocId = await createInvitation({

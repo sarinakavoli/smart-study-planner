@@ -15,12 +15,16 @@ service cloud.firestore {
       return signedIn() && request.auth.uid == userId;
     }
 
-    // Membership document ID format: <organizationId>_<userId>
-    // e.g. "org_york-university_eaq31bob6sTKpvZrL0CNklNJ4Uw1"
-    // Org name is first so documents are immediately readable in the Firebase Console.
-    // This path is deterministic, enabling cheap existence/role checks in rules.
+    // Membership document ID format: <organizationId>_<email.toLowerCase()>
+    // e.g. "org_waterloou_sarinakavoli@icloud.com"
+    //
+    // @ and . are valid Firestore document ID characters, so the raw lowercase
+    // email is used directly — no slugification required.
+    //
+    // request.auth.token.email.lower() is supported in Firestore Security Rules
+    // and produces the same value as email.trim().toLowerCase() in the client app.
     function membershipPath(orgId) {
-      return /databases/$(database)/documents/memberships/$(orgId + "_" + request.auth.uid);
+      return /databases/$(database)/documents/memberships/$(orgId + "_" + request.auth.token.email.lower());
     }
 
     function hasActiveMembership(orgId) {
@@ -89,12 +93,11 @@ service cloud.firestore {
 
     // ── Memberships ───────────────────────────────────────────────────────────
     //
-    // Document ID: <organizationId>_<userId>
-    // e.g. "org_york-university_eaq31bob6sTKpvZrL0CNklNJ4Uw1"
-    // Org name is first so documents are immediately readable in the Firebase Console.
+    // Document ID: <organizationId>_<email.toLowerCase()>
+    // e.g. "org_waterloou_sarinakavoli@icloud.com"
     //
-    // The human-readable role+email form is stored in the readableId field:
-    // e.g. "mbr_york_university_admin_ariyan_azami84_gmail_com"
+    // The human-readable slug is stored in the readableId field:
+    // e.g. "mbr_waterloou_admin_sarinakavoli_icloud_com"
     //
     match /memberships/{membershipId} {
 
