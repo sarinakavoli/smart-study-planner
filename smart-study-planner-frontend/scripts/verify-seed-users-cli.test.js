@@ -72,6 +72,13 @@ describe("verify-seed-users.mjs --dry-run", () => {
     expect(stdout).not.toMatch(/\bcategories\b/);
   });
 
+  it("shows only organizations when --collection=organizations is supplied", () => {
+    const { stdout } = run(["--dry-run", "--collection=organizations"]);
+    expect(stdout).toMatch(/organizations/i);
+    expect(stdout).not.toMatch(/\bcategories\b/);
+    expect(stdout).not.toMatch(/\btasks\b/);
+  });
+
   it("prints a preview message describing what would happen", () => {
     const { stdout } = run(["--dry-run"]);
     expect(stdout).toMatch(/no network calls/i);
@@ -397,6 +404,16 @@ describe("verify-seed-users.mjs --dry-run: metadata file present", () => {
       const { stdout } = run(["--dry-run", "--collection=categories"], { SEED_COUNTS_FILE: file });
       expect(stdout).toMatch(/42/);
       expect(stdout).not.toMatch(/99/);
+    });
+  });
+
+  it("shows the organizations count and collection name when --collection=organizations is supplied", () => {
+    withTempCountsFile({ categories: 5, tasks: 10, organizations: 7 }, (file) => {
+      const { stdout } = run(["--dry-run", "--collection=organizations"], { SEED_COUNTS_FILE: file });
+      expect(stdout).toMatch(/organizations/i);
+      expect(stdout).toMatch(/7/);
+      expect(stdout).not.toMatch(/\bcategories\b/);
+      expect(stdout).not.toMatch(/\btasks\b/);
     });
   });
 
