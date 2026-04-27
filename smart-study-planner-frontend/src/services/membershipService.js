@@ -88,10 +88,11 @@ export async function getActiveMembership(userId) {
   const isCorrectFormat = doc0.id === expectedId;
 
   console.log(
-    "[membership] getActiveMembership — membershipId:", doc0.id,
-    "| expectedId:", expectedId ?? "(unknown — organizationId missing in doc)",
+    "[membership] found ——",
+    "readableId:", data.readableId ?? "(missing)",
+    "| docId:", doc0.id,
+    "| expectedDocId:", expectedId ?? "(unknown)",
     "| formatOK:", isCorrectFormat,
-    "| readableId:", data.readableId ?? "(missing)",
     "| role:", data.role,
     "| orgId:", orgId,
   );
@@ -154,16 +155,22 @@ export async function repairMembershipIfNeeded(membership) {
     repairedData.createdAt = serverTimestamp();
   }
 
-  console.log("[membership] REPAIR — writing correct membership doc");
-  console.log("[membership] REPAIR — old (legacy) ID:", membership.id);
-  console.log("[membership] REPAIR — new (correct) ID:", newId);
-  console.log("[membership] REPAIR — data:", { ...repairedData, updatedAt: "<serverTimestamp>" });
+  console.log(
+    "[membership] REPAIR ——",
+    "readableId:", repairedData.readableId ?? "(missing)",
+    "| oldDocId (legacy):", membership.id,
+    "| newDocId (correct):", newId,
+  );
 
   const ref = doc(db, "memberships", newId);
   await setDoc(ref, repairedData, { merge: true });
 
-  console.log("[membership] REPAIR SUCCESS — new doc written at memberships/", newId);
-  console.log("[membership] REPAIR — old doc at memberships/", membership.id, "is now stale (delete it manually in Firebase Console if desired)");
+  console.log(
+    "[membership] REPAIR SUCCESS ——",
+    "readableId:", repairedData.readableId ?? "(missing)",
+    "| new docId:", newId,
+    "| old (stale) docId:", membership.id, "(safe to delete in Firebase Console)",
+  );
 
   return newId;
 }
@@ -263,22 +270,21 @@ export async function createMembership({
 
   const ref = doc(db, "memberships", membershipId);
 
-  console.log("MEMBERSHIP WRITE PATH", `memberships/${membershipId}`);
-  console.log("MEMBERSHIP WRITE DATA", {
-    ...data,
-    createdAt: "<serverTimestamp>",
-    updatedAt: "<serverTimestamp>",
-  });
+  console.log(
+    "[membership] writing ——",
+    "readableId:", readableId,
+    "| docId:", membershipId,
+    "| role:", normalizedRole,
+    "| orgId:", organizationId,
+    "| source:", source ?? "(none)",
+  );
 
   await setDoc(ref, data, { merge: true });
 
   console.log(
-    "[membership] created — membershipId:", membershipId,
-    "| readableId:", readableId,
-    "| userId:", userId,
-    "| orgId:", organizationId,
-    "| role:", normalizedRole,
-    "| source:", source ?? "(none)",
+    "[membership] written ——",
+    "readableId:", readableId,
+    "| docId:", membershipId,
   );
 
   return membershipId;

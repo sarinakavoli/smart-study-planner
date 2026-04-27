@@ -2638,9 +2638,23 @@ function App() {
                         gap: "4px",
                       }}
                     >
+                      {/* Primary label: readableId */}
+                      <span
+                        style={{
+                          fontFamily: "monospace",
+                          fontSize: "13px",
+                          fontWeight: "600",
+                          wordBreak: "break-all",
+                          color: "var(--text)",
+                        }}
+                      >
+                        {m.readableId ?? m.id}
+                      </span>
+
+                      {/* Row 2: display name / email + role badge */}
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px" }}>
-                        <span style={{ fontWeight: "500", fontSize: "14px", wordBreak: "break-all" }}>
-                          {m.displayName || m.email}
+                        <span style={{ fontSize: "13px", color: "var(--text-soft)", wordBreak: "break-all" }}>
+                          {m.displayName ? `${m.displayName} · ` : ""}{m.email}
                         </span>
                         <span
                           style={{
@@ -2666,20 +2680,19 @@ function App() {
                           {m.role}
                         </span>
                       </div>
-                      <span style={{ fontSize: "12px", color: "var(--text-soft)", wordBreak: "break-all" }}>
-                        {m.email}
-                      </span>
+
+                      {/* Row 3: Firestore document ID (dim footnote) */}
                       <span
-                        title={`Document ID: ${m.id}`}
+                        title="Firestore document ID"
                         style={{
-                          fontSize: "11px",
+                          fontSize: "10px",
                           color: "var(--text-soft)",
                           fontFamily: "monospace",
-                          opacity: 0.6,
+                          opacity: 0.45,
                           wordBreak: "break-all",
                         }}
                       >
-                        {m.readableId ?? m.id}
+                        doc: {m.id}
                       </span>
                     </div>
                   ))}
