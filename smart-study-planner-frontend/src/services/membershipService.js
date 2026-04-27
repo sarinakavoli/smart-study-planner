@@ -52,7 +52,7 @@ function orgIdToSchoolSlug(organizationId) {
  * Returns the first active membership for a given user, or null if none found.
  *
  * @param {string} userId - Firebase Auth UID
- * @returns {Promise<{id: string, organizationId: string, role: string, ...}|null>}
+ * @returns {Promise<{id: string, organizationId: string, role: string, readableId: string, ...}|null>}
  */
 export async function getActiveMembership(userId) {
   const q = query(
@@ -62,7 +62,37 @@ export async function getActiveMembership(userId) {
   );
   const snapshot = await getDocs(q);
   if (snapshot.empty) return null;
-  return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
+  const doc0 = snapshot.docs[0];
+  const data = doc0.data();
+  console.log(
+    "[membership] getActiveMembership — membershipId:", doc0.id,
+    "| readableId:", data.readableId ?? "(missing)",
+    "| role:", data.role,
+    "| orgId:", data.organizationId,
+  );
+  return { id: doc0.id, ...data };
+}
+
+/**
+ * Returns all active memberships for an organization.
+ * Only admins can call this (enforced by Firestore rules).
+ *
+ * Each returned object includes:
+ *   id          — Firestore document ID: <userId>_<organizationId>
+ *   readableId  — Human-readable: mbr_<schoolSlug>_<role>_<emailSlug>
+ *   email, displayName, role, status, userId, organizationId, ...
+ *
+ * @param {string} organizationId
+ * @returns {Promise<Array<{id: string, readableId: string, ...}>>}
+ */
+export async function getOrgMemberships(organizationId) {
+  const q = query(
+    collection(db, "memberships"),
+    where("organizationId", "==", organizationId),
+    where("status", "==", "active")
+  );
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 
 /**

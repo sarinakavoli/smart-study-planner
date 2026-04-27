@@ -31,6 +31,7 @@ import {
 } from "./services/invitationService";
 import {
   getActiveMembership,
+  getOrgMemberships,
   createMembership,
 } from "./services/membershipService";
 import {
@@ -65,6 +66,7 @@ function App() {
   const [organizationName, setOrganizationName] = useState(null);
   const [orgOwnerEmail, setOrgOwnerEmail] = useState(null);
   const [orgMembers, setOrgMembers] = useState([]);
+  const [orgMemberships, setOrgMemberships] = useState([]);
   const [currentUserRole, setCurrentUserRole] = useState(null);
   const [inviteRole, setInviteRole] = useState("student");
   const [createOrgName, setCreateOrgName] = useState("");
@@ -388,6 +390,7 @@ function App() {
     setOrganizationName(null);
     setOrgOwnerEmail(null);
     setOrgMembers([]);
+    setOrgMemberships([]);
     setCurrentUserRole(null);
     setPendingInvites([]);
     setInviteCardStatus({});
@@ -559,6 +562,7 @@ function App() {
     if (!organizationId) {
       setOrgOwnerEmail(null);
       setOrgMembers([]);
+      setOrgMemberships([]);
       return;
     }
     const fetchOrg = async () => {
@@ -572,6 +576,17 @@ function App() {
         }
       } catch (err) {
         console.error("[org] Could not fetch org doc:", err.code, err.message);
+      }
+      try {
+        const memberships = await getOrgMemberships(organizationId);
+        setOrgMemberships(memberships);
+        console.log(
+          "[org] memberships loaded — count:", memberships.length,
+          "| readableIds:", memberships.map((m) => m.readableId ?? m.id),
+        );
+      } catch (err) {
+        console.warn("[org] Could not load memberships (non-admin?):", err.code, err.message);
+        setOrgMemberships([]);
       }
     };
     fetchOrg();
@@ -1746,8 +1761,8 @@ function App() {
                 Role: {currentUserRole}
               </p>
             )}
-            {orgMembers.length > 0 && (
-              <p className="org-context-members">Members: {orgMembers.length}</p>
+            {orgMemberships.length > 0 && (
+              <p className="org-context-members">Members: {orgMemberships.length}</p>
             )}
           </div>
         )}
@@ -2489,6 +2504,74 @@ function App() {
               >
                 {inviteStatus.message}
               </p>
+            )}
+
+            {orgMemberships.length > 0 && (
+              <div style={{ marginTop: "32px" }}>
+                <h3 style={{ marginBottom: "12px", fontSize: "15px", fontWeight: "600" }}>
+                  Current Members ({orgMemberships.length})
+                </h3>
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                  {orgMemberships.map((m) => (
+                    <div
+                      key={m.id}
+                      style={{
+                        background: "var(--bg-soft)",
+                        border: "1px solid var(--border)",
+                        borderRadius: "8px",
+                        padding: "10px 14px",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "4px",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px" }}>
+                        <span style={{ fontWeight: "500", fontSize: "14px", wordBreak: "break-all" }}>
+                          {m.displayName || m.email}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: "11px",
+                            fontWeight: "600",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.05em",
+                            padding: "2px 8px",
+                            borderRadius: "4px",
+                            flexShrink: 0,
+                            background: m.role === "admin"
+                              ? "rgba(251,191,36,0.15)"
+                              : m.role === "teacher"
+                              ? "rgba(96,165,250,0.15)"
+                              : "rgba(74,222,128,0.15)",
+                            color: m.role === "admin"
+                              ? "#f59e0b"
+                              : m.role === "teacher"
+                              ? "#60a5fa"
+                              : "#4ade80",
+                          }}
+                        >
+                          {m.role}
+                        </span>
+                      </div>
+                      <span style={{ fontSize: "12px", color: "var(--text-soft)", wordBreak: "break-all" }}>
+                        {m.email}
+                      </span>
+                      <span
+                        title={`Document ID: ${m.id}`}
+                        style={{
+                          fontSize: "11px",
+                          color: "var(--text-soft)",
+                          fontFamily: "monospace",
+                          opacity: 0.6,
+                          wordBreak: "break-all",
+                        }}
+                      >
+                        {m.readableId ?? m.id}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
         )}
