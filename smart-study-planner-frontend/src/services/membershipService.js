@@ -51,6 +51,9 @@ function orgIdToSchoolSlug(organizationId) {
 /**
  * Returns the first active membership for a given user, or null if none found.
  *
+ * Document ID format: <organizationId>_<userId>
+ * e.g. "org_york-university_eaq31bob6sTKpvZrL0CNklNJ4Uw1"
+ *
  * @param {string} userId - Firebase Auth UID
  * @returns {Promise<{id: string, organizationId: string, role: string, readableId: string, ...}|null>}
  */
@@ -99,13 +102,14 @@ export async function getOrgMemberships(organizationId) {
  * Creates (or upserts) a membership document for a user in an organization.
  *
  * Document ID format (predictable, used by Firestore security rules):
- *   membership_<userId>_<organizationId>
+ *   <organizationId>_<userId>
  *
- * The human-readable ID is stored as a field:
+ * Org name is first so the document is immediately readable in the Firebase Console.
+ * The human-readable role+email ID is stored as a field:
  *   readableId: mbr_<schoolSlug>_<role>_<emailSlug>
  *
  * Examples:
- *   Document ID : membership_UID123_org_york-school
+ *   Document ID : org_york-school_UID123abc
  *   readableId  : mbr_york_school_admin_kavolisarina_gmail_com
  *
  * @param {object} params
@@ -135,10 +139,11 @@ export async function createMembership({
     throw new Error("[membership] Cannot create membership — organizationId is missing.");
   }
 
-  // Predictable ID for Firestore security rules:  <userId>_<organizationId>
-  // e.g. "eaq31bob6sTKpvZrL0CNklNJ4Uw1_org_york-university"
-  // Rules check: exists(memberships/$(request.auth.uid + "_" + orgId))
-  const membershipId = `${userId}_${organizationId}`;
+  // Predictable ID for Firestore security rules:  <organizationId>_<userId>
+  // e.g. "org_york-university_eaq31bob6sTKpvZrL0CNklNJ4Uw1"
+  // Org name is first so the document is immediately readable in the Firebase Console.
+  // Rules check: exists(memberships/$(orgId + "_" + request.auth.uid))
+  const membershipId = `${organizationId}_${userId}`;
 
   // Human-readable ID stored as a field for debugging
   const schoolSlug = orgIdToSchoolSlug(organizationId);

@@ -15,11 +15,12 @@ service cloud.firestore {
       return signedIn() && request.auth.uid == userId;
     }
 
-    // Membership document ID format: <userId>_<organizationId>
-    // e.g. "eaq31bob6sTKpvZrL0CNklNJ4Uw1_org_york-university"
+    // Membership document ID format: <organizationId>_<userId>
+    // e.g. "org_york-university_eaq31bob6sTKpvZrL0CNklNJ4Uw1"
+    // Org name is first so documents are immediately readable in the Firebase Console.
     // This path is deterministic, enabling cheap existence/role checks in rules.
     function membershipPath(orgId) {
-      return /databases/$(database)/documents/memberships/$(request.auth.uid + "_" + orgId);
+      return /databases/$(database)/documents/memberships/$(orgId + "_" + request.auth.uid);
     }
 
     function hasActiveMembership(orgId) {
@@ -88,10 +89,11 @@ service cloud.firestore {
 
     // ── Memberships ───────────────────────────────────────────────────────────
     //
-    // Document ID: <userId>_<organizationId>
-    // e.g. "eaq31bob6sTKpvZrL0CNklNJ4Uw1_org_york-university"
+    // Document ID: <organizationId>_<userId>
+    // e.g. "org_york-university_eaq31bob6sTKpvZrL0CNklNJ4Uw1"
+    // Org name is first so documents are immediately readable in the Firebase Console.
     //
-    // The human-readable form is stored in the readableId field:
+    // The human-readable role+email form is stored in the readableId field:
     // e.g. "mbr_york_university_admin_ariyan_azami84_gmail_com"
     //
     match /memberships/{membershipId} {
