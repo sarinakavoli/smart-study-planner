@@ -202,6 +202,15 @@ if (dryRun) {
   process.exit(0);
 }
 
+// ── Trimming note (non-dry-run) ───────────────────────────────────────────────
+
+if (collectionWasTrimmed) {
+  console.log(
+    `Note: --collection value was trimmed from original input; ` +
+    `using "${collectionsToCheck[0]}".`
+  );
+}
+
 // ── Mock mode (SEED_VERIFY_MOCK_JSON) ─────────────────────────────────────────
 //
 // When SEED_VERIFY_MOCK_JSON is set, real GCP credentials and Firebase are not

@@ -327,6 +327,39 @@ describe("verify-seed-users.mjs --collection=organizations: ownerId mismatch det
   });
 });
 
+// ── Trimming note in non-dry-run mode ─────────────────────────────────────────
+
+describe("verify-seed-users.mjs non-dry-run: trimming note for whitespace-padded --collection", () => {
+  it("prints a trimming note when --collection has leading/trailing whitespace", () => {
+    const { stdout } = runWithMock(["--collection=  categories  "], ["uid-001"], []);
+    expect(stdout).toMatch(/trimmed from original input/i);
+  });
+
+  it("does not print a trimming note when --collection has no surrounding whitespace", () => {
+    const { stdout } = runWithMock(["--collection=categories"], ["uid-001"], []);
+    expect(stdout).not.toMatch(/trimmed from original input/i);
+  });
+
+  it("still exits 0 after printing the trimming note when all UIDs match", () => {
+    const { exitCode } = runWithMock(["--collection=  categories  "], ["uid-001"], []);
+    expect(exitCode).toBe(0);
+  });
+
+  it("mentions the normalised collection name in the trimming note", () => {
+    const { stdout } = runWithMock(["--collection=  tasks  "], ["uid-001"], []);
+    expect(stdout).toMatch(/tasks/i);
+  });
+
+  it("still exits 1 when there is a mismatch even with a trimmed collection name", () => {
+    const { exitCode } = runWithMock(
+      ["--collection=  categories  "],
+      ["ghost-uid"],
+      ["ghost-uid"]
+    );
+    expect(exitCode).toBe(1);
+  });
+});
+
 // ── Malformed credentials JSON ────────────────────────────────────────────────
 
 describe("verify-seed-users.mjs: malformed credentials JSON", () => {
