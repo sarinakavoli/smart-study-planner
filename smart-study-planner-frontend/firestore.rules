@@ -165,8 +165,19 @@ service cloud.firestore {
 
     // ── Tasks ─────────────────────────────────────────────────────────────────
     match /tasks/{taskId} {
+
+      // A signed-in user may read a task if:
+      //   1. they created it (userId), OR
+      //   2. it is assigned to them (assignedTo), OR
+      //   3. they are an active member of the task's organization.
+      // Condition 3 is what allows org-scoped queries that filter by assignedTo
+      // across all tasks in an organization (e.g. loadOrgTasksForCurrentUser).
       allow read: if signedIn()
-        && request.auth.uid == resource.data.userId;
+        && (
+          request.auth.uid == resource.data.userId
+          || request.auth.uid == resource.data.assignedTo
+          || hasActiveMembership(resource.data.organizationId)
+        );
 
       allow create: if signedIn()
         && request.resource.data.userId == request.auth.uid;
