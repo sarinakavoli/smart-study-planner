@@ -1,0 +1,60 @@
+The organization/membership logic is still wrong for the school use case.
+
+Problem:
+Existing users are automatically migrated into admin memberships for their own personal workspace. This makes every signed-in user an Admin, so every user can invite others. That is not what we want.
+
+Desired model:
+Only a school admin should create an organization and become Admin.
+Teachers/students should only join an existing organization through invitation.
+A normal user should not automatically get an organization or admin role.
+
+Please update the logic as follows:
+
+1. Remove or disable the automatic migration that creates an admin membership for every existing user.
+
+Do NOT do this anymore:
+- user logs in
+- user has no membership
+- app automatically creates personal workspace
+- app automatically creates admin membership
+
+2. Login/signup flow should be:
+
+A. After login, check memberships where userId == currentUser.uid and status == "active".
+- If found, set activeOrganizationId and currentUserRole from that membership.
+
+B. If no membership is found, check invitations where email == currentUser.email and status == "pending".
+- If found, create membership using the invitation's organizationId and role.
+- Mark invitation status as "accepted".
+- Set activeOrganizationId and currentUserRole from the new membership.
+
+C. If no membership and no invitation are found:
+- Show a CREATE_ORG screen.
+- This screen should say: "Create a school organization only if you are the school/admin owner."
+- If the user creates an organization here, then and only then create an admin membership.
+
+3. Do not create an organization automatically based on the user's email.
+
+4. Do not create an organization named "[email]'s Workspace" automatically.
+
+5. The Invite User button must only be visible when currentUserRole === "admin".
+
+6. The invitation page must also be protected:
+- If currentUserRole !== "admin", redirect to Inbox or show "You do not have permission to invite users."
+
+7. Add console logs:
+- current user email
+- membership found or not
+- invitation found or not
+- whether CREATE_ORG screen is shown
+- activeOrganizationId
+- currentUserRole
+- whether Invite User button is hidden or shown
+
+8. Keep existing tasks/categories, but make sure they are filtered by activeOrganizationId.
+
+9. After this change, give me exact test steps for:
+- brand new admin creating a school organization
+- invited teacher joining
+- invited student joining
+- random uninvited user signing up

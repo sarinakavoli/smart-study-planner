@@ -151,83 +151,65 @@ function App() {
         }
 
         // ── Step 2: check for an active membership ────────────────────────────
+        // This is the ONLY way a user gets an org and role.
+        // No automatic personal workspace or admin role is ever assigned.
         try {
           const membership = await getActiveMembership(firebaseUser.uid);
           if (membership) {
-            console.log("[auth] active membership found — orgId:", membership.organizationId, "| role:", membership.role);
+            console.log("[auth] membership found — orgId:", membership.organizationId, "| role:", membership.role);
             resolvedOrgId = membership.organizationId;
             resolvedRole = membership.role;
           } else {
-            console.log("[auth] no active membership found");
+            console.log("[auth] membership found: no");
           }
         } catch (err) {
           console.error("[auth] Step 2 FAILED — membership check error:", err.code, err.message);
         }
 
-        // ── Step 3: if no membership, check backward-compat or invitations ────
+        // ── Step 3: no membership — check for a pending invitation ────────────
+        // If found, auto-accept it and create a membership with the invited role.
+        // If not found, direct the user to the CREATE_ORG screen where they can
+        // optionally create a school organization as admin.
         if (!resolvedOrgId) {
-          // Backward-compat: existing users already have an organizationId in their
-          // user doc from before memberships were introduced — create an admin
-          // membership for them automatically so they don't hit the create-org screen.
-          if (existingData?.organizationId) {
-            console.log("[auth] Step 3 — backward-compat: creating admin membership for existing org:", existingData.organizationId);
-            try {
+          try {
+            const fetched = await getPendingInvitationsForEmail(firebaseUser.email);
+            if (fetched.length > 0) {
+              console.log("[auth] invitation found — org:", fetched[0].organizationId, "| role:", fetched[0].role);
+              const invite = fetched[0];
+              const { organizationId: newOrgId, organizationName: newOrgName, role: invRole } =
+                await acceptInvitation({
+                  invitation: invite,
+                  userId: firebaseUser.uid,
+                  userEmail: firebaseUser.email,
+                });
               await createMembership({
-                organizationId: existingData.organizationId,
+                organizationId: newOrgId,
                 userId: firebaseUser.uid,
                 email: firebaseUser.email || "",
-                role: "admin",
+                role: invRole || "student",
               });
-              resolvedOrgId = existingData.organizationId;
-              resolvedRole = "admin";
-              console.log("[auth] backward-compat membership created — role: admin");
-            } catch (err) {
-              console.error("[auth] Step 3 FAILED — could not create backward-compat membership:", err.code, err.message);
-            }
-          } else {
-            // Truly new user — check for a pending invitation
-            try {
-              const fetched = await getPendingInvitationsForEmail(firebaseUser.email);
-              if (fetched.length > 0) {
-                console.log("[auth] pending invitation found — org:", fetched[0].organizationId, "role:", fetched[0].role);
-                const invite = fetched[0];
-                // Auto-accept the first invitation and create a membership
-                const { organizationId: newOrgId, organizationName: newOrgName, role: invRole } =
-                  await acceptInvitation({
-                    invitation: invite,
-                    userId: firebaseUser.uid,
-                    userEmail: firebaseUser.email,
-                  });
-                await createMembership({
-                  organizationId: newOrgId,
-                  userId: firebaseUser.uid,
-                  email: firebaseUser.email || "",
-                  role: invRole || "student",
-                });
-                resolvedOrgId = newOrgId;
-                resolvedRole = invRole || "student";
-                console.log("[auth] invitation auto-accepted — activeOrganizationId:", resolvedOrgId, "| role:", resolvedRole);
+              resolvedOrgId = newOrgId;
+              resolvedRole = invRole || "student";
+              console.log("[auth] invitation auto-accepted — activeOrganizationId:", resolvedOrgId, "| role:", resolvedRole);
 
-                // If there were additional pending invites, surface them in the UI
-                const remaining = fetched.slice(1);
-                if (remaining.length > 0) {
-                  setPendingInvites(remaining);
-                  setActiveView("PENDING_INVITATIONS");
-                } else {
-                  setPendingInvites([]);
-                }
+              const remaining = fetched.slice(1);
+              if (remaining.length > 0) {
+                setPendingInvites(remaining);
+                setActiveView("PENDING_INVITATIONS");
               } else {
-                console.log("[auth] pending invitation found: no");
-                console.log("[auth] no membership and no invitation — showing create org screen");
                 setPendingInvites([]);
               }
-            } catch (err) {
-              console.error("[auth] Step 3 FAILED — invitation check error:", err.code, err.message, err);
+            } else {
+              console.log("[auth] invitation found: no");
+              console.log("[auth] showing CREATE_ORG screen — user must create a school org or wait for an invitation");
               setPendingInvites([]);
             }
+          } catch (err) {
+            console.error("[auth] Step 3 FAILED — invitation check error:", err.code, err.message, err);
+            setPendingInvites([]);
           }
         } else {
-          // User has a membership — still surface any additional pending invites
+          // Has a membership — surface any remaining pending invitations in the UI
           try {
             const fetched = await getPendingInvitationsForEmail(firebaseUser.email);
             if (fetched.length > 0) {
@@ -242,8 +224,10 @@ function App() {
           }
         }
 
-        console.log("[auth] activeOrganizationId:", resolvedOrgId ?? "(none — will show create org)");
-        console.log("[auth] current user role:", resolvedRole ?? "(none)");
+        console.log("[auth] activeOrganizationId:", resolvedOrgId ?? "(none)");
+        console.log("[auth] currentUserRole:", resolvedRole ?? "(none)");
+        console.log("[auth] Invite User button:", resolvedRole === "admin" ? "visible" : "hidden");
+        console.log("[auth] CREATE_ORG screen:", !resolvedOrgId ? "will show" : "not shown");
 
         // ── Step 4: write or refresh the user document ───────────────────────
         if (!existingData) {
@@ -2346,6 +2330,20 @@ function App() {
           </div>
         )}
 
+        {activeView === "INVITE_USER" && currentUserRole !== "admin" && (
+          <div className="panel-card">
+            <h2>Invite a User</h2>
+            <p style={{ color: "#f87171", textAlign: "center", marginTop: "24px" }}>
+              You do not have permission to invite users. Only school admins can send invitations.
+            </p>
+            <div style={{ textAlign: "center", marginTop: "16px" }}>
+              <button className="main-btn" onClick={() => setActiveView("ALL_TASKS")}>
+                Go to My Tasks
+              </button>
+            </div>
+          </div>
+        )}
+
         {activeView === "INVITE_USER" && currentUserRole === "admin" && (
           <div className="panel-card">
             <h2>Invite a Teacher or Student</h2>
@@ -2425,36 +2423,67 @@ function App() {
 
         {activeView === "CREATE_ORG" && (
           <div className="panel-card">
-            <h2>Set Up Your School Organization</h2>
-            <p className="helper-text">
-              You don't belong to any organization yet. If you are a school admin,
-              create your school's organization below. Teachers and students will
-              join automatically when invited.
+            <h2>Welcome to Smart Study Planner</h2>
+            <p className="helper-text" style={{ textAlign: "center" }}>
+              Your account is not part of any school organization yet.
             </p>
-            <form
-              onSubmit={handleCreateOrg}
-              style={{ display: "flex", flexDirection: "column", gap: "12px", maxWidth: "420px", margin: "0 auto" }}
-            >
-              <input
-                type="text"
-                placeholder="School name (e.g. Springfield High School)"
-                value={createOrgName}
-                onChange={(e) => { setCreateOrgName(e.target.value); setCreateOrgError(""); }}
-                className="input-control"
-                required
-              />
-              <button type="submit" className="main-btn" disabled={createOrgLoading}>
-                {createOrgLoading ? "Creating..." : "Create School Organization as Admin"}
-              </button>
-            </form>
-            {createOrgError && (
-              <p style={{ marginTop: "12px", textAlign: "center", color: "#f87171" }}>
-                {createOrgError}
-              </p>
-            )}
-            <p style={{ marginTop: "24px", textAlign: "center", fontSize: "13px", color: "var(--text-soft)" }}>
-              If you were invited by an admin, please sign out and sign back in — your invitation will be applied automatically.
-            </p>
+
+            <div style={{ maxWidth: "480px", margin: "0 auto" }}>
+              <div style={{
+                border: "1px solid var(--border)",
+                borderRadius: "10px",
+                padding: "20px",
+                marginBottom: "24px",
+                background: "var(--bg-soft)",
+              }}>
+                <p style={{ fontWeight: "600", marginBottom: "8px" }}>Are you a school admin?</p>
+                <p style={{ fontSize: "13px", color: "var(--text-soft)", marginBottom: "16px" }}>
+                  Create your school organization only if you are the school owner or administrator.
+                  Once created, you can invite teachers and students by email.
+                </p>
+                <form
+                  onSubmit={handleCreateOrg}
+                  style={{ display: "flex", flexDirection: "column", gap: "10px" }}
+                >
+                  <input
+                    type="text"
+                    placeholder="School name (e.g. Springfield High School)"
+                    value={createOrgName}
+                    onChange={(e) => { setCreateOrgName(e.target.value); setCreateOrgError(""); }}
+                    className="input-control"
+                    required
+                  />
+                  <button type="submit" className="main-btn" disabled={createOrgLoading}>
+                    {createOrgLoading ? "Creating..." : "Create School Organization as Admin"}
+                  </button>
+                </form>
+                {createOrgError && (
+                  <p style={{ marginTop: "10px", color: "#f87171", fontSize: "13px" }}>
+                    {createOrgError}
+                  </p>
+                )}
+              </div>
+
+              <div style={{
+                border: "1px solid var(--border)",
+                borderRadius: "10px",
+                padding: "20px",
+                background: "var(--bg-soft)",
+              }}>
+                <p style={{ fontWeight: "600", marginBottom: "8px" }}>Are you a teacher or student?</p>
+                <p style={{ fontSize: "13px", color: "var(--text-soft)" }}>
+                  You need an invitation from your school admin. Ask your admin to invite your email address.
+                  Once invited, sign out and sign back in — you will be joined automatically.
+                </p>
+                <button
+                  className="main-btn"
+                  style={{ marginTop: "12px" }}
+                  onClick={handleLogout}
+                >
+                  Sign out and wait for invitation
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
