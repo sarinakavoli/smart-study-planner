@@ -1,6 +1,7 @@
 import {
   collection,
   doc,
+  getDoc,
   setDoc,
   getDocs,
   query,
@@ -8,7 +9,45 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { db } from "../firebase";
-import { slugify } from "../utils/firestoreIds";
+
+/**
+ * Converts an email address into a membership-safe slug.
+ * Replaces @, ., and any non-alphanumeric characters with underscores.
+ *
+ * Examples:
+ *   emailToSlug("kavolisarina@gmail.com")  → "kavolisarina_gmail_com"
+ *   emailToSlug("teacher1@yorku.ca")       → "teacher1_yorku_ca"
+ *
+ * @param {string} email
+ * @returns {string}
+ */
+function emailToSlug(email) {
+  return String(email)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 50);
+}
+
+/**
+ * Extracts a clean school slug from an organization ID.
+ * Strips the "org_" prefix and converts hyphens to underscores.
+ *
+ * Examples:
+ *   orgIdToSchoolSlug("org_york-school")  → "york_school"
+ *   orgIdToSchoolSlug("org_springfield-high-school")  → "springfield_high_school"
+ *
+ * @param {string} organizationId
+ * @returns {string}
+ */
+function orgIdToSchoolSlug(organizationId) {
+  return String(organizationId)
+    .replace(/^org_/, "")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 40);
+}
 
 /**
  * Returns the first active membership for a given user, or null if none found.
@@ -29,6 +68,16 @@ export async function getActiveMembership(userId) {
 
 /**
  * Creates (or upserts) a membership document for a user in an organization.
+ *
+ * Membership ID format: mbr_<schoolSlug>_<role>_<emailSlug>
+ *
+ * Examples:
+ *   mbr_york_school_admin_kavolisarina_gmail_com
+ *   mbr_york_school_student_sarinakavoli_icloud_com
+ *   mbr_york_school_teacher_teacher1_yorku_ca
+ *
+ * If a collision occurs (same org/role/email already exists), a numeric
+ * suffix is appended: _002, _003, etc.
  *
  * @param {object} params
  * @param {string}  params.organizationId
@@ -57,41 +106,65 @@ export async function createMembership({
     throw new Error("[membership] Cannot create membership — organizationId is missing.");
   }
 
-  let membershipId;
-  if (source === "create_org_form") {
-    const schoolSlug = String(organizationId).replace(/^org_/, "").slice(0, 40);
-    const emailLocalPart = email ? email.split("@")[0] : "user";
-    const emailSlug = slugify(emailLocalPart).slice(0, 20);
-    membershipId = `mbr_${schoolSlug}_admin_${emailSlug}`;
-  } else {
-    membershipId = `mbr_${userId.slice(0, 6)}_${organizationId.slice(-12).replace(/[^a-zA-Z0-9]/g, "_")}`;
+  const schoolSlug = orgIdToSchoolSlug(organizationId);
+  const emailSlug = email ? emailToSlug(email) : "unknown";
+  const normalizedRole = role || "student";
+
+  const baseId = `mbr_${schoolSlug}_${normalizedRole}_${emailSlug}`;
+
+  let membershipId = baseId;
+  const existingSnap = await getDoc(doc(db, "memberships", baseId));
+  if (existingSnap.exists() && existingSnap.data().userId !== userId) {
+    let suffix = 2;
+    while (suffix <= 99) {
+      const candidateId = `${baseId}_${String(suffix).padStart(3, "0")}`;
+      const snap = await getDoc(doc(db, "memberships", candidateId));
+      if (!snap.exists() || snap.data().userId === userId) {
+        membershipId = candidateId;
+        break;
+      }
+      suffix++;
+    }
   }
+
+  console.log("Creating membership", {
+    membershipId,
+    organizationId,
+    organizationName: organizationName || null,
+    role: normalizedRole,
+    email: email || "",
+    source: source ?? null,
+  });
+
   const ref = doc(db, "memberships", membershipId);
 
   const data = {
     organizationId,
+    organizationName: organizationName || null,
+    schoolSlug,
     userId,
     email: email || "",
-    role: role || "student",
+    displayName: displayName || null,
+    role: normalizedRole,
     status: "active",
-    schemaVersion: 2,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
+    source: source || null,
+    schemaVersion: 2,
   };
 
-  if (organizationName) data.organizationName = organizationName;
-  if (displayName)      data.displayName      = displayName;
-  if (invitedBy)        data.invitedBy        = invitedBy;
-  if (invitationId)     data.invitationId     = invitationId;
-  if (source)           data.source           = source;
+  if (invitedBy)    data.invitedBy    = invitedBy;
+  if (invitationId) data.invitationId = invitationId;
 
   await setDoc(ref, data, { merge: true });
+
   console.log(
     "[membership] created — membershipId:", membershipId,
     "| userId:", userId,
     "| orgId:", organizationId,
-    "| role:", role || "student",
+    "| role:", normalizedRole,
     "| source:", source ?? "(none)",
   );
+
   return membershipId;
 }
