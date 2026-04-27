@@ -76,6 +76,7 @@ import { readFileSync, existsSync, appendFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { createRequire } from "module";
+import { classifyId, printList } from "./audit-id-helpers.mjs";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -167,43 +168,6 @@ admin.initializeApp({
 const db = admin.firestore();
 db.settings({ databaseId: FIRESTORE_DATABASE });
 
-// ── ID classification ─────────────────────────────────────────────────────────
-
-/**
- * Classifies a document ID:
- *   "ok"         — Passes strict refined-format regex.
- *   "deprecated" — Does NOT pass the regex AND starts with deprecated prefix.
- *   "malformed"  — Does NOT pass the regex AND has the right prefix but not deprecated.
- *   "legacy"     — Does NOT pass the regex AND lacks the expected prefix.
- *
- * The regex is checked first so a valid new-format ID (e.g. task_org_math_0001
- * for a category named "org") is never wrongly flagged as deprecated.
- *
- * @param {string} docId
- * @param {string} newPrefix         e.g. "task_"
- * @param {string} deprecatedPrefix  e.g. "task_org_"
- * @param {RegExp} refinedRegex
- * @returns {"ok"|"deprecated"|"malformed"|"legacy"}
- */
-function classifyId(docId, newPrefix, deprecatedPrefix, refinedRegex) {
-  if (refinedRegex.test(docId)) return "ok";
-  if (!docId.startsWith(newPrefix)) return "legacy";
-  if (docId.startsWith(deprecatedPrefix)) return "deprecated";
-  return "malformed";
-}
-
-// ── Helper: print a list of IDs with optional verbose mode ────────────────────
-
-function printList(label, ids, verbose) {
-  if (ids.length === 0) return;
-  const shown = verbose ? ids : ids.slice(0, 20);
-  log(verbose ? `\n  ${label} (all shown):` : `\n  ${label} (first 20 shown):`);
-  shown.forEach((id) => log(`    - ${id}`));
-  if (!verbose && ids.length > 20) {
-    log(`    … and ${ids.length - 20} more. (run with --verbose to see all)`);
-  }
-}
-
 // ── Audit: tasks ──────────────────────────────────────────────────────────────
 
 async function auditTasks() {
@@ -284,9 +248,9 @@ async function auditTasks() {
   log(`  WARN  (new-format ID but missing fields):               ${warnMissingField}`);
   log(`  WARN  (attachment path does not match document ID):     ${warnAttachment}`);
 
-  printList("Documents using legacy auto-IDs", failLegacyIds, VERBOSE);
-  printList("Documents using deprecated task_org_... IDs", failDeprecatedIds, VERBOSE);
-  printList("Documents with malformed task_ IDs (re-migrate)", failMalformedIds, VERBOSE);
+  printList("Documents using legacy auto-IDs", failLegacyIds, VERBOSE, log);
+  printList("Documents using deprecated task_org_... IDs", failDeprecatedIds, VERBOSE, log);
+  printList("Documents with malformed task_ IDs (re-migrate)", failMalformedIds, VERBOSE, log);
 
   if (warnFieldIds.length > 0) {
     const shown = VERBOSE ? warnFieldIds : warnFieldIds.slice(0, 20);
@@ -406,9 +370,9 @@ async function auditCategories() {
   log(`  FAIL  (has cat_ prefix but malformed structure):        ${failMalformed}`);
   log(`  WARN  (new-format ID but missing fields):               ${warnMissingField}`);
 
-  printList("Documents using legacy auto-IDs", failLegacyIds, VERBOSE);
-  printList("Documents using deprecated cat_org_... IDs", failDeprecatedIds, VERBOSE);
-  printList("Documents with malformed cat_ IDs (re-migrate)", failMalformedIds, VERBOSE);
+  printList("Documents using legacy auto-IDs", failLegacyIds, VERBOSE, log);
+  printList("Documents using deprecated cat_org_... IDs", failDeprecatedIds, VERBOSE, log);
+  printList("Documents with malformed cat_ IDs (re-migrate)", failMalformedIds, VERBOSE, log);
 
   if (warnFieldIds.length > 0) {
     const shown = VERBOSE ? warnFieldIds : warnFieldIds.slice(0, 20);
