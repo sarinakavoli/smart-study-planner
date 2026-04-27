@@ -180,6 +180,31 @@ describe("seed-categories.mjs --dry-run --email", () => {
     expect(exitCode).toBe(1);
     expect(stderr).toMatch(/ERROR.*--email/i);
   });
+
+  it("prints a trimming note when a --email entry has leading whitespace", () => {
+    const { exitCode, stdout } = run(CATEGORIES_SCRIPT, ["--dry-run", "--email= test@example.com"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/trimmed/i);
+  });
+
+  it("prints a trimming note when a --email entry has trailing whitespace", () => {
+    const { exitCode, stdout } = run(CATEGORIES_SCRIPT, ["--dry-run", "--email=test@example.com "]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/trimmed/i);
+  });
+
+  it("prints a trimming note when one of several --email entries has surrounding whitespace", () => {
+    const { exitCode, stdout } = run(CATEGORIES_SCRIPT, ["--dry-run", "--email=test@example.com, other@example.com"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/trimmed/i);
+    expect(stdout).toMatch(/test@example\.com/);
+    expect(stdout).toMatch(/other@example\.com/);
+  });
+
+  it("does not print a trimming note when no --email entry has surrounding whitespace", () => {
+    const { stdout } = run(CATEGORIES_SCRIPT, ["--dry-run", "--email=test@example.com,other@example.com"]);
+    expect(stdout).not.toMatch(/trimmed/i);
+  });
 });
 
 describe("seed-categories.mjs --dry-run --delete", () => {
@@ -500,6 +525,31 @@ describe("seed-tasks.mjs --dry-run --email", () => {
     const { exitCode, stderr } = run(TASKS_SCRIPT, ["--dry-run", "--email="]);
     expect(exitCode).toBe(1);
     expect(stderr).toMatch(/ERROR.*--email/i);
+  });
+
+  it("prints a trimming note when a --email entry has leading whitespace", () => {
+    const { exitCode, stdout } = run(TASKS_SCRIPT, ["--dry-run", "--email= dev@example.com"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/trimmed/i);
+  });
+
+  it("prints a trimming note when a --email entry has trailing whitespace", () => {
+    const { exitCode, stdout } = run(TASKS_SCRIPT, ["--dry-run", "--email=dev@example.com "]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/trimmed/i);
+  });
+
+  it("prints a trimming note when one of several --email entries has surrounding whitespace", () => {
+    const { exitCode, stdout } = run(TASKS_SCRIPT, ["--dry-run", "--email=dev@example.com, other@example.com"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/trimmed/i);
+    expect(stdout).toMatch(/dev@example\.com/);
+    expect(stdout).toMatch(/other@example\.com/);
+  });
+
+  it("does not print a trimming note when no --email entry has surrounding whitespace", () => {
+    const { stdout } = run(TASKS_SCRIPT, ["--dry-run", "--email=dev@example.com,other@example.com"]);
+    expect(stdout).not.toMatch(/trimmed/i);
   });
 });
 

@@ -274,10 +274,14 @@ if (emailArg) {
     console.error("ERROR: --email and --users cannot be used together. Pick one.");
     process.exit(1);
   }
-  const entries = emailArg.slice("--email=".length).split(",").map((s) => s.trim()).filter(Boolean);
+  const rawEmailEntries = emailArg.slice("--email=".length).split(",");
+  const entries = rawEmailEntries.map((s) => s.trim()).filter(Boolean);
   if (entries.length === 0) {
     console.error("ERROR: --email must contain at least one address (e.g. --email=you@example.com)");
     process.exit(1);
+  }
+  if (rawEmailEntries.some((s) => s !== s.trim())) {
+    console.log("Note: --email entries were trimmed of leading/trailing whitespace.");
   }
   EMAIL_ENTRIES = entries;
   userFilterActive = true;
