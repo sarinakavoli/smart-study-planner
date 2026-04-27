@@ -174,30 +174,42 @@ function App() {
           try {
             const fetched = await getPendingInvitationsForEmail(firebaseUser.email);
             if (fetched.length > 0) {
-              console.log("[auth] invitation found — org:", fetched[0].organizationId, "| role:", fetched[0].role);
               const invite = fetched[0];
-              const { organizationId: newOrgId, organizationName: newOrgName, role: invRole } =
-                await acceptInvitation({
-                  invitation: invite,
-                  userId: firebaseUser.uid,
-                  userEmail: firebaseUser.email,
-                });
-              await createMembership({
-                organizationId: newOrgId,
-                userId: firebaseUser.uid,
-                email: firebaseUser.email || "",
-                role: invRole || "student",
-              });
-              resolvedOrgId = newOrgId;
-              resolvedRole = invRole || "student";
-              console.log("[auth] invitation auto-accepted — activeOrganizationId:", resolvedOrgId, "| role:", resolvedRole);
+              console.log("[auth] invitation found — org:", invite.organizationId, "| role:", invite.role, "| invitedBy:", invite.invitedByUserId);
 
-              const remaining = fetched.slice(1);
-              if (remaining.length > 0) {
-                setPendingInvites(remaining);
-                setActiveView("PENDING_INVITATIONS");
-              } else {
+              if (!invite.organizationId) {
+                console.error("[auth] Invitation is missing organizationId — blocking membership creation. inviteId:", invite.id);
                 setPendingInvites([]);
+              } else {
+                console.log("Accepting invitation into org", invite.organizationId);
+                const { organizationId: newOrgId, organizationName: newOrgName, role: invRole } =
+                  await acceptInvitation({
+                    invitation: invite,
+                    userId: firebaseUser.uid,
+                    userEmail: firebaseUser.email,
+                  });
+                await createMembership({
+                  organizationId: newOrgId,
+                  userId: firebaseUser.uid,
+                  email: firebaseUser.email || "",
+                  role: invRole || "student",
+                  organizationName: newOrgName || invite.organizationName || null,
+                  displayName: firebaseUser.displayName || null,
+                  invitedBy: invite.invitedByUserId || null,
+                  invitationId: invite.id,
+                  source: "invitation",
+                });
+                resolvedOrgId = newOrgId;
+                resolvedRole = invRole || "student";
+                console.log("[auth] invitation auto-accepted — activeOrganizationId:", resolvedOrgId, "| role:", resolvedRole);
+
+                const remaining = fetched.slice(1);
+                if (remaining.length > 0) {
+                  setPendingInvites(remaining);
+                  setActiveView("PENDING_INVITATIONS");
+                } else {
+                  setPendingInvites([]);
+                }
               }
             } else {
               console.log("[auth] invitation found: no");
@@ -387,18 +399,26 @@ function App() {
     setInviteActionLoading(invite.id);
     setInviteCardStatus((prev) => ({ ...prev, [invite.id]: null }));
     try {
+      if (!invite.organizationId) {
+        throw new Error("Invitation is missing organizationId.");
+      }
+      console.log("Accepting invitation into org", invite.organizationId);
       const { organizationId: newOrgId, organizationName: newOrgName, role: invRole } =
         await acceptInvitation({
           invitation: invite,
           userId: currentUser.uid,
           userEmail: currentUser.email,
         });
-      // Create membership with the role specified in the invitation
       await createMembership({
         organizationId: newOrgId,
         userId: currentUser.uid,
         email: currentUser.email || "",
         role: invRole || "student",
+        organizationName: newOrgName || invite.organizationName || null,
+        displayName: currentUser.displayName || null,
+        invitedBy: invite.invitedByUserId || null,
+        invitationId: invite.id,
+        source: "invitation",
       });
       setPendingInvites((prev) => prev.filter((i) => i.id !== invite.id));
       setInviteCardStatus((prev) => ({
@@ -473,6 +493,9 @@ function App() {
         userId: currentUser.uid,
         email: currentUser.email || "",
         role: "admin",
+        organizationName: name,
+        displayName: currentUser.displayName || null,
+        source: "org_creation",
       });
       console.log("[createOrg] admin membership created — userId:", currentUser.uid, "| orgId:", orgId);
       await setDoc(
@@ -2381,11 +2404,16 @@ function App() {
                   setInviteStatus({ type: "error", message: "You cannot invite yourself." });
                   return;
                 }
+                if (!organizationId) {
+                  setInviteStatus({ type: "error", message: "Cannot send invitation because no active organization is selected." });
+                  console.error("[invite] Blocked — activeOrganizationId is missing");
+                  return;
+                }
                 setInviteSending(true);
                 setInviteStatus(null);
                 try {
                   console.log("[invite] currentUser.uid:", currentUser.uid, "| email:", currentUser.email);
-                  console.log("[invite] organizationId used for invitation:", organizationId);
+                  console.log("Creating invitation for org", organizationId);
                   console.log("[invite] inviting:", trimmed, "| role:", inviteRole);
                   const inviteDocId = await createInvitation({
                     organizationId,
