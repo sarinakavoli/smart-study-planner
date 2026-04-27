@@ -439,6 +439,12 @@ describe("verify-seed-users.mjs --dry-run: metadata file present", () => {
     });
   });
 
+  it("exits with a non-zero exit code and prints a descriptive error when --collection=foobar is an unrecognized collection name", () => {
+    const { exitCode, stderr } = run(["--dry-run", "--collection=foobar"]);
+    expect(exitCode).not.toBe(0);
+    expect(stderr).toMatch(/foobar/i);
+  });
+
   it("only shows counts for the requested collection when --collection is supplied", () => {
     withTempCountsFile({ categories: 42, tasks: 99 }, (file) => {
       const { stdout } = run(["--dry-run", "--collection=categories"], { SEED_COUNTS_FILE: file });
