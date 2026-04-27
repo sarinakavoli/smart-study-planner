@@ -471,22 +471,40 @@ function App() {
     if (!currentUser?.uid) return;
     setCreateOrgLoading(true);
     setCreateOrgError("");
+    console.log("AUTH USER BEFORE ORG CREATE", {
+      uid: currentUser.uid,
+      email: currentUser.email,
+      emailVerified: currentUser.emailVerified,
+    });
+
+    const orgId = schoolOrgId(name);
+    const orgData = {
+      id: orgId,
+      readableId: orgId,
+      name,
+      createdBy: currentUser.uid,
+      createdByEmail: currentUser.email || "",
+      source: "create_org_form",
+      schemaVersion: 2,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+
+    console.log("ORG WRITE PATH", `organizations/${orgId}`);
+    console.log("ORG WRITE DATA", { ...orgData, createdAt: "<serverTimestamp>", updatedAt: "<serverTimestamp>" });
+
     try {
-      const orgId = schoolOrgId(name);
-      console.log("[createOrg] creating org — name:", name, "| orgId:", orgId, "| adminUid:", currentUser.uid);
       const orgRef = doc(db, "organizations", orgId);
-      await setDoc(orgRef, {
-        id: orgId,
-        readableId: orgId,
-        name,
-        createdBy: currentUser.uid,
-        createdByEmail: currentUser.email || "",
-        source: "create_org_form",
-        schemaVersion: 2,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-      console.log("[createOrg] organization document written — orgId:", orgId);
+      await setDoc(orgRef, orgData);
+      console.log("ORG WRITE SUCCESS");
+    } catch (error) {
+      console.error("ORG WRITE FAILED", error);
+      setCreateOrgError(`Could not create organization: ${error.message}`);
+      setCreateOrgLoading(false);
+      return;
+    }
+
+    try {
       await createMembership({
         organizationId: orgId,
         userId: currentUser.uid,
@@ -496,32 +514,38 @@ function App() {
         displayName: currentUser.displayName || null,
         source: "create_org_form",
       });
-      console.log("[createOrg] admin membership created — userId:", currentUser.uid, "| orgId:", orgId);
+      console.log("ADMIN MEMBERSHIP WRITE SUCCESS");
+    } catch (error) {
+      console.error("ADMIN MEMBERSHIP WRITE FAILED", error);
+      setCreateOrgError(`Could not create admin membership: ${error.message}`);
+      setCreateOrgLoading(false);
+      return;
+    }
+
+    try {
       await setDoc(
         doc(db, "users", currentUser.uid),
         { organizationId: orgId, updatedAt: serverTimestamp() },
         { merge: true }
       );
-      console.log("[createOrg] activeOrganizationId:", orgId, "| currentUserRole: admin");
-      setOrganizationId(orgId);
-      setOrganizationName(name);
-      setCurrentUserRole("admin");
-      setCreateOrgName("");
-      // Reload tasks scoped to the new org
-      try {
-        const { loadUserTasks } = await import("./services/taskService");
-        const freshTasks = await loadUserTasks(currentUser.uid, orgId);
-        setTasks(freshTasks);
-      } catch (taskErr) {
-        console.warn("[createOrg] Could not reload tasks:", taskErr.message);
-      }
-      setActiveView("ALL_TASKS");
-    } catch (err) {
-      console.error("[createOrg] Failed:", err);
-      setCreateOrgError(`Could not create organization: ${err.message}`);
-    } finally {
-      setCreateOrgLoading(false);
+      console.log("[createOrg] user doc updated — organizationId:", orgId);
+    } catch (error) {
+      console.error("[createOrg] user doc update FAILED", error);
     }
+
+    setOrganizationId(orgId);
+    setOrganizationName(name);
+    setCurrentUserRole("admin");
+    setCreateOrgName("");
+    try {
+      const { loadUserTasks } = await import("./services/taskService");
+      const freshTasks = await loadUserTasks(currentUser.uid, orgId);
+      setTasks(freshTasks);
+    } catch (taskErr) {
+      console.warn("[createOrg] Could not reload tasks:", taskErr.message);
+    }
+    setActiveView("ALL_TASKS");
+    setCreateOrgLoading(false);
   };
 
   useEffect(() => {

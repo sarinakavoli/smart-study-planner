@@ -116,17 +116,6 @@ export async function createMembership({
   const normalizedRole = role || "student";
   const readableId = `mbr_${schoolSlug}_${normalizedRole}_${emailSlug}`;
 
-  console.log("Creating membership", {
-    membershipId,
-    organizationId,
-    organizationName: organizationName || null,
-    role: normalizedRole,
-    email: email || "",
-    source: source ?? null,
-  });
-
-  const ref = doc(db, "memberships", membershipId);
-
   const data = {
     organizationId,
     organizationName: organizationName || null,
@@ -145,6 +134,15 @@ export async function createMembership({
 
   if (invitedBy)    data.invitedBy    = invitedBy;
   if (invitationId) data.invitationId = invitationId;
+
+  const ref = doc(db, "memberships", membershipId);
+
+  console.log("ADMIN MEMBERSHIP WRITE PATH", `memberships/${membershipId}`);
+  console.log("ADMIN MEMBERSHIP WRITE DATA", {
+    ...data,
+    createdAt: "<serverTimestamp>",
+    updatedAt: "<serverTimestamp>",
+  });
 
   await setDoc(ref, data, { merge: true });
 
