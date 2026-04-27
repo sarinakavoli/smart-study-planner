@@ -31,8 +31,7 @@ test-results
 # CI test cache sentinel files
 .test-cache
 .seed-test-cache
-.audit-helper-test-cache
-.audit-readable-ids-test-cache
+.audit-tests-cache
 
 # Editor directories and files
 .vscode/*
