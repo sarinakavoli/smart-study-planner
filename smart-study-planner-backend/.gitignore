@@ -1,0 +1,4 @@
+attached_assets/
+*service-account*
+*private-key*
+*.json
