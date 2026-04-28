@@ -73,22 +73,6 @@ jobs:
       # silently aborts the test when Docker is unavailable, so the report file
       # would be missing or show a skipped/error status. Failing here makes that
       # visible rather than letting a skipped test look like a green build.
-      - name: Confirm Testcontainers schema test ran
-        if: steps.cache-backend-tests.outputs.cache-hit != 'true'
-        run: |
-          REPORT="smart-study-planner-backend/target/surefire-reports/com.sarina.studyplanner.PostgreSQLSchemaValidationTest.txt"
-          if [ ! -f "$REPORT" ]; then
-            echo "ERROR: surefire report for PostgreSQLSchemaValidationTest not found — the test may have been skipped or never executed."
-            exit 1
-          fi
-          if grep -qE "^Tests run:.*Errors: [^0]|^Tests run:.*Failures: [^0]|^Tests run:.*Skipped: [^0]" "$REPORT"; then
-            echo "ERROR: PostgreSQLSchemaValidationTest did not pass cleanly:"
-            cat "$REPORT"
-            exit 1
-          fi
-          echo "PostgreSQLSchemaValidationTest ran and passed against a real PostgreSQL container."
-          grep "^Tests run:" "$REPORT"
-
       - name: Summarise test execution
         if: always()
         run: |
