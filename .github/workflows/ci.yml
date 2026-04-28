@@ -260,6 +260,7 @@ jobs:
         with:
           sparse-checkout: |
             .github/workflows/ci.yml
+            smart-study-planner-frontend/package.json
             smart-study-planner-frontend/package-lock.json
             smart-study-planner-frontend/scripts/seed-categories.mjs
             smart-study-planner-frontend/scripts/seed-tasks.mjs
@@ -372,6 +373,7 @@ jobs:
         with:
           sparse-checkout: |
             .github/workflows/ci.yml
+            smart-study-planner-frontend/package.json
             smart-study-planner-frontend/package-lock.json
             smart-study-planner-frontend/scripts/audit-id-helpers.mjs
             smart-study-planner-frontend/scripts/audit-id-helpers.test.js
