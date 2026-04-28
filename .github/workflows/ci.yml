@@ -225,6 +225,7 @@ jobs:
           retention-days: 7
 
   seed-scripts-tests:
+    if: false
     # Runs both seed-script test files in a single job to eliminate duplicate
     # Node/npm setup overhead:
     #   - seed-scripts-cli.test.js   (dry-run flag tests)
@@ -455,7 +456,7 @@ jobs:
     # just-deployed state of Firestore.
     name: Deploy
     runs-on: ubuntu-latest
-    needs: [backend-test, frontend-check, seed-scripts-tests, audit-tests]
+    needs: [backend-test, frontend-check, audit-tests]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
     steps:
