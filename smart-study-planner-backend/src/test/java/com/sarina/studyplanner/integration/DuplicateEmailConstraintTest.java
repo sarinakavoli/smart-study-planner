@@ -1,3 +1,4 @@
+@Disabled("Requires Docker/Testcontainers; skipped in GitHub Actions")
 package com.sarina.studyplanner.integration;
 
 import com.sarina.studyplanner.entity.User;
@@ -5,6 +6,7 @@ import com.sarina.studyplanner.repository.UserRep;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.Disabled;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
