@@ -66,8 +66,6 @@ function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [organizationId, setOrganizationId] = useState(null);
   const [organizationName, setOrganizationName] = useState(null);
-  const [orgOwnerEmail, setOrgOwnerEmail] = useState(null);
-  const [orgMembers, setOrgMembers] = useState([]);
   const [orgMemberships, setOrgMemberships] = useState([]);
   const [currentUserRole, setCurrentUserRole] = useState(null);
   const [inviteRole, setInviteRole] = useState("student");

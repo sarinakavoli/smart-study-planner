@@ -113,7 +113,7 @@ export async function getPendingInvitationsForEmail(email) {
  * @param {string} params.userEmail   - Email of the accepting user
  * @returns {Promise<{organizationId: string, organizationName: string, role: string}>}
  */
-export async function acceptInvitation({ invitation, userId, userEmail }) {
+export async function acceptInvitation({ invitation, userId }) {
   const { id: inviteId, organizationId, organizationName, role } = invitation;
 
   await updateDoc(doc(db, "users", userId), {
