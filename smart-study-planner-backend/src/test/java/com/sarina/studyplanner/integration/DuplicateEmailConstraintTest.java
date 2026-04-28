@@ -1,5 +1,3 @@
-@Disabled("Requires Docker/Testcontainers; skipped in GitHub Actions")
-package com.sarina.studyplanner.integration;
 
 import com.sarina.studyplanner.entity.User;
 import com.sarina.studyplanner.repository.UserRep;
@@ -37,6 +35,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
         "spring.jpa.properties.hibernate.format_sql=false",
         "gemini.api.key="
 })
+@Disabled("Requires Docker/Testcontainers; skipped in CI")
 class DuplicateEmailConstraintTest {
 
     @Container

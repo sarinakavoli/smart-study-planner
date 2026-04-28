@@ -1,5 +1,3 @@
-@Disabled("Requires Docker/Testcontainers; skipped in GitHub Actions")
-package com.sarina.studyplanner;
 
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -38,6 +36,7 @@ import org.junit.jupiter.api.Disabled;
         "spring.jpa.properties.hibernate.format_sql=false",
         "gemini.api.key="
 })
+@Disabled("Requires Docker/Testcontainers; skipped in CI")
 class PostgreSQLSchemaValidationTest {
 
     @Container
