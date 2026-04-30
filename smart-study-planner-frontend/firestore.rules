@@ -19,8 +19,6 @@ service cloud.firestore {
       return exists(/databases/$(database)/documents/users/$(request.auth.uid));
     }
 
-    // True if the signed-in user is an active admin (any org).
-    // Used for operations where the requester's own org context is what matters.
     function isActiveAdmin() {
       return signedIn()
         && userDocExists()
@@ -28,7 +26,6 @@ service cloud.firestore {
         && getUserDoc().data.role == "admin";
     }
 
-    // True if the signed-in user is an active member of the given org.
     function isActiveMember(orgId) {
       return signedIn()
         && userDocExists()
@@ -37,75 +34,81 @@ service cloud.firestore {
         && getUserDoc().data.role in ["admin", "teacher", "student"];
     }
 
-    // True if the signed-in user is an active admin of the given org.
     function isActivatedAdmin(orgId) {
       return isActiveMember(orgId)
         && getUserDoc().data.role == "admin";
     }
 
-    // ── Users ─────────────────────────────────────────────────────────────────
-    // users/{uid} is the single source of truth for membership.
-    //
-    // Fields controlled by the system / admin only:
-    //   organizationId, role, departmentId, membershipStatus (to "pending")
-    //
-    // Fields the user can change themselves:
-    //   membershipStatus: "pending" -> "active" (accept)
-    //   displayName, email, updatedAt (profile refresh)
+    // ── Users ──────────────────────────────────────────────────────────────────
     match /users/{userId} {
 
-      // A user can always read their own document.
-      // An active admin can read any user document (needed for email lookup when inviting).
       allow read: if isSelf(userId) || isActiveAdmin();
 
-      // A user can create their own document with membershipStatus: "not_invited".
       allow create: if isSelf(userId)
         && request.resource.data.membershipStatus == "not_invited"
         && request.resource.data.organizationId == null
         && request.resource.data.role == null;
 
-      // Self-update: user can only change profile fields (displayName, email, updatedAt)
-      // OR accept a pending membership (flip membershipStatus from "pending" to "active").
-      // In both cases, organizationId / role / departmentId must not change.
+      // Profile refresh: no structural fields change (org, role, dept, status, email, createdAt).
       allow update: if isSelf(userId)
         && request.resource.data.organizationId == resource.data.organizationId
         && request.resource.data.role == resource.data.role
         && request.resource.data.departmentId == resource.data.departmentId
-        && (
-          // Accept: membershipStatus pending -> active only
-          (
-            resource.data.membershipStatus == "pending"
-            && request.resource.data.membershipStatus == "active"
-          )
-          ||
-          // Profile refresh / migration: membershipStatus stays the same
-          // (also covers first-time migration write of inferred membershipStatus)
-          (
-            request.resource.data.membershipStatus == resource.data.membershipStatus
-            || (!("membershipStatus" in resource.data) && request.resource.data.membershipStatus in ["active", "not_invited"])
-          )
-        );
-
-      // Admin invite: an active admin can update another user's document to invite them.
-      // The admin can only set:
-      //   organizationId = their own org
-      //   role = "teacher" or "student" (admins cannot be invited, they create orgs)
-      //   membershipStatus = "pending"
-      //   departmentId, organizationName, departmentName (optional metadata)
-      // The admin cannot change the invitee's email, displayName, or createdAt.
-      allow update: if signedIn()
-        && !isSelf(userId)
-        && isActiveAdmin()
-        && request.resource.data.organizationId == getUserDoc().data.organizationId
-        && request.resource.data.membershipStatus == "pending"
-        && request.resource.data.role in ["teacher", "student"]
+        && request.resource.data.membershipStatus == resource.data.membershipStatus
         && request.resource.data.email == resource.data.email
         && request.resource.data.createdAt == resource.data.createdAt;
+
+      // Accept invitation OR create org: user transitions to active status.
+      // Covers both invitation acceptance (teacher/student) and org creation (admin).
+      allow update: if isSelf(userId)
+        && resource.data.membershipStatus != "active"
+        && request.resource.data.membershipStatus == "active"
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.role in ["admin", "teacher", "student"];
 
       allow delete: if false;
     }
 
-    // ── Organizations ─────────────────────────────────────────────────────────
+    // ── Invitations ────────────────────────────────────────────────────────────
+    // invitations/{invitationId}
+    //
+    // Fields written by admin:
+    //   email, role, organizationId, organizationName,
+    //   departmentId (optional), departmentName (optional),
+    //   status: "pending", createdBy, createdByEmail, createdAt, updatedAt
+    //
+    // Fields written by invited user on accept:
+    //   status: "accepted", acceptedAt, updatedAt
+    match /invitations/{invitationId} {
+
+      // Active admin can create invitations only for their own organization.
+      allow create: if isActiveAdmin()
+        && request.resource.data.organizationId == getUserDoc().data.organizationId
+        && request.resource.data.status == "pending"
+        && request.resource.data.role in ["teacher", "student"]
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdByEmail == request.auth.token.email;
+
+      // Invited user can read their own invitations (matched by email).
+      // Active admin can read invitations for their own org.
+      allow read: if (signedIn() && resource.data.email == request.auth.token.email)
+        || (isActiveAdmin() && resource.data.organizationId == getUserDoc().data.organizationId);
+
+      // Invited user can accept their own pending invitation (status: pending -> accepted).
+      // No other fields may change.
+      allow update: if signedIn()
+        && resource.data.email == request.auth.token.email
+        && resource.data.status == "pending"
+        && request.resource.data.status == "accepted"
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.organizationId == resource.data.organizationId
+        && request.resource.data.role == resource.data.role;
+
+      allow delete: if false;
+    }
+
+    // ── Organizations ──────────────────────────────────────────────────────────
     match /organizations/{organizationId} {
 
       allow read: if isActiveMember(organizationId);
@@ -121,10 +124,7 @@ service cloud.firestore {
         && getUserDoc().data.uid == resource.data.createdBy;
     }
 
-    // ── Departments ───────────────────────────────────────────────────────────
-    // Read:   any active member of the organization (admin, teacher, student).
-    // Write:  only active admins of the organization.
-    // Outside users cannot read or write.
+    // ── Departments ────────────────────────────────────────────────────────────
     match /organizations/{organizationId}/departments/{departmentId} {
 
       allow read: if isActiveMember(organizationId);
@@ -138,7 +138,7 @@ service cloud.firestore {
       allow delete: if isActivatedAdmin(organizationId);
     }
 
-    // ── Tasks ─────────────────────────────────────────────────────────────────
+    // ── Tasks ──────────────────────────────────────────────────────────────────
     match /tasks/{taskId} {
 
       allow read: if signedIn()
@@ -159,8 +159,9 @@ service cloud.firestore {
         && resource.data.userId == request.auth.uid;
     }
 
-    // ── Categories ────────────────────────────────────────────────────────────
+    // ── Categories ─────────────────────────────────────────────────────────────
     match /categories/{categoryId} {
+
       allow read: if signedIn()
         && request.auth.uid == resource.data.userId;
 
