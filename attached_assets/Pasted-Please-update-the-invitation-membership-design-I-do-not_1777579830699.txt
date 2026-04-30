@@ -1,0 +1,76 @@
+Please update the invitation/membership design.
+
+I do not want to use a separate invitations collection.
+
+Use membershipStatus in users/{uid} instead of invitationStatus.
+
+Allowed membershipStatus values:
+
+- "not_invited": user has no organization yet
+- "pending": admin invited the user, but the user has not accepted yet
+- "active": user accepted the invitation OR the user created the organization as admin
+
+Expected user document structure:
+
+users/{uid} {
+  email: string,
+  displayName: string,
+
+  organizationId: string | null,
+  role: "admin" | "teacher" | "student" | null,
+  departmentId: string | null,
+
+  membershipStatus: "not_invited" | "pending" | "active",
+
+  createdAt: timestamp,
+  updatedAt: timestamp
+}
+
+Expected flow:
+
+1. New user signs up / logs in:
+   - create or update users/{uid}
+   - if the user has no organization yet:
+     - organizationId: null
+     - role: null
+     - departmentId: null
+     - membershipStatus: "not_invited"
+
+2. Admin creates an organization:
+   - create the organization document
+   - update the admin's users/{uid} document:
+     - organizationId: new organizationId
+     - role: "admin"
+     - departmentId: null
+     - membershipStatus: "active"
+   - do NOT show Accept Invitation for this admin
+
+3. Admin invites an existing user:
+   - do NOT create an invitations collection/document
+   - update that existing user's users/{uid} document directly:
+     - organizationId: admin's organizationId
+     - role: selected role, either "teacher" or "student"
+     - departmentId: selected departmentId or null
+     - membershipStatus: "pending"
+
+4. Invited user logs in:
+   - if membershipStatus is "pending", show Accept Invitation button
+   - if membershipStatus is "not_invited", show no organization / waiting state
+   - if membershipStatus is "active", load the organization normally
+
+5. Invited user accepts:
+   - update the same users/{uid} document
+   - change membershipStatus from "pending" to "active"
+   - keep organizationId, role, and departmentId the same
+
+6. Firestore rules:
+   - users can read their own user document
+   - users can change only their own membershipStatus from "pending" to "active"
+   - users cannot assign themselves organizationId, role, or departmentId
+   - only admins with membershipStatus: "active" and role: "admin" can invite users
+   - only admins can set another user's membershipStatus to "pending"
+   - only admins can assign organizationId, role, and departmentId to another user
+   - department read access should be allowed for active members of the organization
+   - department create/update/delete should be allowed only for active admins
+
+Please update the frontend logic, Firestore rules, and any related documentation to follow this design.

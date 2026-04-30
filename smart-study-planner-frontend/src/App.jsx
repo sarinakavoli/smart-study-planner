@@ -14,8 +14,8 @@ import {
   doc,
   query,
   where,
-  arrayUnion,
   serverTimestamp,
+  arrayUnion,
 } from "firebase/firestore";
 import {
   schoolOrgId,
@@ -23,12 +23,6 @@ import {
   generateCategoryId,
   generateDepartmentId,
 } from "./utils/firestoreIds";
-import {
-  createInvitation,
-  getPendingInvitationsForEmail,
-  acceptInvitation,
-  declineInvitation,
-} from "./services/invitationService";
 import {
   ref as storageRef,
   uploadBytes,
@@ -67,7 +61,7 @@ function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [loading, setLoading] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
-  const [pendingInvitations, setPendingInvitations] = useState([]);
+  const [membershipStatus, setMembershipStatus] = useState(null);
   const [departments, setDepartments] = useState([]);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("student");
@@ -130,117 +124,98 @@ function App() {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         console.log("[auth] onAuthStateChanged fired — uid:", firebaseUser.uid);
-        console.log("[auth] current user email:", firebaseUser.email);
-
         const userRef = doc(db, "users", firebaseUser.uid);
-        let resolvedOrgId = null;
-        let resolvedRole = null;
+        let existingData = null;
 
         // ── Step 1: read existing user document ──────────────────────────────
-        let existingData = null;
         try {
-          console.log("[auth] Step 1 — reading users/", firebaseUser.uid);
           const userSnap = await getDoc(userRef);
           existingData = userSnap.exists() ? userSnap.data() : null;
-          console.log("[auth] Step 1 — user doc exists:", userSnap.exists(), "| organizationId:", existingData?.organizationId ?? "(none)");
+          console.log("[auth] user doc exists:", !!existingData, "| membershipStatus:", existingData?.membershipStatus ?? "(none)");
         } catch (err) {
-          console.error("[auth] Step 1 FAILED — could not read user doc:", err.code, err.message);
+          console.error("[auth] Step 1 FAILED:", err.code, err.message);
         }
 
-        // ── Step 2: resolve org and role from users/{uid}.organizations ───────
-        // The active org is stored in users/{uid}.organizationId.
-        // The matching entry in users/{uid}.organizations provides the role and status.
-        if (existingData?.organizationId && Array.isArray(existingData?.organizations)) {
-          const activeOrgId = existingData.organizationId;
-          const membership = existingData.organizations.find(
-            (org) => org.organizationId === activeOrgId
-          );
-          if (membership && membership.status === "activated") {
-            resolvedOrgId = activeOrgId;
-            resolvedRole = membership.role;
-            console.log("[auth] Step 2 — active org from users doc — orgId:", resolvedOrgId, "| role:", resolvedRole, "| status:", membership.status);
-          } else if (membership) {
-            console.log("[auth] Step 2 — org entry found but status is not activated:", membership.status);
-          } else {
-            console.log("[auth] Step 2 — organizationId set but no matching entry in organizations array");
-          }
-        } else {
-          console.log("[auth] Step 2 — no organizationId or organizations array in user doc");
+        // ── Step 2: resolve membership from flat fields ───────────────────────
+        // Migration: existing users without membershipStatus are inferred from organizationId+role.
+        // Fall back to old organizations array if the flat role field is missing (pre-migration doc).
+        const resolvedOrgId = existingData?.organizationId ?? null;
+        // Flat role (new schema) or fall back to matching entry in old organizations array
+        const orgArrayEntry = (existingData?.organizations ?? []).find(
+          (o) => o.organizationId === resolvedOrgId && o.status === "activated"
+        ) ?? null;
+        const resolvedRole = existingData?.role ?? orgArrayEntry?.role ?? null;
+        const resolvedOrgName = existingData?.organizationName ?? null;
+        let resolvedStatus = existingData?.membershipStatus ?? null;
+        // Correction: if status was incorrectly written as "not_invited" but user has an org+role,
+        // fix it back to "active" (covers bad earlier migration run).
+        if (resolvedStatus === "not_invited" && resolvedOrgId && resolvedRole) {
+          resolvedStatus = "active";
         }
-
-        console.log("[auth] activeOrganizationId:", resolvedOrgId ?? "(none)");
-        console.log("[auth] currentUserRole:", resolvedRole ?? "(none)");
-
-        // ── Step 2.5: check for pending invitations ───────────────────────────
-        let loadedInvitations = [];
-        try {
-          loadedInvitations = await getPendingInvitationsForEmail(firebaseUser.email);
-          console.log("[auth] Step 2.5 — pending invitations found:", loadedInvitations.length);
-        } catch (err) {
-          console.error("[auth] Step 2.5 FAILED — could not load invitations:", err.code, err.message);
+        if (!resolvedStatus) {
+          resolvedStatus = (resolvedOrgId && resolvedRole) ? "active" : "not_invited";
         }
+        console.log("[auth] resolvedStatus:", resolvedStatus, "| orgId:", resolvedOrgId ?? "(none)", "| role:", resolvedRole ?? "(none)");
 
         // ── Step 3: write or refresh the user document ───────────────────────
-        // New users get organizations: [] and organizationId: null.
-        // Returning users get email/displayName/updatedAt refreshed only —
-        // the organizations array is never overwritten here.
         if (!existingData) {
-          console.log("[auth] Step 3 — creating users/", firebaseUser.uid, "for the first time");
           try {
             await setDoc(userRef, {
-              uid: firebaseUser.uid,
               email: firebaseUser.email,
               displayName: firebaseUser.displayName ?? null,
               organizationId: null,
-              organizations: [],
+              role: null,
+              departmentId: null,
+              membershipStatus: "not_invited",
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp(),
             });
-            console.log("[auth] Step 3 — users/", firebaseUser.uid, "created OK");
+            console.log("[auth] new user doc created");
           } catch (err) {
-            console.error("[auth] Step 3 FAILED — could not create user doc:", err.code, err.message, err);
+            console.error("[auth] Step 3 create FAILED:", err.code, err.message);
           }
         } else {
-          console.log("[auth] Step 3 — returning user, merging into users/", firebaseUser.uid);
+          // Refresh profile fields. Also write inferred membershipStatus and role for migration.
+          const mergeData = {
+            displayName: firebaseUser.displayName ?? null,
+            email: firebaseUser.email,
+            updatedAt: serverTimestamp(),
+          };
+          if (!existingData.membershipStatus) {
+            mergeData.membershipStatus = resolvedStatus;
+          }
+          if (!existingData.role && resolvedRole) {
+            mergeData.role = resolvedRole;
+          }
           try {
-            await setDoc(
-              userRef,
-              {
-                displayName: firebaseUser.displayName ?? null,
-                email: firebaseUser.email,
-                updatedAt: serverTimestamp(),
-              },
-              { merge: true }
-            );
-            console.log("[auth] Step 3 — users/", firebaseUser.uid, "merge-updated OK");
+            await setDoc(userRef, mergeData, { merge: true });
+            console.log("[auth] user doc refreshed");
           } catch (err) {
-            console.error("[auth] Step 3 FAILED — could not merge-update user doc:", err.code, err.message, err);
+            console.error("[auth] Step 3 merge FAILED:", err.code, err.message);
           }
         }
 
-        console.log("[auth] Setup complete — resolvedOrgId:", resolvedOrgId, "| role:", resolvedRole);
+        // ── Step 4: set state and route ───────────────────────────────────────
+        setMembershipStatus(resolvedStatus);
         setOrganizationId(resolvedOrgId);
         setCurrentUserRole(resolvedRole);
-        setPendingInvitations(loadedInvitations);
+        if (resolvedOrgName) {
+          setOrganizationName(resolvedOrgName);
+        }
 
-        // Route to the correct initial view.
-        if (!resolvedOrgId) {
-          // No active org: show pending invitations if any, otherwise create-org.
-          if (loadedInvitations.length > 0) {
-            setActiveView("PENDING_INVITATIONS");
-          } else {
-            setActiveView("CREATE_ORG");
-          }
-        } else {
-          // Has active org: land on tasks.
+        if (resolvedStatus === "active") {
           setActiveView("ALL_TASKS");
+        } else if (resolvedStatus === "pending") {
+          setActiveView("PENDING_MEMBERSHIP");
+        } else {
+          setActiveView("CREATE_ORG");
         }
       } else {
         console.log("[auth] onAuthStateChanged fired — user signed out");
         setOrganizationId(null);
         setOrganizationName(null);
         setCurrentUserRole(null);
-        setPendingInvitations([]);
+        setMembershipStatus(null);
       }
       setCurrentUser(firebaseUser ?? null);
       setAuthLoading(false);
@@ -352,7 +327,7 @@ function App() {
     setOrganizationName(null);
     setOrgOwnerEmail(null);
     setCurrentUserRole(null);
-    setPendingInvitations([]);
+    setMembershipStatus(null);
     setDepartments([]);
     setCreateOrgName("");
     setCreateOrgError("");
@@ -404,25 +379,19 @@ function App() {
       return;
     }
 
-    const newOrgEntry = {
-      organizationId: orgId,
-      departmentId: null,
-      role: "admin",
-      status: "activated",
-    };
-
     try {
       await setDoc(
         doc(db, "users", currentUser.uid),
         {
           organizationId: orgId,
           role: "admin",
-          organizations: arrayUnion(newOrgEntry),
+          departmentId: null,
+          membershipStatus: "active",
           updatedAt: serverTimestamp(),
         },
         { merge: true }
       );
-      console.log("[createOrg] users/", currentUser.uid, "updated — organizationId:", orgId, "| role: admin | added to organizations array:", newOrgEntry);
+      console.log("[createOrg] users/", currentUser.uid, "updated — organizationId:", orgId, "| role: admin | membershipStatus: active");
     } catch (error) {
       console.error("[createOrg] user doc update FAILED", error);
       setCreateOrgError(`Could not update user profile: ${error.message}`);
@@ -433,6 +402,7 @@ function App() {
     setOrganizationId(orgId);
     setOrganizationName(name);
     setCurrentUserRole("admin");
+    setMembershipStatus("active");
     setCreateOrgName("");
     try {
       const { loadUserTasks } = await import("./services/taskService");
@@ -445,63 +415,26 @@ function App() {
     setCreateOrgLoading(false);
   };
 
-  const handleAcceptInvitation = async (invitation) => {
+  const handleAcceptMembership = async () => {
     try {
       setError("");
-      const newOrgEntry = {
-        organizationId: invitation.organizationId,
-        departmentId: invitation.departmentId || null,
-        role: invitation.role,
-        status: "activated",
-      };
-
-      const userUpdateData = {
-        organizations: arrayUnion(newOrgEntry),
+      await updateDoc(doc(db, "users", currentUser.uid), {
+        membershipStatus: "active",
         updatedAt: serverTimestamp(),
-      };
-      if (!organizationId) {
-        userUpdateData.organizationId = invitation.organizationId;
-        userUpdateData.role = invitation.role;
-      }
-      await setDoc(doc(db, "users", currentUser.uid), userUpdateData, { merge: true });
-      await acceptInvitation(invitation.id, currentUser.uid);
-
-      const remaining = pendingInvitations.filter((inv) => inv.id !== invitation.id);
-      setPendingInvitations(remaining);
-
-      if (!organizationId) {
-        setOrganizationId(invitation.organizationId);
-        setCurrentUserRole(invitation.role);
-        setActiveView("ALL_TASKS");
-      }
-      console.log("[invitation] accepted —", invitation.id, "| org:", invitation.organizationId, "| role:", invitation.role);
+      });
+      setMembershipStatus("active");
+      setActiveView("ALL_TASKS");
+      console.log("[membership] accepted — orgId:", organizationId, "| role:", currentUserRole);
     } catch (err) {
-      console.error("[invitation] accept FAILED:", err);
-      setError("Could not accept invitation: " + err.message);
-    }
-  };
-
-  const handleDeclineInvitation = async (invitation) => {
-    try {
-      setError("");
-      await declineInvitation(invitation.id, currentUser.uid);
-
-      const remaining = pendingInvitations.filter((inv) => inv.id !== invitation.id);
-      setPendingInvitations(remaining);
-
-      if (remaining.length === 0 && !organizationId) {
-        setActiveView("CREATE_ORG");
-      }
-      console.log("[invitation] declined —", invitation.id);
-    } catch (err) {
-      console.error("[invitation] decline FAILED:", err);
-      setError("Could not decline invitation: " + err.message);
+      console.error("[membership] accept FAILED:", err);
+      setError("Could not accept membership: " + err.message);
     }
   };
 
   const handleInviteUser = async (e) => {
     e.preventDefault();
-    if (!inviteEmail.trim()) {
+    const email = inviteEmail.trim().toLowerCase();
+    if (!email) {
       setInviteError("Please enter an email address.");
       return;
     }
@@ -510,24 +443,41 @@ function App() {
     setInviteSuccess("");
 
     try {
+      // Look up the user by email — they must have signed up already
+      const q = query(collection(db, "users"), where("email", "==", email));
+      const snap = await getDocs(q);
+      if (snap.empty) {
+        setInviteError("No account found with that email. The user must sign up first.");
+        setInviteLoading(false);
+        return;
+      }
+      const targetDoc = snap.docs[0];
+      const targetData = targetDoc.data();
+      if (targetData.membershipStatus === "active") {
+        setInviteError("This user already has an active organization.");
+        setInviteLoading(false);
+        return;
+      }
+
       const selectedDept = departments.find((d) => d.id === inviteDepartmentId);
-      await createInvitation({
+      await updateDoc(doc(db, "users", targetDoc.id), {
         organizationId,
-        departmentId: inviteDepartmentId || null,
-        departmentName: selectedDept?.name || null,
-        invitedEmail: inviteEmail.trim().toLowerCase(),
-        role: inviteRole,
-        invitedByUserId: currentUser.uid,
-        invitedByEmail: currentUser.email,
         organizationName: organizationName ?? null,
+        role: inviteRole,
+        departmentId: inviteDepartmentId || null,
+        departmentName: selectedDept?.name ?? null,
+        membershipStatus: "pending",
+        updatedAt: serverTimestamp(),
       });
-      setInviteSuccess(`Invitation sent to ${inviteEmail.trim().toLowerCase()}.`);
+
+      console.log("[invite] invited user:", email, "| org:", organizationId, "| role:", inviteRole);
+      setInviteSuccess(`${email} has been invited as ${inviteRole}.`);
       setInviteEmail("");
       setInviteRole("student");
       setInviteDepartmentId("");
     } catch (err) {
       console.error("[invite] FAILED:", err);
-      setInviteError("Could not send invitation: " + err.message);
+      setInviteError("Could not invite user: " + err.message);
     } finally {
       setInviteLoading(false);
     }
@@ -593,7 +543,7 @@ function App() {
   }, [organizationId]);
 
   useEffect(() => {
-    if (!organizationId) {
+    if (!organizationId || membershipStatus !== "active") {
       setDepartments([]);
       return;
     }
@@ -607,7 +557,7 @@ function App() {
       }
     };
     fetchDepartments();
-  }, [organizationId]);
+  }, [organizationId, membershipStatus]);
 
   useEffect(() => {
     const closeMenu = () => {
@@ -1825,7 +1775,7 @@ function App() {
           Calendar
         </button>
 
-        {currentUserRole === "admin" && organizationId && (
+        {currentUserRole === "admin" && organizationId && membershipStatus === "active" && (
           <button
             onClick={() => {
               setInviteError("");
@@ -1838,7 +1788,7 @@ function App() {
           </button>
         )}
 
-        {currentUserRole === "admin" && organizationId && (
+        {currentUserRole === "admin" && organizationId && membershipStatus === "active" && (
           <button
             onClick={() => {
               setDeptError("");
@@ -1847,15 +1797,6 @@ function App() {
             style={sidebarButtonStyle(activeView === "MANAGE_DEPARTMENTS")}
           >
             Departments
-          </button>
-        )}
-
-        {pendingInvitations.length > 0 && (
-          <button
-            onClick={() => setActiveView("PENDING_INVITATIONS")}
-            style={sidebarButtonStyle(activeView === "PENDING_INVITATIONS")}
-          >
-            My Invitations ({pendingInvitations.length})
           </button>
         )}
 
@@ -2384,8 +2325,8 @@ function App() {
               }}>
                 <p style={{ fontWeight: "600", marginBottom: "8px" }}>Are you a teacher or student?</p>
                 <p style={{ fontSize: "13px", color: "var(--text-soft)" }}>
-                  You need an invitation from your school admin. Once your admin invites your email,
-                  sign back in and you will see your invitations here to accept or decline.
+                  Ask your school admin to invite your account. Once they do, you will see an
+                  Accept button here the next time you sign in.
                 </p>
                 <button
                   className="main-btn"
@@ -2399,82 +2340,52 @@ function App() {
           </div>
         )}
 
-        {activeView === "PENDING_INVITATIONS" && (
+        {activeView === "PENDING_MEMBERSHIP" && (
           <div className="panel-card">
-            <h2>Pending Invitations</h2>
+            <h2>You have a pending invitation</h2>
             <p className="helper-text">
-              You have been invited to join an organization. Review each invitation below.
+              Your account has been invited to join an organization. Accept to get started.
             </p>
 
-            {pendingInvitations.length === 0 ? (
-              <div style={{ marginTop: "16px" }}>
-                <p style={{ color: "var(--text-soft)", fontSize: "14px" }}>
-                  No pending invitations.
-                </p>
-                {!organizationId && (
-                  <button
-                    className="main-btn"
-                    style={{ marginTop: "12px" }}
-                    onClick={() => setActiveView("CREATE_ORG")}
-                  >
-                    Create an organization instead
-                  </button>
-                )}
+            <div style={{
+              border: "1px solid var(--border)",
+              borderRadius: "10px",
+              padding: "24px",
+              background: "var(--bg-soft)",
+              maxWidth: "480px",
+              marginTop: "20px",
+            }}>
+              <p style={{ fontWeight: "600", marginBottom: "8px", fontSize: "16px" }}>
+                {organizationName || organizationId}
+              </p>
+              <p style={{ fontSize: "13px", color: "var(--text-soft)", marginBottom: "4px" }}>
+                Role: <strong style={{ color: "var(--text-main)", textTransform: "capitalize" }}>{currentUserRole}</strong>
+              </p>
+              {error && (
+                <p style={{ color: "#f87171", fontSize: "13px", marginTop: "8px" }}>{error}</p>
+              )}
+              <div style={{ display: "flex", gap: "10px", marginTop: "20px" }}>
+                <button className="main-btn" onClick={handleAcceptMembership}>
+                  Accept
+                </button>
+                <button
+                  className="main-btn"
+                  style={{ background: "var(--bg-soft)", border: "1px solid var(--border)" }}
+                  onClick={handleLogout}
+                >
+                  Sign out
+                </button>
               </div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: "16px", marginTop: "16px" }}>
-                {pendingInvitations.map((inv) => (
-                  <div
-                    key={inv.id}
-                    style={{
-                      border: "1px solid var(--border)",
-                      borderRadius: "10px",
-                      padding: "20px",
-                      background: "var(--bg-soft)",
-                    }}
-                  >
-                    <p style={{ fontWeight: "600", marginBottom: "6px", fontSize: "15px" }}>
-                      {inv.organizationName || inv.organizationId}
-                    </p>
-                    <p style={{ fontSize: "13px", color: "var(--text-soft)", marginBottom: "4px" }}>
-                      Role: <strong style={{ color: "var(--text-main)", textTransform: "capitalize" }}>{inv.role}</strong>
-                    </p>
-                    {inv.departmentName || inv.departmentId ? (
-                      <p style={{ fontSize: "13px", color: "var(--text-soft)", marginBottom: "4px" }}>
-                        Department: <strong style={{ color: "var(--text-main)" }}>{inv.departmentName || inv.departmentId}</strong>
-                      </p>
-                    ) : null}
-                    <p style={{ fontSize: "13px", color: "var(--text-soft)", marginBottom: "16px" }}>
-                      Invited by: {inv.invitedByEmail}
-                    </p>
-                    <div style={{ display: "flex", gap: "10px" }}>
-                      <button
-                        className="main-btn"
-                        onClick={() => handleAcceptInvitation(inv)}
-                      >
-                        Accept Invitation
-                      </button>
-                      <button
-                        className="main-btn"
-                        style={{ background: "var(--bg-soft)", border: "1px solid var(--border)" }}
-                        onClick={() => handleDeclineInvitation(inv)}
-                      >
-                        Decline Invitation
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+            </div>
           </div>
         )}
 
-        {activeView === "INVITE_USER" && currentUserRole === "admin" && (
+        {activeView === "INVITE_USER" && currentUserRole === "admin" && membershipStatus === "active" && (
           <div className="panel-card">
             <h2>Invite User</h2>
             <p className="helper-text">
-              Send an invitation to a teacher or student to join <strong>{organizationName}</strong>.
-              They will see it when they sign in and must accept it manually.
+              Invite a teacher or student to join <strong>{organizationName}</strong>.
+              The user must have already signed up. They will see an Accept button the next time they sign in.
             </p>
 
             <form onSubmit={handleInviteUser} style={{ maxWidth: "480px", display: "flex", flexDirection: "column", gap: "12px", marginTop: "16px" }}>
@@ -2548,7 +2459,7 @@ function App() {
           </div>
         )}
 
-        {activeView === "MANAGE_DEPARTMENTS" && currentUserRole === "admin" && (
+        {activeView === "MANAGE_DEPARTMENTS" && currentUserRole === "admin" && membershipStatus === "active" && (
           <div className="panel-card">
             <h2>Departments</h2>
             <p className="helper-text">

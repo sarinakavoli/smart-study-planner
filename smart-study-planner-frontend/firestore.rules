@@ -19,39 +19,88 @@ service cloud.firestore {
       return exists(/databases/$(database)/documents/users/$(request.auth.uid));
     }
 
-    // True if the signed-in user's active organizationId (from users/{uid}) matches orgId.
-    function hasActiveOrg(orgId) {
+    // True if the signed-in user is an active admin (any org).
+    // Used for operations where the requester's own org context is what matters.
+    function isActiveAdmin() {
       return signedIn()
         && userDocExists()
-        && getUserDoc().data.organizationId == orgId;
-    }
-
-    // True if the signed-in user is an activated admin of orgId.
-    // Relies on users/{uid}.role — a flat field always kept in sync with the active org entry.
-    function isActivatedAdmin(orgId) {
-      return hasActiveOrg(orgId)
+        && getUserDoc().data.membershipStatus == "active"
         && getUserDoc().data.role == "admin";
     }
 
-    // True if the signed-in user is an activated member of orgId (any role).
-    // Role must be one of admin / teacher / student and active org must match.
-    function isActivatedMember(orgId) {
-      return hasActiveOrg(orgId)
+    // True if the signed-in user is an active member of the given org.
+    function isActiveMember(orgId) {
+      return signedIn()
+        && userDocExists()
+        && getUserDoc().data.organizationId == orgId
+        && getUserDoc().data.membershipStatus == "active"
         && getUserDoc().data.role in ["admin", "teacher", "student"];
     }
 
+    // True if the signed-in user is an active admin of the given org.
+    function isActivatedAdmin(orgId) {
+      return isActiveMember(orgId)
+        && getUserDoc().data.role == "admin";
+    }
+
     // ── Users ─────────────────────────────────────────────────────────────────
-    // Membership and role data lives in users/{uid}.organizations array.
-    // No memberships, invitations, or userIndex collections are used for roles.
+    // users/{uid} is the single source of truth for membership.
+    //
+    // Fields controlled by the system / admin only:
+    //   organizationId, role, departmentId, membershipStatus (to "pending")
+    //
+    // Fields the user can change themselves:
+    //   membershipStatus: "pending" → "active" (accept)
+    //   displayName, email, updatedAt (profile refresh)
     match /users/{userId} {
-      allow read: if isSelf(userId);
 
+      // A user can always read their own document.
+      // An active admin can read any user document (needed for email lookup when inviting).
+      allow read: if isSelf(userId) || isActiveAdmin();
+
+      // A user can create their own document with membershipStatus: "not_invited".
       allow create: if isSelf(userId)
-        && request.resource.data.uid == request.auth.uid;
+        && request.resource.data.membershipStatus == "not_invited"
+        && request.resource.data.organizationId == null
+        && request.resource.data.role == null;
 
+      // Self-update: user can only change profile fields (displayName, email, updatedAt)
+      // OR accept a pending membership (flip membershipStatus from "pending" to "active").
+      // In both cases, organizationId / role / departmentId must not change.
       allow update: if isSelf(userId)
-        && resource.data.uid == request.auth.uid
-        && request.resource.data.uid == request.auth.uid;
+        && request.resource.data.organizationId == resource.data.organizationId
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.departmentId == resource.data.departmentId
+        && (
+          // Accept: membershipStatus pending → active only
+          (
+            resource.data.membershipStatus == "pending"
+            && request.resource.data.membershipStatus == "active"
+          )
+          ||
+          // Profile refresh / migration: membershipStatus stays the same
+          // (also covers first-time migration write of inferred membershipStatus)
+          (
+            request.resource.data.membershipStatus == resource.data.membershipStatus
+            || (!("membershipStatus" in resource.data) && request.resource.data.membershipStatus in ["active", "not_invited"])
+          )
+        );
+
+      // Admin invite: an active admin can update another user's document to invite them.
+      // The admin can only set:
+      //   organizationId = their own org
+      //   role = "teacher" or "student" (admins cannot be invited, they create orgs)
+      //   membershipStatus = "pending"
+      //   departmentId, organizationName, departmentName (optional metadata)
+      // The admin cannot change the invitee's email, displayName, or createdAt.
+      allow update: if signedIn()
+        && !isSelf(userId)
+        && isActiveAdmin()
+        && request.resource.data.organizationId == getUserDoc().data.organizationId
+        && request.resource.data.membershipStatus == "pending"
+        && request.resource.data.role in ["teacher", "student"]
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.createdAt == resource.data.createdAt;
 
       allow delete: if false;
     }
@@ -59,35 +108,26 @@ service cloud.firestore {
     // ── Organizations ─────────────────────────────────────────────────────────
     match /organizations/{organizationId} {
 
-      // Any signed-in user whose active org matches may read.
-      allow read: if signedIn() && hasActiveOrg(organizationId);
+      allow read: if isActiveMember(organizationId);
 
-      // A signed-in user may create an org document they own.
-      // The document must include:
-      //   id == the document ID
-      //   createdBy == the requesting user's UID
-      //   createdByEmail == the requesting user's email
       allow create: if signedIn()
         && request.resource.data.id == organizationId
         && request.resource.data.createdBy == request.auth.uid
         && request.resource.data.createdByEmail == request.auth.token.email;
 
-      // Active members may update their org document.
-      allow update: if signedIn() && hasActiveOrg(organizationId);
+      allow update: if isActivatedAdmin(organizationId);
 
-      // Only the org creator may delete.
-      allow delete: if signedIn()
-        && hasActiveOrg(organizationId)
+      allow delete: if isActivatedAdmin(organizationId)
         && getUserDoc().data.uid == resource.data.createdBy;
     }
 
     // ── Departments ───────────────────────────────────────────────────────────
-    // Read:   any activated member of the organization (admin, teacher, student).
-    // Write:  only activated admins of the organization.
+    // Read:   any active member of the organization (admin, teacher, student).
+    // Write:  only active admins of the organization.
     // Outside users cannot read or write.
     match /organizations/{organizationId}/departments/{departmentId} {
 
-      allow read: if isActivatedMember(organizationId);
+      allow read: if isActiveMember(organizationId);
 
       allow create: if isActivatedAdmin(organizationId)
         && request.resource.data.id == departmentId
@@ -98,33 +138,6 @@ service cloud.firestore {
       allow delete: if isActivatedAdmin(organizationId);
     }
 
-    // ── Invitations ────────────────────────────────────────────────────────────
-    match /invitations/{invitationId} {
-
-      // The invitee can read their own invitations; the inviter can read what they sent.
-      allow read: if signedIn()
-        && (
-          request.auth.token.email == resource.data.invitedEmail
-          || request.auth.uid == resource.data.invitedByUserId
-        );
-
-      // A signed-in user with an active org in the target organization may create invitations.
-      allow create: if signedIn()
-        && request.resource.data.invitedByUserId == request.auth.uid
-        && request.resource.data.invitedByEmail == request.auth.token.email
-        && hasActiveOrg(request.resource.data.organizationId);
-
-      // Only the invitee may update an invitation (to accept or decline).
-      allow update: if signedIn()
-        && request.auth.token.email == resource.data.invitedEmail
-        && (
-          request.resource.data.status == "accepted"
-          || request.resource.data.status == "declined"
-        );
-
-      allow delete: if false;
-    }
-
     // ── Tasks ─────────────────────────────────────────────────────────────────
     match /tasks/{taskId} {
 
@@ -132,7 +145,7 @@ service cloud.firestore {
         && (
           request.auth.uid == resource.data.userId
           || request.auth.uid == resource.data.assignedTo
-          || hasActiveOrg(resource.data.organizationId)
+          || isActiveMember(resource.data.organizationId)
         );
 
       allow create: if signedIn()
