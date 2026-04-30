@@ -62,7 +62,10 @@ export async function inviteUserByEmail({
   const targetData = targetDoc.data();
   console.log("[invite:diag] 5. target user doc id        :", targetDoc.id);
   console.log("[invite:diag] 6. target user doc data      :", JSON.stringify(targetData));
-  console.log("[invite:diag]    target.membershipStatus   :", targetData.membershipStatus, "| in ['not_invited','pending']:", ["not_invited", "pending"].includes(targetData.membershipStatus) ? "✓" : "✗ FAIL");
+  const msStatus = targetData.membershipStatus;
+  const msInDoc = "membershipStatus" in targetData;
+  const msOk = ["not_invited", "pending"].includes(msStatus) || !msInDoc;
+  console.log("[invite:diag]    target.membershipStatus   :", msStatus ?? "(field missing)", "| msInDoc:", msInDoc, "| rule passes:", msOk ? "✓" : "✗ FAIL — already active");
   console.log("[invite:diag]    target.email in doc       :", targetData.email, "| matches invite email:", targetData.email === email ? "✓" : "✗ MISMATCH");
 
   if (targetData.membershipStatus === "active") {

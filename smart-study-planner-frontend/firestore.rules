@@ -80,9 +80,13 @@ service cloud.firestore {
 
       // Admin invites a user: writes pending invite fields to target user's doc.
       // Target must not already be active. Role must be teacher or student.
+      // Also handles old-schema target docs that have no membershipStatus field.
       allow update: if isActiveAdmin()
         && !isSelf(userId)
-        && resource.data.membershipStatus in ["not_invited", "pending"]
+        && (
+          resource.data.membershipStatus in ["not_invited", "pending"]
+          || !("membershipStatus" in resource.data)
+        )
         && request.resource.data.membershipStatus == "pending"
         && request.resource.data.organizationId == getUserDoc().data.organizationId
         && request.resource.data.role in ["teacher", "student"]
