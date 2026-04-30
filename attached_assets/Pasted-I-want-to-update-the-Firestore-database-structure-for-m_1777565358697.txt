@@ -1,0 +1,174 @@
+I want to update the Firestore database structure for my Smart Study Planner app.
+
+Database location: nam5
+
+The `users` collection should be the main place where user membership/role information is stored.
+
+Please remove all app dependency on these collections:
+- memberships
+- userIndex
+- invitations
+
+The app should no longer create, read, update, or query those collections anywhere.
+
+After the code is updated, I will manually delete those collections from Firebase Console, but the app code must stop using them first.
+
+New Firestore structure:
+
+1. users/{uid}
+
+Each user document must contain:
+
+{
+  createdAt: serverTimestamp(),
+  displayName: authUser.displayName || null,
+  email: authUser.email,
+  organizationId: string | null,
+  organizations: [
+    {
+      organizationId: string,
+      role: "admin" | "teacher" | "student",
+      status: "activated"
+    }
+  ],
+  uid: authUser.uid,
+  updatedAt: serverTimestamp()
+}
+
+Important:
+- `users` is the main collection for user profile + organization access.
+- Keep the top-level `organizationId` field.
+- `organizationId` should represent the user’s current/default organization.
+- The `organizations` array stores every organization the user belongs to.
+- Each object inside `organizations` must contain:
+  - organizationId
+  - role
+  - status
+
+Example user document:
+
+{
+  createdAt: Timestamp,
+  displayName: null,
+  email: "sarinakavoli@icloud.com",
+  organizationId: "org_waterloou",
+  organizations: [
+    {
+      organizationId: "1234",
+      role: "admin",
+      status: "activated"
+    },
+    {
+      organizationId: "456",
+      role: "student",
+      status: "activated"
+    }
+  ],
+  uid: "AvU4OpeL5WO79GRp67C6JiJUYUY2",
+  updatedAt: Timestamp
+}
+
+Please use the spelling `organizationId`, not `organizatoinId`.
+
+2. organizations/{organizationId}
+
+The organizations collection should only contain information about the organization itself.
+
+Example organization document:
+
+{
+  createdAt: serverTimestamp(),
+  createdBy: authUser.uid,
+  createdByEmail: authUser.email,
+  id: "org_uot"
+}
+
+Do not store user membership data inside the organization document unless it is only basic organization metadata.
+
+Required app behavior:
+
+1. When a new user signs in:
+- Check if users/{uid} exists.
+- If it does not exist, create it with:
+  - createdAt
+  - displayName
+  - email
+  - organizationId: null
+  - organizations: []
+  - uid
+  - updatedAt
+- If it already exists, update only:
+  - displayName
+  - email
+  - updatedAt
+Do not overwrite the organizations array.
+
+2. When a user creates an organization:
+- Create a new document in organizations/{organizationId}.
+- Store only organization information there:
+  - createdAt
+  - createdBy
+  - createdByEmail
+  - id
+- Then update users/{uid}:
+  - set organizationId to the new organizationId
+  - add this object to the organizations array:
+
+{
+  organizationId: newOrganizationId,
+  role: "admin",
+  status: "activated"
+}
+
+3. When checking the user’s role:
+- Do not read from memberships anymore.
+- Read users/{uid}.
+- Use the top-level organizationId as the active organization.
+- Find the matching object inside users/{uid}.organizations where organization.organizationId === user.organizationId.
+- Use that object’s role and status.
+
+Example logic:
+
+const activeOrg = userDoc.organizationId;
+
+const membership = userDoc.organizations?.find(
+  (org) => org.organizationId === activeOrg
+);
+
+const role = membership?.role;
+const status = membership?.status;
+
+The user should only be treated as active in the organization if:
+
+status === "activated"
+
+4. Update all task/category logic:
+- Anywhere the app needs the current organization, use users/{uid}.organizationId.
+- Anywhere the app needs the current role, use the matching object in users/{uid}.organizations.
+- Do not query memberships.
+- Do not query invitations.
+- Do not query userIndex.
+
+5. Update Firestore security rules:
+- Remove rules for memberships, invitations, and userIndex.
+- Allow users to read/write their own users/{uid} document.
+- Allow organization access based on the user document.
+- Admin checks should be based on users/{uid}.organizations array and the active organizationId field.
+
+6. Search the whole project for these words and remove/replace their usage:
+- memberships
+- membership
+- invitations
+- invitation
+- userIndex
+
+Replace them with logic based on users/{uid}.organizations.
+
+7. After updating the code, add console logs so I can debug easily:
+- When users/{uid} is created
+- When users/{uid} is updated
+- When an organization is created
+- When organizationId is added to users/{uid}.organizations
+- When the app detects the user’s active organization, role, and status
+
+Please make sure the app creates this structure automatically for new users and does not recreate the old collections.
