@@ -26,6 +26,20 @@ service cloud.firestore {
         && getUserDoc().data.organizationId == orgId;
     }
 
+    // True if the signed-in user is an activated admin of orgId.
+    // Relies on users/{uid}.role — a flat field always kept in sync with the active org entry.
+    function isActivatedAdmin(orgId) {
+      return hasActiveOrg(orgId)
+        && getUserDoc().data.role == "admin";
+    }
+
+    // True if the signed-in user is an activated member of orgId (any role).
+    // Role must be one of admin / teacher / student and active org must match.
+    function isActivatedMember(orgId) {
+      return hasActiveOrg(orgId)
+        && getUserDoc().data.role in ["admin", "teacher", "student"];
+    }
+
     // ── Users ─────────────────────────────────────────────────────────────────
     // Membership and role data lives in users/{uid}.organizations array.
     // No memberships, invitations, or userIndex collections are used for roles.
@@ -68,20 +82,20 @@ service cloud.firestore {
     }
 
     // ── Departments ───────────────────────────────────────────────────────────
+    // Read:   any activated member of the organization (admin, teacher, student).
+    // Write:  only activated admins of the organization.
+    // Outside users cannot read or write.
     match /organizations/{organizationId}/departments/{departmentId} {
 
-      // Any active org member may read departments.
-      allow read: if signedIn() && hasActiveOrg(organizationId);
+      allow read: if isActivatedMember(organizationId);
 
-      // Active org members may create departments.
-      allow create: if signedIn()
-        && hasActiveOrg(organizationId)
+      allow create: if isActivatedAdmin(organizationId)
         && request.resource.data.id == departmentId
         && request.resource.data.createdBy == request.auth.uid;
 
-      allow update: if signedIn() && hasActiveOrg(organizationId);
+      allow update: if isActivatedAdmin(organizationId);
 
-      allow delete: if signedIn() && hasActiveOrg(organizationId);
+      allow delete: if isActivatedAdmin(organizationId);
     }
 
     // ── Invitations ────────────────────────────────────────────────────────────

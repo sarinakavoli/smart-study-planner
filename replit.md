@@ -171,6 +171,17 @@ The app uses a **school-org model**: one admin creates a school organization. No
 | teacher | ❌             | ❌          | ❌                    | ✅                 |
 | student | ❌             | ❌          | ❌                    | ✅                 |
 
+### User document flat role field
+
+`users/{uid}` stores two flat fields that mirror the active org entry for use in Firestore rules (which cannot filter arrays):
+
+| Field            | Value                              | Set when                         |
+|------------------|------------------------------------|----------------------------------|
+| `organizationId` | active org ID                      | org created or invitation accepted |
+| `role`           | `"admin"` \| `"teacher"` \| `"student"` | org created or invitation accepted |
+
+These allow rules like `getUserDoc().data.role == "admin"` without needing to search the `organizations` array.
+
 ### Login flow (onAuthStateChanged in App.jsx)
 
 1. Read `users/{uid}` to get existing data.

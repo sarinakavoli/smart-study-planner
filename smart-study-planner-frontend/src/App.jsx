@@ -416,12 +416,13 @@ function App() {
         doc(db, "users", currentUser.uid),
         {
           organizationId: orgId,
+          role: "admin",
           organizations: arrayUnion(newOrgEntry),
           updatedAt: serverTimestamp(),
         },
         { merge: true }
       );
-      console.log("[createOrg] users/", currentUser.uid, "updated — organizationId:", orgId, "| added to organizations array:", newOrgEntry);
+      console.log("[createOrg] users/", currentUser.uid, "updated — organizationId:", orgId, "| role: admin | added to organizations array:", newOrgEntry);
     } catch (error) {
       console.error("[createOrg] user doc update FAILED", error);
       setCreateOrgError(`Could not update user profile: ${error.message}`);
@@ -460,6 +461,7 @@ function App() {
       };
       if (!organizationId) {
         userUpdateData.organizationId = invitation.organizationId;
+        userUpdateData.role = invitation.role;
       }
       await setDoc(doc(db, "users", currentUser.uid), userUpdateData, { merge: true });
       await acceptInvitation(invitation.id, currentUser.uid);
