@@ -1,0 +1,55 @@
+Important correction: I do NOT want an invitations collection at all.
+
+Remove the invitation-collection design completely.
+
+My mentor wants membership/invite state to be stored directly on users/{uid}.
+
+Use this flow:
+
+1. Every signed-up user has a document in users/{uid}.
+2. A user with no organization has:
+   membershipStatus: "not_invited"
+   organizationId: null
+   role: null
+   departmentId: null
+
+3. When an active admin invites an existing user by email:
+   - Do NOT create anything in invitations collection.
+   - Find the existing user document by email.
+   - Update that user's users/{uid} document:
+     membershipStatus: "pending"
+     organizationId: admin.organizationId
+     organizationName: admin.organizationName or active organization name
+     role: selected role, only "teacher" or "student"
+     departmentId: selected department id or null
+     departmentName: selected department name or null
+     invitedBy: currentUser.uid
+     invitedByEmail: currentUser.email
+     invitedAt: serverTimestamp()
+
+4. When the invited user logs in:
+   - If users/{uid}.membershipStatus === "pending", show the Accept Membership button.
+   - Show organizationName, role, departmentName, invitedByEmail from the user document.
+
+5. When the user clicks Accept:
+   - Update only their own users/{uid} document:
+     membershipStatus: "active"
+     acceptedAt: serverTimestamp()
+
+6. Remove all code that writes to or reads from:
+   collection(db, "invitations")
+
+7. Remove the invitations Firestore rule completely if it was added.
+
+8. Update firestore.rules to support only the users/{uid} invitation flow:
+   - active admin can update another user's document to set membershipStatus to "pending"
+   - invited user can update their own membershipStatus from "pending" to "active"
+   - no invitations collection should be required
+
+9. Also delete or ignore the old invitations collection from Firestore after the app no longer uses it.
+
+Please implement this consistently across:
+- invitationService.js
+- membershipService.js
+- App.jsx
+- firestore.rules

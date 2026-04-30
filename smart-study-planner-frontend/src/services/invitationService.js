@@ -2,92 +2,85 @@ import {
   collection,
   getDocs,
   doc,
-  setDoc,
   updateDoc,
   query,
   where,
   serverTimestamp,
 } from "firebase/firestore";
 import { db } from "../firebase";
-import { generateInviteId } from "../utils/firestoreIds";
 
 /**
- * Creates a pending invitation document in invitations/{inviteId}.
+ * Invites an existing user by writing invite fields directly to their users/{uid} document.
+ * No invitations collection is used.
  *
- * Fields written (must match firestore.rules exactly):
- *   email, role, organizationId, organizationName,
- *   departmentId, departmentName, status: "pending",
- *   createdBy, createdByEmail, createdAt, updatedAt
+ * Fields written to the target user's doc:
+ *   membershipStatus: "pending"
+ *   organizationId, organizationName, role, departmentId, departmentName
+ *   invitedBy, invitedByEmail, invitedAt, updatedAt
  *
- * @returns {Promise<string>} the new invitation document ID
+ * @returns {Promise<string>} the target user's UID
  */
-export async function createInvitation({
-  organizationId,
-  organizationName = null,
+export async function inviteUserByEmail({
+  adminUid,
+  adminEmail,
+  adminOrgId,
+  adminOrgName,
+  inviteeEmail,
+  role,
   departmentId = null,
   departmentName = null,
-  invitedEmail,
-  role,
-  invitedByUserId,
-  invitedByEmail,
 }) {
-  const email = invitedEmail.trim().toLowerCase();
-  const inviteId = generateInviteId(organizationId, email);
+  const email = inviteeEmail.trim().toLowerCase();
 
-  const inviteData = {
-    id: inviteId,
-    email,
+  const q = query(collection(db, "users"), where("email", "==", email));
+  const snapshot = await getDocs(q);
+
+  if (snapshot.empty) {
+    throw new Error("No account found with that email. The user must sign up first.");
+  }
+
+  const targetDoc = snapshot.docs[0];
+  const targetData = targetDoc.data();
+
+  if (targetData.membershipStatus === "active") {
+    throw new Error("This user already belongs to an organization.");
+  }
+
+  const inviteFields = {
+    membershipStatus: "pending",
+    organizationId: adminOrgId,
+    organizationName: adminOrgName ?? null,
     role,
-    organizationId,
-    organizationName: organizationName ?? null,
     departmentId: departmentId ?? null,
     departmentName: departmentName ?? null,
-    status: "pending",
-    createdBy: invitedByUserId,
-    createdByEmail: invitedByEmail,
-    createdAt: serverTimestamp(),
+    invitedBy: adminUid,
+    invitedByEmail: adminEmail,
+    invitedAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
 
-  console.log("[invitationService] createInvitation — writing to invitations/", inviteId, ":", {
-    ...inviteData,
-    createdAt: "(serverTimestamp)",
-    updatedAt: "(serverTimestamp)",
-  });
-
-  await setDoc(doc(db, "invitations", inviteId), inviteData);
-  return inviteId;
-}
-
-/**
- * Returns all pending invitations addressed to a given email.
- * Queries by email only (no composite index needed) and filters status in code.
- *
- * @param {string} email
- * @returns {Promise<Array>}
- */
-export async function getPendingInvitationsForEmail(email) {
-  const normalizedEmail = email.trim().toLowerCase();
-  const q = query(
-    collection(db, "invitations"),
-    where("email", "==", normalizedEmail)
+  console.log(
+    "[invitationService] inviteUserByEmail — writing to users/",
+    targetDoc.id,
+    ":",
+    { ...inviteFields, invitedAt: "(serverTimestamp)", updatedAt: "(serverTimestamp)" }
   );
-  const snapshot = await getDocs(q);
-  const all = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-  return all.filter((inv) => inv.status === "pending");
+
+  await updateDoc(doc(db, "users", targetDoc.id), inviteFields);
+  return targetDoc.id;
 }
 
 /**
- * Marks an invitation as accepted.
- * Only updates status, acceptedAt, and updatedAt — no other fields change
- * (required by firestore.rules).
+ * Accepts a pending membership invitation.
+ * Only writes membershipStatus: "active" + timestamps to the user's own doc.
+ * All org fields (organizationId, role, etc.) were already set by the admin.
  *
- * @param {string} invitationId
+ * @param {string} uid  The accepting user's UID
  */
-export async function acceptInvitation(invitationId) {
-  console.log("[invitationService] acceptInvitation — marking accepted:", invitationId);
-  await updateDoc(doc(db, "invitations", invitationId), {
-    status: "accepted",
+export async function acceptMembership(uid) {
+  console.log("[invitationService] acceptMembership — writing to users/", uid);
+  await updateDoc(doc(db, "users", uid), {
+    membershipStatus: "active",
     acceptedAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });

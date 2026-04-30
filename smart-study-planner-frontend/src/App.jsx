@@ -34,9 +34,8 @@ import { onAuthStateChanged, signOut } from "firebase/auth";
 import { db, auth, storage } from "./firebase";
 import { loadOrgTasksForCurrentUser, loadUserTasks } from "./services/taskService";
 import {
-  createInvitation,
-  getPendingInvitationsForEmail,
-  acceptInvitation,
+  inviteUserByEmail,
+  acceptMembership,
 } from "./services/invitationService";
 
 function App() {
@@ -67,7 +66,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
   const [membershipStatus, setMembershipStatus] = useState(null);
-  const [pendingInvitation, setPendingInvitation] = useState(null);
+  const [pendingMembership, setPendingMembership] = useState(null);
   const [departments, setDepartments] = useState([]);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("student");
@@ -201,19 +200,20 @@ function App() {
           }
         }
 
-        // ── Step 2.5: load pending invitation for non-active users ───────────────
-        let invitation = null;
-        if (resolvedStatus !== "active") {
-          try {
-            const invites = await getPendingInvitationsForEmail(firebaseUser.email);
-            console.log("[auth] pending invitations found:", invites.length);
-            if (invites.length > 0) {
-              invitation = invites[0];
-              console.log("[auth] invitation —", invitation.id, "| org:", invitation.organizationId, "| role:", invitation.role);
-            }
-          } catch (err) {
-            console.error("[auth] Step 2.5 FAILED:", err.code, err.message);
-          }
+        // ── Step 2.5: detect pending membership from own user doc ────────────
+        // Invitation state is stored directly on users/{uid} — no invitations collection.
+        let pendingMembershipData = null;
+        if (resolvedStatus === "pending" && existingData) {
+          pendingMembershipData = {
+            organizationId: existingData.organizationId ?? null,
+            organizationName: existingData.organizationName ?? null,
+            role: existingData.role ?? null,
+            departmentId: existingData.departmentId ?? null,
+            departmentName: existingData.departmentName ?? null,
+            invitedBy: existingData.invitedBy ?? null,
+            invitedByEmail: existingData.invitedByEmail ?? null,
+          };
+          console.log("[auth] pending membership detected — org:", pendingMembershipData.organizationId, "| role:", pendingMembershipData.role, "| invitedBy:", pendingMembershipData.invitedByEmail);
         }
 
         // ── Step 4: set state and route ───────────────────────────────────────
@@ -223,13 +223,13 @@ function App() {
         if (resolvedOrgName) {
           setOrganizationName(resolvedOrgName);
         }
-        if (invitation) {
-          setPendingInvitation(invitation);
+        if (pendingMembershipData) {
+          setPendingMembership(pendingMembershipData);
         }
 
         if (resolvedStatus === "active") {
           setActiveView("ALL_TASKS");
-        } else if (invitation) {
+        } else if (resolvedStatus === "pending") {
           setActiveView("PENDING_MEMBERSHIP");
         } else {
           setActiveView("CREATE_ORG");
@@ -240,7 +240,7 @@ function App() {
         setOrganizationName(null);
         setCurrentUserRole(null);
         setMembershipStatus(null);
-        setPendingInvitation(null);
+        setPendingMembership(null);
       }
       setCurrentUser(firebaseUser ?? null);
       setAuthLoading(false);
@@ -441,32 +441,20 @@ function App() {
   };
 
   const handleAcceptMembership = async () => {
-    if (!pendingInvitation) return;
+    if (!pendingMembership) return;
     try {
       setError("");
-      // Step 1: mark the invitation as accepted
-      await acceptInvitation(pendingInvitation.id);
+      // Flip own membershipStatus from "pending" → "active".
+      // All org fields (organizationId, role, etc.) were already written by the admin.
+      await acceptMembership(currentUser.uid);
 
-      // Step 2: update users/{uid} with org fields from the invitation
-      const userUpdateData = {
-        organizationId: pendingInvitation.organizationId,
-        organizationName: pendingInvitation.organizationName ?? null,
-        role: pendingInvitation.role,
-        departmentId: pendingInvitation.departmentId ?? null,
-        departmentName: pendingInvitation.departmentName ?? null,
-        membershipStatus: "active",
-        updatedAt: serverTimestamp(),
-      };
-      console.log("[membership] accepting invitation:", pendingInvitation.id, "| writing to users/", currentUser.uid, ":", userUpdateData);
-      await updateDoc(doc(db, "users", currentUser.uid), userUpdateData);
-
-      setOrganizationId(pendingInvitation.organizationId);
-      setOrganizationName(pendingInvitation.organizationName ?? null);
-      setCurrentUserRole(pendingInvitation.role);
+      setOrganizationId(pendingMembership.organizationId);
+      setOrganizationName(pendingMembership.organizationName ?? null);
+      setCurrentUserRole(pendingMembership.role);
       setMembershipStatus("active");
-      setPendingInvitation(null);
+      setPendingMembership(null);
       setActiveView("ALL_TASKS");
-      console.log("[membership] accepted — orgId:", pendingInvitation.organizationId, "| role:", pendingInvitation.role);
+      console.log("[membership] accepted — orgId:", pendingMembership.organizationId, "| role:", pendingMembership.role);
     } catch (err) {
       console.error("[membership] accept FAILED:", err);
       setError("Could not accept invitation: " + err.message);
@@ -485,72 +473,19 @@ function App() {
     setInviteSuccess("");
 
     try {
-      // ── Diagnostic: read current admin user's Firestore doc ─────────────────
-      const adminDocSnap = await getDoc(doc(db, "users", currentUser.uid));
-      const adminDocData = adminDocSnap.exists() ? adminDocSnap.data() : null;
-      console.log("[invite:diag] 1. currentUser.uid          :", currentUser.uid);
-      console.log("[invite:diag] 2. currentUser.email        :", currentUser.email);
-      console.log("[invite:diag] 3. users/{uid} doc          :", JSON.stringify(adminDocData));
-      console.log("[invite:diag] 4. activeOrganizationId     :", organizationId);
-      console.log("[invite:diag] 5. selected role            :", inviteRole);
-      console.log("[invite:diag] 6. selected departmentId    :", inviteDepartmentId || "(none)");
-
-      // ── Verify the invitee already has an account ────────────────────────────
-      const q = query(collection(db, "users"), where("email", "==", email));
-      const snap = await getDocs(q);
-      const inviteeExists = !snap.empty;
-      const inviteeData = inviteeExists ? snap.docs[0].data() : null;
-      console.log("[invite:diag]    invitee email            :", email);
-      console.log("[invite:diag]    invitee has users doc    :", inviteeExists);
-      console.log("[invite:diag]    invitee doc data         :", inviteeExists ? JSON.stringify(inviteeData) : "(no doc)");
-
-      if (!inviteeExists) {
-        setInviteError("No account found with that email. The user must sign up first.");
-        setInviteLoading(false);
-        return;
-      }
-      if (inviteeData.membershipStatus === "active") {
-        setInviteError("This user already belongs to an organization.");
-        setInviteLoading(false);
-        return;
-      }
-
       const selectedDept = departments.find((d) => d.id === inviteDepartmentId);
-      const { generateInviteId } = await import("./utils/firestoreIds");
-      const previewInviteId = generateInviteId(organizationId, email);
-      const previewInviteData = {
-        id: previewInviteId,
-        email,
+      const targetUid = await inviteUserByEmail({
+        adminUid: currentUser.uid,
+        adminEmail: currentUser.email,
+        adminOrgId: organizationId,
+        adminOrgName: organizationName ?? null,
+        inviteeEmail: email,
         role: inviteRole,
-        organizationId,
-        organizationName: organizationName ?? null,
         departmentId: inviteDepartmentId || null,
         departmentName: selectedDept?.name ?? null,
-        status: "pending",
-        createdBy: currentUser.uid,
-        createdByEmail: currentUser.email,
-      };
-      console.log("[invite:diag] 7. invitation doc path      :", `invitations/${previewInviteId}`);
-      console.log("[invite:diag] 8. invitation doc data      :", JSON.stringify(previewInviteData));
-      console.log("[invite:diag]    isActiveAdmin check deps :", {
-        role: adminDocData?.role,
-        organizationId: adminDocData?.organizationId,
-        membershipStatus: adminDocData?.membershipStatus ?? "(field missing)",
-        membershipStatusInDoc: adminDocData ? "membershipStatus" in adminDocData : false,
       });
 
-      const inviteId = await createInvitation({
-        organizationId,
-        organizationName: organizationName ?? null,
-        departmentId: inviteDepartmentId || null,
-        departmentName: selectedDept?.name ?? null,
-        invitedEmail: email,
-        role: inviteRole,
-        invitedByUserId: currentUser.uid,
-        invitedByEmail: currentUser.email,
-      });
-
-      console.log("[invite] created invitation:", inviteId, "| email:", email, "| org:", organizationId, "| role:", inviteRole);
+      console.log("[invite] wrote pending invite to users/", targetUid, "| email:", email, "| org:", organizationId, "| role:", inviteRole);
       setInviteSuccess(`${email} has been invited as ${inviteRole}.`);
       setInviteEmail("");
       setInviteRole("student");
@@ -2420,7 +2355,7 @@ function App() {
           </div>
         )}
 
-        {activeView === "PENDING_MEMBERSHIP" && pendingInvitation && (
+        {activeView === "PENDING_MEMBERSHIP" && pendingMembership && (
           <div className="panel-card">
             <h2>You have a pending invitation</h2>
             <p className="helper-text">
@@ -2436,18 +2371,18 @@ function App() {
               marginTop: "20px",
             }}>
               <p style={{ fontWeight: "600", marginBottom: "8px", fontSize: "16px" }}>
-                {pendingInvitation.organizationName || pendingInvitation.organizationId}
+                {pendingMembership.organizationName || pendingMembership.organizationId}
               </p>
               <p style={{ fontSize: "13px", color: "var(--text-soft)", marginBottom: "4px" }}>
-                Role: <strong style={{ color: "var(--text-main)", textTransform: "capitalize" }}>{pendingInvitation.role}</strong>
+                Role: <strong style={{ color: "var(--text-main)", textTransform: "capitalize" }}>{pendingMembership.role}</strong>
               </p>
-              {pendingInvitation.departmentName && (
+              {pendingMembership.departmentName && (
                 <p style={{ fontSize: "13px", color: "var(--text-soft)", marginBottom: "4px" }}>
-                  Department: <strong style={{ color: "var(--text-main)" }}>{pendingInvitation.departmentName}</strong>
+                  Department: <strong style={{ color: "var(--text-main)" }}>{pendingMembership.departmentName}</strong>
                 </p>
               )}
               <p style={{ fontSize: "13px", color: "var(--text-soft)", marginBottom: "4px" }}>
-                Invited by: <strong style={{ color: "var(--text-main)" }}>{pendingInvitation.createdByEmail}</strong>
+                Invited by: <strong style={{ color: "var(--text-main)" }}>{pendingMembership.invitedByEmail}</strong>
               </p>
               {error && (
                 <p style={{ color: "#f87171", fontSize: "13px", marginTop: "8px" }}>{error}</p>

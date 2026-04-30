@@ -19,10 +19,8 @@ service cloud.firestore {
       return exists(/databases/$(database)/documents/users/$(request.auth.uid));
     }
 
-    // Recognises active admins.
-    // Handles both:
-    //   - New schema: membershipStatus == "active" && role == "admin"
-    //   - Old/migration schema: no membershipStatus field yet, but organizationId + role == "admin" are set
+    // Active admin: role == "admin" and either membershipStatus == "active" OR
+    // the old schema (no membershipStatus field yet but organizationId is set).
     function isActiveAdmin() {
       return signedIn()
         && userDocExists()
@@ -34,8 +32,7 @@ service cloud.firestore {
         );
     }
 
-    // Recognises active members of a given org.
-    // Same dual-schema handling as isActiveAdmin().
+    // Active member of a given org (same dual-schema handling as isActiveAdmin).
     function isActiveMember(orgId) {
       return signedIn()
         && userDocExists()
@@ -55,6 +52,7 @@ service cloud.firestore {
     // ── Users ──────────────────────────────────────────────────────────────────
     match /users/{userId} {
 
+      // Users read their own doc. Active admins can read any user doc (for invite lookup).
       allow read: if isSelf(userId) || isActiveAdmin();
 
       // Brand-new user doc created on first sign-in.
@@ -63,9 +61,8 @@ service cloud.firestore {
         && request.resource.data.organizationId == null
         && request.resource.data.role == null;
 
-      // Profile refresh (display name, email, updatedAt only).
-      // Structural fields (organizationId, role, departmentId) must not change.
-      // membershipStatus must not change (separate rules below handle those transitions).
+      // Profile refresh: display name, email, updatedAt only.
+      // Structural fields must not change.
       allow update: if isSelf(userId)
         && request.resource.data.organizationId == resource.data.organizationId
         && request.resource.data.role == resource.data.role
@@ -74,52 +71,39 @@ service cloud.firestore {
         && request.resource.data.email == resource.data.email
         && request.resource.data.createdAt == resource.data.createdAt;
 
-      // Migration: write flat membershipStatus / role for users created under the old
-      // schema (organizations array, no membershipStatus field).
-      // Allowed only when membershipStatus has never been set on the doc.
-      // organizationId and email must not change.
+      // Migration: write flat membershipStatus / role for users created under the
+      // old schema (organizations array, no membershipStatus field on the doc yet).
       allow update: if isSelf(userId)
         && !("membershipStatus" in resource.data)
         && request.resource.data.organizationId == resource.data.organizationId
         && request.resource.data.email == resource.data.email;
 
-      // Accept invitation OR create org:
-      // User transitions from non-active to active (sets org fields from invitation).
+      // Admin invites a user: writes pending invite fields to target user's doc.
+      // Target must not already be active. Role must be teacher or student.
+      allow update: if isActiveAdmin()
+        && !isSelf(userId)
+        && resource.data.membershipStatus in ["not_invited", "pending"]
+        && request.resource.data.membershipStatus == "pending"
+        && request.resource.data.organizationId == getUserDoc().data.organizationId
+        && request.resource.data.role in ["teacher", "student"]
+        && request.resource.data.email == resource.data.email;
+
+      // Invited user accepts: flips own doc from "pending" → "active".
+      // Org fields do not change (they were already written by the admin).
       allow update: if isSelf(userId)
-        && resource.data.membershipStatus != "active"
+        && resource.data.membershipStatus == "pending"
+        && request.resource.data.membershipStatus == "active"
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.organizationId == resource.data.organizationId;
+
+      // Create org: user creates their own org, transitions from "not_invited" → "active".
+      // Email and createdAt must not change; role must be valid.
+      allow update: if isSelf(userId)
+        && resource.data.membershipStatus == "not_invited"
         && request.resource.data.membershipStatus == "active"
         && request.resource.data.email == resource.data.email
         && request.resource.data.createdAt == resource.data.createdAt
         && request.resource.data.role in ["admin", "teacher", "student"];
-
-      allow delete: if false;
-    }
-
-    // ── Invitations ────────────────────────────────────────────────────────────
-    match /invitations/{invitationId} {
-
-      // Active admin creates an invitation for their own org only.
-      allow create: if isActiveAdmin()
-        && request.resource.data.organizationId == getUserDoc().data.organizationId
-        && request.resource.data.status == "pending"
-        && request.resource.data.role in ["teacher", "student"]
-        && request.resource.data.createdBy == request.auth.uid
-        && request.resource.data.createdByEmail == request.auth.token.email;
-
-      // Invited user reads their own invitations (by email).
-      // Active admin reads invitations for their own org.
-      allow read: if (signedIn() && resource.data.email == request.auth.token.email)
-        || (isActiveAdmin() && resource.data.organizationId == getUserDoc().data.organizationId);
-
-      // Invited user accepts their own pending invitation (status: pending -> accepted).
-      // No other fields may change.
-      allow update: if signedIn()
-        && resource.data.email == request.auth.token.email
-        && resource.data.status == "pending"
-        && request.resource.data.status == "accepted"
-        && request.resource.data.email == resource.data.email
-        && request.resource.data.organizationId == resource.data.organizationId
-        && request.resource.data.role == resource.data.role;
 
       allow delete: if false;
     }
