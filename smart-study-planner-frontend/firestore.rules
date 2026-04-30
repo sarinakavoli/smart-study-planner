@@ -50,7 +50,7 @@ service cloud.firestore {
     //   organizationId, role, departmentId, membershipStatus (to "pending")
     //
     // Fields the user can change themselves:
-    //   membershipStatus: "pending" → "active" (accept)
+    //   membershipStatus: "pending" -> "active" (accept)
     //   displayName, email, updatedAt (profile refresh)
     match /users/{userId} {
 
@@ -72,7 +72,7 @@ service cloud.firestore {
         && request.resource.data.role == resource.data.role
         && request.resource.data.departmentId == resource.data.departmentId
         && (
-          // Accept: membershipStatus pending → active only
+          // Accept: membershipStatus pending -> active only
           (
             resource.data.membershipStatus == "pending"
             && request.resource.data.membershipStatus == "active"
