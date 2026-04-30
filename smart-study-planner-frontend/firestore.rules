@@ -19,7 +19,7 @@ service cloud.firestore {
       return exists(/databases/$(database)/documents/users/$(request.auth.uid));
     }
 
-    // Returns true if the signed-in user's active organizationId matches orgId.
+    // True if the signed-in user's active organizationId (from users/{uid}) matches orgId.
     function hasActiveOrg(orgId) {
       return signedIn()
         && userDocExists()
@@ -27,6 +27,8 @@ service cloud.firestore {
     }
 
     // ── Users ─────────────────────────────────────────────────────────────────
+    // Membership and role data lives in users/{uid}.organizations array.
+    // No memberships, invitations, or userIndex collections are used.
     match /users/{userId} {
       allow read: if isSelf(userId);
 
@@ -47,8 +49,14 @@ service cloud.firestore {
       allow read: if signedIn() && hasActiveOrg(organizationId);
 
       // A signed-in user may create an org they own.
+      // The document must include:
+      //   id == the document ID
+      //   createdBy == the requesting user's UID
+      //   createdByEmail == the requesting user's email
       allow create: if signedIn()
-        && request.resource.data.createdBy == request.auth.uid;
+        && request.resource.data.id == organizationId
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdByEmail == request.auth.token.email;
 
       // Active members may update their org document.
       allow update: if signedIn() && hasActiveOrg(organizationId);
