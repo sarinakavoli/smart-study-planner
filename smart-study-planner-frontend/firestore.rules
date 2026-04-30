@@ -7,35 +7,23 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function userEmail() {
-      return request.auth.token.email;
-    }
-
     function isSelf(userId) {
       return signedIn() && request.auth.uid == userId;
     }
 
-    // Membership document ID format: <organizationId>_<email.toLowerCase()>
-    // e.g. "org_waterloou_sarinakavoli@icloud.com"
-    //
-    // @ and . are valid Firestore document ID characters, so the raw lowercase
-    // email is used directly — no slugification required.
-    //
-    // request.auth.token.email.lower() is supported in Firestore Security Rules
-    // and produces the same value as email.trim().toLowerCase() in the client app.
-    function membershipPath(orgId) {
-      return /databases/$(database)/documents/memberships/$(orgId + "_" + request.auth.token.email.lower());
+    function getUserDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
     }
 
-    function hasActiveMembership(orgId) {
-      return signedIn() && exists(membershipPath(orgId));
+    function userDocExists() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid));
     }
 
-    function isAdminOfOrg(orgId) {
+    // Returns true if the signed-in user's active organizationId matches orgId.
+    function hasActiveOrg(orgId) {
       return signedIn()
-        && exists(membershipPath(orgId))
-        && get(membershipPath(orgId)).data.role == "admin"
-        && get(membershipPath(orgId)).data.status == "active";
+        && userDocExists()
+        && getUserDoc().data.organizationId == orgId;
     }
 
     // ── Users ─────────────────────────────────────────────────────────────────
@@ -52,131 +40,33 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // ── UserIndex (debug only) ────────────────────────────────────────────────
-    match /userIndex/{readableUserId} {
-      allow read: if signedIn()
-        && request.auth.uid == resource.data.uid;
-
-      allow create: if signedIn()
-        && request.auth.uid == request.resource.data.uid;
-
-      allow update: if signedIn()
-        && request.auth.uid == resource.data.uid
-        && request.auth.uid == request.resource.data.uid;
-
-      allow delete: if false;
-    }
-
     // ── Organizations ─────────────────────────────────────────────────────────
     match /organizations/{organizationId} {
 
-      // Any signed-in member may read their org.
-      allow read: if signedIn();
+      // Any signed-in user whose active org matches may read.
+      allow read: if signedIn() && hasActiveOrg(organizationId);
 
       // A signed-in user may create an org they own.
       allow create: if signedIn()
-        && request.resource.data.createdBy == request.auth.uid
-        && request.resource.data.createdByEmail == userEmail()
-        && request.resource.data.source == "create_org_form"
-        && request.resource.data.schemaVersion == 2;
+        && request.resource.data.createdBy == request.auth.uid;
 
-      // Admins may update any org settings.
-      // Active members may update the org document to add themselves to member
-      // arrays (memberIds, memberEmails, membersSummary) and remove their email
-      // from pendingInviteEmails when accepting an invitation.
-      allow update: if isAdminOfOrg(organizationId)
-        || hasActiveMembership(organizationId);
+      // Active members may update their org document.
+      allow update: if signedIn() && hasActiveOrg(organizationId);
 
-      // Only active admins may delete their org.
-      allow delete: if isAdminOfOrg(organizationId);
-    }
-
-    // ── Memberships ───────────────────────────────────────────────────────────
-    //
-    // Document ID: <organizationId>_<email.toLowerCase()>
-    // e.g. "org_waterloou_sarinakavoli@icloud.com"
-    //
-    // The human-readable slug is stored in the readableId field:
-    // e.g. "mbr_waterloou_admin_sarinakavoli_icloud_com"
-    //
-    match /memberships/{membershipId} {
-
-      allow read: if signedIn()
-        && (
-          request.auth.uid == resource.data.userId
-          || isAdminOfOrg(resource.data.organizationId)
-        );
-
-      // ── Path 1: org creator creating their own admin membership ───────────
-      allow create: if signedIn()
-        && request.resource.data.userId == request.auth.uid
-        && request.resource.data.email == userEmail()
-        && request.resource.data.role == "admin"
-        && request.resource.data.status == "active"
-        && request.resource.data.source == "create_org_form"
-        && request.resource.data.schemaVersion == 2;
-
-      // ── Path 2: invited user creating their own membership ────────────────
-      allow create: if signedIn()
-        && request.resource.data.userId == request.auth.uid
-        && request.resource.data.email == userEmail()
-        && request.resource.data.status == "active"
-        && request.resource.data.source == "invitation"
-        && request.resource.data.schemaVersion == 2
-        && request.resource.data.invitationId != null
-        && get(/databases/$(database)/documents/invitations/$(request.resource.data.invitationId)).data.invitedEmail == userEmail()
-        && get(/databases/$(database)/documents/invitations/$(request.resource.data.invitationId)).data.organizationId == request.resource.data.organizationId
-        && get(/databases/$(database)/documents/invitations/$(request.resource.data.invitationId)).data.role == request.resource.data.role;
-
-      allow update: if false;
-      allow delete: if false;
-    }
-
-    // ── Invitations ───────────────────────────────────────────────────────────
-    match /invitations/{inviteId} {
-
-      allow read: if signedIn()
-        && (
-          request.auth.token.email == resource.data.email
-          || request.auth.token.email == resource.data.invitedEmail
-          || isAdminOfOrg(resource.data.organizationId)
-        );
-
-      // Only active admins of the target org may create invitations.
-      // Membership document ID format is: <organizationId>_<userId>
-      // so isAdminOfOrg constructs: orgId + "_" + request.auth.uid
-      allow create: if signedIn()
-        && isAdminOfOrg(request.resource.data.organizationId)
-        && request.resource.data.invitedByUserId == request.auth.uid
-        && request.resource.data.invitedByEmail == userEmail()
-        && request.resource.data.status == "pending"
-        && request.resource.data.source == "admin_invite"
-        && request.resource.data.schemaVersion == 2;
-
-      // Only the invited email address may accept or decline.
-      allow update: if signedIn()
-        && (
-          request.auth.token.email == resource.data.email
-          || request.auth.token.email == resource.data.invitedEmail
-        );
-
-      allow delete: if false;
+      // Only the org creator may delete.
+      allow delete: if signedIn()
+        && hasActiveOrg(organizationId)
+        && getUserDoc().data.uid == resource.data.createdBy;
     }
 
     // ── Tasks ─────────────────────────────────────────────────────────────────
     match /tasks/{taskId} {
 
-      // A signed-in user may read a task if:
-      //   1. they created it (userId), OR
-      //   2. it is assigned to them (assignedTo), OR
-      //   3. they are an active member of the task's organization.
-      // Condition 3 is what allows org-scoped queries that filter by assignedTo
-      // across all tasks in an organization (e.g. loadOrgTasksForCurrentUser).
       allow read: if signedIn()
         && (
           request.auth.uid == resource.data.userId
           || request.auth.uid == resource.data.assignedTo
-          || hasActiveMembership(resource.data.organizationId)
+          || hasActiveOrg(resource.data.organizationId)
         );
 
       allow create: if signedIn()

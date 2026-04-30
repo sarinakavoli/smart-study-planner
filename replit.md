@@ -95,104 +95,67 @@ since there is no other source for it. On the first request the backend log will
 
 ## School Organization & Membership Model
 
-The app uses a **school-org model**: one admin creates a school organization, then invites teachers and students. Invited users auto-join on their next login. No organization is auto-created for every new user.
+The app uses a **school-org model**: one admin creates a school organization. No organization is auto-created for every new user. The `users/{uid}` document is the single source of truth for both user profile and organization membership.
+
+> **Removed collections**: `memberships`, `invitations`, and `userIndex` are no longer used.
+> The app no longer reads from or writes to those collections.
+
+### Users collection (`users/{uid}`)
+
+```
+  uid:            Firebase Auth UID
+  email:          user's email
+  displayName:    display name (or null)
+  organizationId: active/default organization ID (or null)
+  organizations:  [
+    {
+      organizationId: string,
+      role:           "admin" | "teacher" | "student",
+      status:         "activated"
+    }
+  ]
+  createdAt:      serverTimestamp()
+  updatedAt:      serverTimestamp()
+```
 
 ### Organizations collection (`organizations/{organizationId}`)
 
 ```
-  id:                  organizationId
-  name:                school name
-  ownerId:             uid of admin creator      ← used by Firestore rules
-  ownerEmail:          email of admin            ← debugging/display only
-  memberIds:           [uid1, uid2, ...]          ← used by Firestore rules
-  memberEmails:        [email1, email2, ...]      ← parallel to memberIds, debugging only
-  pendingInviteEmails: [email, ...]               ← emails with pending invitations, Firestore rules
-  createdAt:           serverTimestamp()
-  updatedAt:           serverTimestamp()
+  id:             organizationId
+  createdBy:      uid of admin creator
+  createdByEmail: email of admin
+  createdAt:      serverTimestamp()
 ```
-
-### Memberships collection (`memberships/{membershipId}`)
-
-```
-  organizationId:  target organization ID
-  userId:          Firebase Auth UID of the member
-  email:           member's email
-  role:            "admin" | "teacher" | "student"
-  status:          "active"
-  createdAt:       serverTimestamp()
-```
-
-- Membership ID format: `mbr_<shortUserId>_<shortOrgId>`
-- Service: `src/services/membershipService.js` — `getActiveMembership(uid)`, `createMembership({...})`
 
 ### Role-based behavior
 
-| Role    | Can create org | Can invite | Can add/edit tasks | Can see tasks |
-|---------|---------------|------------|-------------------|---------------|
-| admin   | ✅             | ✅          | ✅                 | ✅             |
-| teacher | ❌             | ❌          | ✅                 | ✅             |
-| student | ❌             | ❌          | ✅                 | ✅             |
-
-- The **Invite User** sidebar button is only visible to admins.
-- Teachers and students never see the org creation screen.
+| Role    | Can create org | Can add/edit tasks | Can see tasks |
+|---------|---------------|-------------------|---------------|
+| admin   | ✅             | ✅                 | ✅             |
+| teacher | ❌             | ✅                 | ✅             |
+| student | ❌             | ✅                 | ✅             |
 
 ### Login flow (onAuthStateChanged in App.jsx)
 
-1. Read `users/<uid>` to get existing data.
-2. Query `memberships` for an active membership → if found, set `resolvedOrgId` and `resolvedRole`.
-3. If no membership found:
-   - Check `invitations` for a pending invite matching the user's email.
-   - If found: call `acceptInvitation()` + `createMembership()` with the invited role.
-   - If not found: show the `CREATE_ORG` screen ("only if you are the school/admin owner").
-4. Refresh the `users/<uid>` doc.
-5. Write the debugging `userIndex/<readableId>` entry.
+1. Read `users/{uid}` to get existing data.
+2. Resolve org and role from `users/{uid}.organizations`:
+   - The active org is `users/{uid}.organizationId`.
+   - Find the matching entry in the `organizations` array where `organizationId` matches.
+   - Use that entry's `role` and `status`. The user is only active if `status === "activated"`.
+3. Write or refresh the user document:
+   - New users → create with `organizations: []`, `organizationId: null`.
+   - Returning users → merge-update `email`, `displayName`, `updatedAt` only (never overwrite `organizations`).
+4. Show `CREATE_ORG` if no org resolved, else show `ALL_TASKS`.
+
+### Organization creation flow
+
+1. Create the `organizations/{orgId}` document with `createdBy`, `createdByEmail`, `createdAt`, `id`.
+2. Update `users/{uid}` with `merge: true`:
+   - Set `organizationId: orgId`
+   - Add `{ organizationId, role: "admin", status: "activated" }` to `organizations` via `arrayUnion`
 
 > **No auto-org, no auto-admin.** There is no automatic personal workspace or admin role assignment.
-> Every user must either have an active membership, accept an invitation, or explicitly create a school org.
-
-## Organization Invitation System
-
-Only admins can invite users. The **Invite User** panel lets admins choose a role (teacher or student).
-
-### Invitation document schema (`invitations/{inviteId}`)
-
-```
-  readableId:       same as document ID
-  organizationId:   target organization ID
-  organizationName: display name of the target org
-  invitedEmail:     email being invited (normalized to lower-case)
-  invitedByUserId:  UID of the inviting admin
-  invitedByEmail:   email of the inviting admin
-  role:             "teacher" | "student"
-  status:           "pending" | "accepted" | "declined"
-  createdAt:        serverTimestamp()
-  acceptedAt:       null | serverTimestamp()
-  declinedAt:       null | serverTimestamp()
-  expiresAt:        null (optional future use)
-```
-
-### Invitation document ID format
-
-`invite_<shortOrgId>_<emailSlug>_<shortRandom>`
-- Generated by `generateInviteId()` in `src/utils/firestoreIds.js`
-
-### Flow
-
-1. Admin opens **Invite User** panel → enters email + selects role (teacher/student).
-2. `createInvitation()` writes the invitation with the chosen role and adds the email to `pendingInviteEmails`.
-3. On the invited user's next sign-in, `onAuthStateChanged` (Step 3):
-   - Detects pending invitation for their email.
-   - Calls `acceptInvitation()` — adds to `memberIds`, removes from `pendingInviteEmails`, updates `users/<uid>.organizationId`.
-   - Calls `createMembership()` with the invitation's role.
-4. User lands in the app with the correct org and role already set.
-
-### Firestore security rules for invitations
-
-- **Read**: inviter (`invitedByUserId == auth.uid`) or invitee (`auth.token.email == invitedEmail`).
-- **Create**: inviter must be an org member (checked via `get()` on the org doc).
-- **Update**: only the invitee (`auth.token.email == invitedEmail`) can update (to accept).
-- **Delete**: not allowed.
-- **Organization update rule**: extended to allow a user whose email is in `pendingInviteEmails` to add themselves as a member.
+> Every user must explicitly create a school org to get an organization and role.
 
 ## Firestore Document ID Strategy & Multi-Org Design
 
