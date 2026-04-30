@@ -19,19 +19,32 @@ service cloud.firestore {
       return exists(/databases/$(database)/documents/users/$(request.auth.uid));
     }
 
+    // Recognises active admins.
+    // Handles both:
+    //   - New schema: membershipStatus == "active" && role == "admin"
+    //   - Old/migration schema: no membershipStatus field yet, but organizationId + role == "admin" are set
     function isActiveAdmin() {
       return signedIn()
         && userDocExists()
-        && getUserDoc().data.membershipStatus == "active"
-        && getUserDoc().data.role == "admin";
+        && getUserDoc().data.role == "admin"
+        && getUserDoc().data.organizationId != null
+        && (
+          getUserDoc().data.membershipStatus == "active"
+          || !("membershipStatus" in getUserDoc().data)
+        );
     }
 
+    // Recognises active members of a given org.
+    // Same dual-schema handling as isActiveAdmin().
     function isActiveMember(orgId) {
       return signedIn()
         && userDocExists()
         && getUserDoc().data.organizationId == orgId
-        && getUserDoc().data.membershipStatus == "active"
-        && getUserDoc().data.role in ["admin", "teacher", "student"];
+        && getUserDoc().data.role in ["admin", "teacher", "student"]
+        && (
+          getUserDoc().data.membershipStatus == "active"
+          || !("membershipStatus" in getUserDoc().data)
+        );
     }
 
     function isActivatedAdmin(orgId) {
@@ -44,12 +57,15 @@ service cloud.firestore {
 
       allow read: if isSelf(userId) || isActiveAdmin();
 
+      // Brand-new user doc created on first sign-in.
       allow create: if isSelf(userId)
         && request.resource.data.membershipStatus == "not_invited"
         && request.resource.data.organizationId == null
         && request.resource.data.role == null;
 
-      // Profile refresh: no structural fields change (org, role, dept, status, email, createdAt).
+      // Profile refresh (display name, email, updatedAt only).
+      // Structural fields (organizationId, role, departmentId) must not change.
+      // membershipStatus must not change (separate rules below handle those transitions).
       allow update: if isSelf(userId)
         && request.resource.data.organizationId == resource.data.organizationId
         && request.resource.data.role == resource.data.role
@@ -58,8 +74,17 @@ service cloud.firestore {
         && request.resource.data.email == resource.data.email
         && request.resource.data.createdAt == resource.data.createdAt;
 
-      // Accept invitation OR create org: user transitions to active status.
-      // Covers both invitation acceptance (teacher/student) and org creation (admin).
+      // Migration: write flat membershipStatus / role for users created under the old
+      // schema (organizations array, no membershipStatus field).
+      // Allowed only when membershipStatus has never been set on the doc.
+      // organizationId and email must not change.
+      allow update: if isSelf(userId)
+        && !("membershipStatus" in resource.data)
+        && request.resource.data.organizationId == resource.data.organizationId
+        && request.resource.data.email == resource.data.email;
+
+      // Accept invitation OR create org:
+      // User transitions from non-active to active (sets org fields from invitation).
       allow update: if isSelf(userId)
         && resource.data.membershipStatus != "active"
         && request.resource.data.membershipStatus == "active"
@@ -71,18 +96,9 @@ service cloud.firestore {
     }
 
     // ── Invitations ────────────────────────────────────────────────────────────
-    // invitations/{invitationId}
-    //
-    // Fields written by admin:
-    //   email, role, organizationId, organizationName,
-    //   departmentId (optional), departmentName (optional),
-    //   status: "pending", createdBy, createdByEmail, createdAt, updatedAt
-    //
-    // Fields written by invited user on accept:
-    //   status: "accepted", acceptedAt, updatedAt
     match /invitations/{invitationId} {
 
-      // Active admin can create invitations only for their own organization.
+      // Active admin creates an invitation for their own org only.
       allow create: if isActiveAdmin()
         && request.resource.data.organizationId == getUserDoc().data.organizationId
         && request.resource.data.status == "pending"
@@ -90,12 +106,12 @@ service cloud.firestore {
         && request.resource.data.createdBy == request.auth.uid
         && request.resource.data.createdByEmail == request.auth.token.email;
 
-      // Invited user can read their own invitations (matched by email).
-      // Active admin can read invitations for their own org.
+      // Invited user reads their own invitations (by email).
+      // Active admin reads invitations for their own org.
       allow read: if (signedIn() && resource.data.email == request.auth.token.email)
         || (isActiveAdmin() && resource.data.organizationId == getUserDoc().data.organizationId);
 
-      // Invited user can accept their own pending invitation (status: pending -> accepted).
+      // Invited user accepts their own pending invitation (status: pending -> accepted).
       // No other fields may change.
       allow update: if signedIn()
         && resource.data.email == request.auth.token.email

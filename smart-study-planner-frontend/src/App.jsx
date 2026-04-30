@@ -485,22 +485,60 @@ function App() {
     setInviteSuccess("");
 
     try {
-      // Verify the invitee already has an account
+      // ── Diagnostic: read current admin user's Firestore doc ─────────────────
+      const adminDocSnap = await getDoc(doc(db, "users", currentUser.uid));
+      const adminDocData = adminDocSnap.exists() ? adminDocSnap.data() : null;
+      console.log("[invite:diag] 1. currentUser.uid          :", currentUser.uid);
+      console.log("[invite:diag] 2. currentUser.email        :", currentUser.email);
+      console.log("[invite:diag] 3. users/{uid} doc          :", JSON.stringify(adminDocData));
+      console.log("[invite:diag] 4. activeOrganizationId     :", organizationId);
+      console.log("[invite:diag] 5. selected role            :", inviteRole);
+      console.log("[invite:diag] 6. selected departmentId    :", inviteDepartmentId || "(none)");
+
+      // ── Verify the invitee already has an account ────────────────────────────
       const q = query(collection(db, "users"), where("email", "==", email));
       const snap = await getDocs(q);
-      if (snap.empty) {
+      const inviteeExists = !snap.empty;
+      const inviteeData = inviteeExists ? snap.docs[0].data() : null;
+      console.log("[invite:diag]    invitee email            :", email);
+      console.log("[invite:diag]    invitee has users doc    :", inviteeExists);
+      console.log("[invite:diag]    invitee doc data         :", inviteeExists ? JSON.stringify(inviteeData) : "(no doc)");
+
+      if (!inviteeExists) {
         setInviteError("No account found with that email. The user must sign up first.");
         setInviteLoading(false);
         return;
       }
-      const targetData = snap.docs[0].data();
-      if (targetData.membershipStatus === "active") {
+      if (inviteeData.membershipStatus === "active") {
         setInviteError("This user already belongs to an organization.");
         setInviteLoading(false);
         return;
       }
 
       const selectedDept = departments.find((d) => d.id === inviteDepartmentId);
+      const { generateInviteId } = await import("./utils/firestoreIds");
+      const previewInviteId = generateInviteId(organizationId, email);
+      const previewInviteData = {
+        id: previewInviteId,
+        email,
+        role: inviteRole,
+        organizationId,
+        organizationName: organizationName ?? null,
+        departmentId: inviteDepartmentId || null,
+        departmentName: selectedDept?.name ?? null,
+        status: "pending",
+        createdBy: currentUser.uid,
+        createdByEmail: currentUser.email,
+      };
+      console.log("[invite:diag] 7. invitation doc path      :", `invitations/${previewInviteId}`);
+      console.log("[invite:diag] 8. invitation doc data      :", JSON.stringify(previewInviteData));
+      console.log("[invite:diag]    isActiveAdmin check deps :", {
+        role: adminDocData?.role,
+        organizationId: adminDocData?.organizationId,
+        membershipStatus: adminDocData?.membershipStatus ?? "(field missing)",
+        membershipStatusInDoc: adminDocData ? "membershipStatus" in adminDocData : false,
+      });
+
       const inviteId = await createInvitation({
         organizationId,
         organizationName: organizationName ?? null,
