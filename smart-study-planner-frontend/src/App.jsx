@@ -21,7 +21,14 @@ import {
   schoolOrgId,
   generateTaskId,
   generateCategoryId,
+  generateDepartmentId,
 } from "./utils/firestoreIds";
+import {
+  createInvitation,
+  getPendingInvitationsForEmail,
+  acceptInvitation,
+  declineInvitation,
+} from "./services/invitationService";
 import {
   ref as storageRef,
   uploadBytes,
@@ -60,6 +67,17 @@ function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [loading, setLoading] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
+  const [pendingInvitations, setPendingInvitations] = useState([]);
+  const [departments, setDepartments] = useState([]);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState("student");
+  const [inviteDepartmentId, setInviteDepartmentId] = useState("");
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [inviteError, setInviteError] = useState("");
+  const [inviteSuccess, setInviteSuccess] = useState("");
+  const [newDeptName, setNewDeptName] = useState("");
+  const [deptLoading, setDeptLoading] = useState(false);
+  const [deptError, setDeptError] = useState("");
   const [attachmentFiles, setAttachmentFiles] = useState([]);
   const [pendingConfirmFile, setPendingConfirmFile] = useState(null);
   const [fileUploadStatuses, setFileUploadStatuses] = useState({});
@@ -152,7 +170,15 @@ function App() {
 
         console.log("[auth] activeOrganizationId:", resolvedOrgId ?? "(none)");
         console.log("[auth] currentUserRole:", resolvedRole ?? "(none)");
-        console.log("[auth] CREATE_ORG screen:", !resolvedOrgId ? "will show" : "not shown");
+
+        // ── Step 2.5: check for pending invitations ───────────────────────────
+        let loadedInvitations = [];
+        try {
+          loadedInvitations = await getPendingInvitationsForEmail(firebaseUser.email);
+          console.log("[auth] Step 2.5 — pending invitations found:", loadedInvitations.length);
+        } catch (err) {
+          console.error("[auth] Step 2.5 FAILED — could not load invitations:", err.code, err.message);
+        }
 
         // ── Step 3: write or refresh the user document ───────────────────────
         // New users get organizations: [] and organizationId: null.
@@ -195,13 +221,18 @@ function App() {
         console.log("[auth] Setup complete — resolvedOrgId:", resolvedOrgId, "| role:", resolvedRole);
         setOrganizationId(resolvedOrgId);
         setCurrentUserRole(resolvedRole);
+        setPendingInvitations(loadedInvitations);
 
-        // If user has no org yet, direct them to the create-org screen.
-        // If they DO have an org, always land on ALL_TASKS so returning users
-        // never see a stale CREATE_ORG screen after sign-out → sign-in.
+        // Route to the correct initial view.
         if (!resolvedOrgId) {
-          setActiveView("CREATE_ORG");
+          // No active org: show pending invitations if any, otherwise create-org.
+          if (loadedInvitations.length > 0) {
+            setActiveView("PENDING_INVITATIONS");
+          } else {
+            setActiveView("CREATE_ORG");
+          }
         } else {
+          // Has active org: land on tasks.
           setActiveView("ALL_TASKS");
         }
       } else {
@@ -209,6 +240,7 @@ function App() {
         setOrganizationId(null);
         setOrganizationName(null);
         setCurrentUserRole(null);
+        setPendingInvitations([]);
       }
       setCurrentUser(firebaseUser ?? null);
       setAuthLoading(false);
@@ -320,8 +352,15 @@ function App() {
     setOrganizationName(null);
     setOrgOwnerEmail(null);
     setCurrentUserRole(null);
+    setPendingInvitations([]);
+    setDepartments([]);
     setCreateOrgName("");
     setCreateOrgError("");
+    setInviteEmail("");
+    setInviteRole("student");
+    setInviteDepartmentId("");
+    setInviteError("");
+    setInviteSuccess("");
   };
 
   const handleCreateOrg = async (e) => {
@@ -345,9 +384,11 @@ function App() {
 
     const orgData = {
       id: orgId,
+      name: name,
       createdBy: currentUser.uid,
       createdByEmail: adminEmail,
       createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
     };
 
     console.log("[createOrg] ORG WRITE PATH", `organizations/${orgId}`);
@@ -365,6 +406,7 @@ function App() {
 
     const newOrgEntry = {
       organizationId: orgId,
+      departmentId: null,
       role: "admin",
       status: "activated",
     };
@@ -402,6 +444,124 @@ function App() {
     setCreateOrgLoading(false);
   };
 
+  const handleAcceptInvitation = async (invitation) => {
+    try {
+      setError("");
+      const newOrgEntry = {
+        organizationId: invitation.organizationId,
+        departmentId: invitation.departmentId || null,
+        role: invitation.role,
+        status: "activated",
+      };
+
+      const userUpdateData = {
+        organizations: arrayUnion(newOrgEntry),
+        updatedAt: serverTimestamp(),
+      };
+      if (!organizationId) {
+        userUpdateData.organizationId = invitation.organizationId;
+      }
+      await setDoc(doc(db, "users", currentUser.uid), userUpdateData, { merge: true });
+      await acceptInvitation(invitation.id, currentUser.uid);
+
+      const remaining = pendingInvitations.filter((inv) => inv.id !== invitation.id);
+      setPendingInvitations(remaining);
+
+      if (!organizationId) {
+        setOrganizationId(invitation.organizationId);
+        setCurrentUserRole(invitation.role);
+        setActiveView("ALL_TASKS");
+      }
+      console.log("[invitation] accepted —", invitation.id, "| org:", invitation.organizationId, "| role:", invitation.role);
+    } catch (err) {
+      console.error("[invitation] accept FAILED:", err);
+      setError("Could not accept invitation: " + err.message);
+    }
+  };
+
+  const handleDeclineInvitation = async (invitation) => {
+    try {
+      setError("");
+      await declineInvitation(invitation.id, currentUser.uid);
+
+      const remaining = pendingInvitations.filter((inv) => inv.id !== invitation.id);
+      setPendingInvitations(remaining);
+
+      if (remaining.length === 0 && !organizationId) {
+        setActiveView("CREATE_ORG");
+      }
+      console.log("[invitation] declined —", invitation.id);
+    } catch (err) {
+      console.error("[invitation] decline FAILED:", err);
+      setError("Could not decline invitation: " + err.message);
+    }
+  };
+
+  const handleInviteUser = async (e) => {
+    e.preventDefault();
+    if (!inviteEmail.trim()) {
+      setInviteError("Please enter an email address.");
+      return;
+    }
+    setInviteLoading(true);
+    setInviteError("");
+    setInviteSuccess("");
+
+    try {
+      const selectedDept = departments.find((d) => d.id === inviteDepartmentId);
+      await createInvitation({
+        organizationId,
+        departmentId: inviteDepartmentId || null,
+        departmentName: selectedDept?.name || null,
+        invitedEmail: inviteEmail.trim().toLowerCase(),
+        role: inviteRole,
+        invitedByUserId: currentUser.uid,
+        invitedByEmail: currentUser.email,
+        organizationName: organizationName ?? null,
+      });
+      setInviteSuccess(`Invitation sent to ${inviteEmail.trim().toLowerCase()}.`);
+      setInviteEmail("");
+      setInviteRole("student");
+      setInviteDepartmentId("");
+    } catch (err) {
+      console.error("[invite] FAILED:", err);
+      setInviteError("Could not send invitation: " + err.message);
+    } finally {
+      setInviteLoading(false);
+    }
+  };
+
+  const handleCreateDepartment = async (e) => {
+    e.preventDefault();
+    const name = newDeptName.trim();
+    if (!name) {
+      setDeptError("Please enter a department name.");
+      return;
+    }
+    setDeptLoading(true);
+    setDeptError("");
+
+    try {
+      const deptId = generateDepartmentId(name);
+      await setDoc(doc(db, "organizations", organizationId, "departments", deptId), {
+        id: deptId,
+        name: name,
+        createdBy: currentUser.uid,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      setNewDeptName("");
+      const deptSnap = await getDocs(collection(db, "organizations", organizationId, "departments"));
+      setDepartments(deptSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      console.log("[departments] created —", deptId);
+    } catch (err) {
+      console.error("[departments] create FAILED:", err);
+      setDeptError("Could not create department: " + err.message);
+    } finally {
+      setDeptLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (currentUser) {
       loadTasks();
@@ -428,6 +588,23 @@ function App() {
       }
     };
     fetchOrg();
+  }, [organizationId]);
+
+  useEffect(() => {
+    if (!organizationId) {
+      setDepartments([]);
+      return;
+    }
+    const fetchDepartments = async () => {
+      try {
+        const deptSnap = await getDocs(collection(db, "organizations", organizationId, "departments"));
+        setDepartments(deptSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        console.log("[departments] loaded for org:", organizationId);
+      } catch (err) {
+        console.error("[departments] Could not load:", err.code, err.message);
+      }
+    };
+    fetchDepartments();
   }, [organizationId]);
 
   useEffect(() => {
@@ -1646,6 +1823,40 @@ function App() {
           Calendar
         </button>
 
+        {currentUserRole === "admin" && organizationId && (
+          <button
+            onClick={() => {
+              setInviteError("");
+              setInviteSuccess("");
+              setActiveView("INVITE_USER");
+            }}
+            style={sidebarButtonStyle(activeView === "INVITE_USER")}
+          >
+            Invite User
+          </button>
+        )}
+
+        {currentUserRole === "admin" && organizationId && (
+          <button
+            onClick={() => {
+              setDeptError("");
+              setActiveView("MANAGE_DEPARTMENTS");
+            }}
+            style={sidebarButtonStyle(activeView === "MANAGE_DEPARTMENTS")}
+          >
+            Departments
+          </button>
+        )}
+
+        {pendingInvitations.length > 0 && (
+          <button
+            onClick={() => setActiveView("PENDING_INVITATIONS")}
+            style={sidebarButtonStyle(activeView === "PENDING_INVITATIONS")}
+          >
+            My Invitations ({pendingInvitations.length})
+          </button>
+        )}
+
         <div className="category-section">
           <h3 className="category-title">Category</h3>
 
@@ -2171,18 +2382,218 @@ function App() {
               }}>
                 <p style={{ fontWeight: "600", marginBottom: "8px" }}>Are you a teacher or student?</p>
                 <p style={{ fontSize: "13px", color: "var(--text-soft)" }}>
-                  You need an invitation from your school admin. Ask your admin to invite your email address.
-                  Once invited, sign out and sign back in — you will be joined automatically.
+                  You need an invitation from your school admin. Once your admin invites your email,
+                  sign back in and you will see your invitations here to accept or decline.
                 </p>
                 <button
                   className="main-btn"
                   style={{ marginTop: "12px" }}
                   onClick={handleLogout}
                 >
-                  Sign out and wait for invitation
+                  Sign out
                 </button>
               </div>
             </div>
+          </div>
+        )}
+
+        {activeView === "PENDING_INVITATIONS" && (
+          <div className="panel-card">
+            <h2>Pending Invitations</h2>
+            <p className="helper-text">
+              You have been invited to join an organization. Review each invitation below.
+            </p>
+
+            {pendingInvitations.length === 0 ? (
+              <div style={{ marginTop: "16px" }}>
+                <p style={{ color: "var(--text-soft)", fontSize: "14px" }}>
+                  No pending invitations.
+                </p>
+                {!organizationId && (
+                  <button
+                    className="main-btn"
+                    style={{ marginTop: "12px" }}
+                    onClick={() => setActiveView("CREATE_ORG")}
+                  >
+                    Create an organization instead
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px", marginTop: "16px" }}>
+                {pendingInvitations.map((inv) => (
+                  <div
+                    key={inv.id}
+                    style={{
+                      border: "1px solid var(--border)",
+                      borderRadius: "10px",
+                      padding: "20px",
+                      background: "var(--bg-soft)",
+                    }}
+                  >
+                    <p style={{ fontWeight: "600", marginBottom: "6px", fontSize: "15px" }}>
+                      {inv.organizationName || inv.organizationId}
+                    </p>
+                    <p style={{ fontSize: "13px", color: "var(--text-soft)", marginBottom: "4px" }}>
+                      Role: <strong style={{ color: "var(--text-main)", textTransform: "capitalize" }}>{inv.role}</strong>
+                    </p>
+                    {inv.departmentName || inv.departmentId ? (
+                      <p style={{ fontSize: "13px", color: "var(--text-soft)", marginBottom: "4px" }}>
+                        Department: <strong style={{ color: "var(--text-main)" }}>{inv.departmentName || inv.departmentId}</strong>
+                      </p>
+                    ) : null}
+                    <p style={{ fontSize: "13px", color: "var(--text-soft)", marginBottom: "16px" }}>
+                      Invited by: {inv.invitedByEmail}
+                    </p>
+                    <div style={{ display: "flex", gap: "10px" }}>
+                      <button
+                        className="main-btn"
+                        onClick={() => handleAcceptInvitation(inv)}
+                      >
+                        Accept Invitation
+                      </button>
+                      <button
+                        className="main-btn"
+                        style={{ background: "var(--bg-soft)", border: "1px solid var(--border)" }}
+                        onClick={() => handleDeclineInvitation(inv)}
+                      >
+                        Decline Invitation
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeView === "INVITE_USER" && currentUserRole === "admin" && (
+          <div className="panel-card">
+            <h2>Invite User</h2>
+            <p className="helper-text">
+              Send an invitation to a teacher or student to join <strong>{organizationName}</strong>.
+              They will see it when they sign in and must accept it manually.
+            </p>
+
+            <form onSubmit={handleInviteUser} style={{ maxWidth: "480px", display: "flex", flexDirection: "column", gap: "12px", marginTop: "16px" }}>
+              <div className="field-wrap">
+                <label style={{ display: "block", fontSize: "13px", marginBottom: "4px", color: "var(--text-soft)" }}>
+                  Email address
+                </label>
+                <input
+                  type="email"
+                  placeholder="user@example.com"
+                  value={inviteEmail}
+                  onChange={(e) => { setInviteEmail(e.target.value); setInviteError(""); setInviteSuccess(""); }}
+                  className="input-control"
+                  required
+                />
+              </div>
+
+              <div className="field-wrap">
+                <label style={{ display: "block", fontSize: "13px", marginBottom: "4px", color: "var(--text-soft)" }}>
+                  Role
+                </label>
+                <select
+                  value={inviteRole}
+                  onChange={(e) => setInviteRole(e.target.value)}
+                  className="input-control"
+                >
+                  <option value="teacher">Teacher</option>
+                  <option value="student">Student</option>
+                </select>
+              </div>
+
+              <div className="field-wrap">
+                <label style={{ display: "block", fontSize: "13px", marginBottom: "4px", color: "var(--text-soft)" }}>
+                  Department (optional)
+                </label>
+                <select
+                  value={inviteDepartmentId}
+                  onChange={(e) => setInviteDepartmentId(e.target.value)}
+                  className="input-control"
+                >
+                  <option value="">None</option>
+                  {departments.map((dept) => (
+                    <option key={dept.id} value={dept.id}>{dept.name}</option>
+                  ))}
+                </select>
+                {departments.length === 0 && (
+                  <p style={{ fontSize: "12px", color: "var(--text-soft)", marginTop: "4px" }}>
+                    No departments yet.{" "}
+                    <button
+                      type="button"
+                      style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", padding: 0, fontSize: "12px" }}
+                      onClick={() => setActiveView("MANAGE_DEPARTMENTS")}
+                    >
+                      Create one in Departments.
+                    </button>
+                  </p>
+                )}
+              </div>
+
+              {inviteError && (
+                <p style={{ color: "#f87171", fontSize: "13px" }}>{inviteError}</p>
+              )}
+              {inviteSuccess && (
+                <p style={{ color: "#4ade80", fontSize: "13px" }}>{inviteSuccess}</p>
+              )}
+
+              <button type="submit" className="main-btn" disabled={inviteLoading}>
+                {inviteLoading ? "Sending..." : "Send Invitation"}
+              </button>
+            </form>
+          </div>
+        )}
+
+        {activeView === "MANAGE_DEPARTMENTS" && currentUserRole === "admin" && (
+          <div className="panel-card">
+            <h2>Departments</h2>
+            <p className="helper-text">
+              Manage departments for <strong>{organizationName}</strong>.
+            </p>
+
+            <form onSubmit={handleCreateDepartment} style={{ maxWidth: "480px", display: "flex", gap: "10px", marginTop: "16px", marginBottom: "24px" }}>
+              <input
+                type="text"
+                placeholder="New department name"
+                value={newDeptName}
+                onChange={(e) => { setNewDeptName(e.target.value); setDeptError(""); }}
+                className="input-control"
+                style={{ flex: 1 }}
+              />
+              <button type="submit" className="main-btn" disabled={deptLoading}>
+                {deptLoading ? "Creating..." : "Add"}
+              </button>
+            </form>
+
+            {deptError && (
+              <p style={{ color: "#f87171", fontSize: "13px", marginBottom: "12px" }}>{deptError}</p>
+            )}
+
+            {departments.length === 0 ? (
+              <p style={{ color: "var(--text-soft)", fontSize: "14px" }}>No departments yet.</p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxWidth: "480px" }}>
+                {departments.map((dept) => (
+                  <div
+                    key={dept.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "12px 16px",
+                      border: "1px solid var(--border)",
+                      borderRadius: "8px",
+                      background: "var(--bg-soft)",
+                    }}
+                  >
+                    <span style={{ fontSize: "14px" }}>{dept.name}</span>
+                    <span style={{ fontSize: "12px", color: "var(--text-soft)" }}>{dept.id}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

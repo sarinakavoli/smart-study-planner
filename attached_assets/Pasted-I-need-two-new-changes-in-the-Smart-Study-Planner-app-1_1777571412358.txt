@@ -1,0 +1,162 @@
+I need two new changes in the Smart Study Planner app.
+
+1. Bring back invitations for admins.
+2. Add departments inside each organization.
+
+Current structure:
+- users is the main place for user profile and organization access.
+- organizations stores organization information.
+- I do not want to bring back memberships.
+- I do want to bring back invitations.
+- I do not want to bring back userIndex.
+
+New structure:
+
+1. organizations/{organizationId}
+
+Organization document:
+
+{
+  id: organizationId,
+  name: string,
+  createdBy: auth.currentUser.uid,
+  createdByEmail: auth.currentUser.email,
+  createdAt: serverTimestamp(),
+  updatedAt: serverTimestamp()
+}
+
+2. organizations/{organizationId}/departments/{departmentId}
+
+Each organization can have its own departments.
+
+Department document:
+
+{
+  id: departmentId,
+  name: string,
+  createdBy: auth.currentUser.uid,
+  createdAt: serverTimestamp(),
+  updatedAt: serverTimestamp()
+}
+
+Example:
+organizations/org_tmu/departments/dep_computer_science
+
+3. users/{uid}
+
+The user document should keep the organization access array.
+
+Each object inside users/{uid}.organizations should include:
+
+{
+  organizationId: string,
+  departmentId: string | null,
+  role: "admin" | "teacher" | "student",
+  status: "activated"
+}
+
+Example:
+
+{
+  uid: auth.currentUser.uid,
+  email: auth.currentUser.email,
+  displayName: auth.currentUser.displayName || null,
+  organizationId: "org_tmu",
+  organizations: [
+    {
+      organizationId: "org_tmu",
+      departmentId: "dep_computer_science",
+      role: "student",
+      status: "activated"
+    }
+  ],
+  createdAt,
+  updatedAt
+}
+
+Important:
+- organizationId is the active/current organization.
+- departmentId belongs inside each organization object, not only as one top-level user field.
+- This is because one user may belong to different organizations with different departments.
+
+4. invitations/{invitationId}
+
+Bring back invitations, but only for admin inviting users.
+
+Invitation document:
+
+{
+  id: invitationId,
+  organizationId: string,
+  departmentId: string | null,
+  invitedEmail: string,
+  role: "teacher" | "student",
+  status: "pending",
+  invitedByUserId: auth.currentUser.uid,
+  invitedByEmail: auth.currentUser.email,
+  createdAt: serverTimestamp(),
+  updatedAt: serverTimestamp()
+}
+
+Admin invitation behavior:
+- Show an Invite User button only if the current user's role in the active organization is "admin" and status is "activated".
+- The admin should be able to choose:
+  - invited email
+  - role: teacher or student
+  - department
+- Then create an invitation document in invitations.
+- The invited user should NOT be added to the organization automatically.
+- The invitation should only create a pending invitation record.
+
+Invitation acceptance behavior:
+- When a user signs in, check invitations where:
+  - invitedEmail == auth.currentUser.email
+  - status == "pending"
+- If a pending invitation exists:
+  - show the invitation in the UI.
+  - show two buttons:
+    - Accept Invitation
+    - Decline Invitation
+
+Important:
+- Do not automatically add the invited user to the organization just because an invitation exists.
+- The invited user must explicitly accept the invitation first.
+- The app should never silently auto-accept invitations.
+- The app should never add a user to an organization until they personally click Accept Invitation.
+
+If the user clicks Accept Invitation:
+- Add the organization to users/{uid}.organizations:
+  {
+    organizationId: invitation.organizationId,
+    departmentId: invitation.departmentId || null,
+    role: invitation.role,
+    status: "activated"
+  }
+- Set users/{uid}.organizationId to invitation.organizationId if the user does not already have an active organization.
+- Update the invitation:
+  {
+    status: "accepted",
+    acceptedByUserId: auth.currentUser.uid,
+    acceptedAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  }
+
+If the user clicks Decline Invitation:
+- Do not add anything to users/{uid}.organizations.
+- Update the invitation:
+  {
+    status: "declined",
+    declinedByUserId: auth.currentUser.uid,
+    declinedAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  }
+
+Role checking:
+- Do not bring back memberships.
+- Do not bring back userIndex.
+- Role checking should still use users/{uid}.organizations.
+- Invitations should only be used for inviting and accepting/declining users.
+- Departments should be stored as a subcollection under each organization.
+- A user is only considered part of an organization if the matching object exists in users/{uid}.organizations with status: "activated".
+
+Please update the UI, Firestore services, and Firestore rules to support this.

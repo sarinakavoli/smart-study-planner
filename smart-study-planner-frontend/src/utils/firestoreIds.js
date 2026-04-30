@@ -138,6 +138,21 @@ export function generateCategoryId(userId, name) {
 }
 
 /**
+ * Generates a stable department ID from the department name.
+ * Format: dep_<nameSlug>
+ *
+ * Example:
+ *   generateDepartmentId("Computer Science") → "dep_computer-science"
+ *
+ * @param {string} name - Department name
+ * @returns {string}
+ */
+export function generateDepartmentId(name = "") {
+  const nameSlug = slugify(name).slice(0, 40) || "department";
+  return `dep_${nameSlug}`;
+}
+
+/**
  * Generates a human-readable document ID for an invitation.
  * Format: invite_<shortOrgId>_<emailSlug>_<shortRandom>
  *
