@@ -1,0 +1,150 @@
+I want to separate dev and prod data inside the same Firebase project for my Smart Study Planner app.
+
+Important: I am NOT creating a second Firebase project right now.
+
+Current Firebase project: dev-sarina
+Current Firestore database: smart-study
+
+Goal:
+Use environment-based Firestore paths:
+
+dev/app/users/{userId}
+dev/app/organizations/{organizationId}
+dev/app/tasks/{taskId}
+dev/app/departments/{departmentId}
+dev/app/invitations/{invitationId}
+dev/app/categories/{categoryId}
+
+prod/app/users/{userId}
+prod/app/organizations/{organizationId}
+prod/app/tasks/{taskId}
+prod/app/departments/{departmentId}
+prod/app/invitations/{invitationId}
+prod/app/categories/{categoryId}
+
+Please implement this carefully.
+
+Step 1:
+Add environment files:
+- .env.development with VITE_APP_ENV=dev
+- .env.production with VITE_APP_ENV=prod
+
+Do not change my Firebase project config yet unless necessary. The goal is only to change Firestore document paths based on environment.
+
+Step 2:
+Create a central Firestore path helper file, for example:
+
+src/lib/firestorePaths.js
+
+It should export:
+- APP_ENV from import.meta.env.VITE_APP_ENV, defaulting to "dev"
+- appCollection(collectionName)
+- appDoc(collectionName, id)
+
+The helper should build paths like:
+collection(db, APP_ENV, "app", collectionName)
+doc(db, APP_ENV, "app", collectionName, id)
+
+Step 3:
+Search the whole React app for direct Firestore references like:
+
+collection(db, "users")
+collection(db, "tasks")
+collection(db, "organizations")
+collection(db, "departments")
+collection(db, "invitations")
+collection(db, "categories")
+
+and replace them with:
+
+appCollection("users")
+appCollection("tasks")
+appCollection("organizations")
+appCollection("departments")
+appCollection("invitations")
+appCollection("categories")
+
+Also replace direct document paths like:
+
+doc(db, "users", userId)
+doc(db, "tasks", taskId)
+doc(db, "organizations", orgId)
+
+with:
+
+appDoc("users", userId)
+appDoc("tasks", taskId)
+appDoc("organizations", orgId)
+
+Step 4:
+Do not change the database schema fields yet.
+Keep the existing fields such as:
+- organizationId
+- role
+- membershipStatus
+- departmentId
+- createdBy
+- userId
+- status
+- dueDate
+
+Only change the Firestore paths.
+
+Step 5:
+Add a temporary console log in development only that prints:
+
+Current app environment: dev or prod
+
+so I can verify which environment the app is using.
+
+Step 6:
+Update Firestore security rules to support the new path structure:
+
+/{env}/app/users/{userId}
+/{env}/app/organizations/{organizationId}
+/{env}/app/tasks/{taskId}
+/{env}/app/departments/{departmentId}
+/{env}/app/invitations/{invitationId}
+/{env}/app/categories/{categoryId}
+
+Rules must only allow env to be "dev" or "prod".
+
+Important:
+Do NOT add a broad rule like:
+allow read, write: if env == "dev" || env == "prod";
+
+That would be unsafe.
+
+Instead, update existing helper functions so they accept env as a parameter.
+
+For example:
+getUserDoc(env)
+userDocExists(env)
+isActiveAdmin(env)
+isActiveMember(env, organizationId)
+
+These helpers should read the user document from:
+
+/databases/$(database)/documents/$(env)/app/users/$(request.auth.uid)
+
+Step 7:
+Keep the same permission logic I already have:
+- users can read/write their own user document where allowed
+- active admins can manage organization-level data
+- active members can read organization-level data
+- invited users should not automatically become active
+- membershipStatus should support:
+  not_invited
+  pending
+  active
+- departments belong to organizations
+- users can have departmentId
+- invitations must be accepted before the user becomes active
+
+Step 8:
+After changes, give me:
+1. A summary of every file changed
+2. The exact Firestore paths the app now uses
+3. Any commands I need to run
+4. How to verify in Firebase Console that data is being written under dev/app/...
+5. Do not delete or migrate existing Firestore data yet
