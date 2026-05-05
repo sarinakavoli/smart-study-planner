@@ -1,0 +1,83 @@
+I now have separate dev and production Firebase resources inside the same Firebase project.
+
+Firebase project:
+sarina-dev
+
+Development:
+Firestore database ID: smart-study
+Storage bucket: <PASTE_DEV_BUCKET_NAME_HERE>
+
+Production:
+Firestore database ID: smart-study-prd
+Storage bucket: <PASTE_PROD_BUCKET_NAME_HERE>
+
+Please update my React/Firebase app so it uses the correct Firestore database and Storage bucket based on environment variables.
+
+Important:
+Do NOT change my Firestore collection paths.
+Keep the collections as:
+users
+organizations
+tasks
+departments
+invitations
+categories
+
+Do NOT change them to:
+/dev/app/...
+/prod/app/...
+
+I am using separate Firestore databases instead, so the collection names should stay the same.
+
+Tasks:
+
+1. Find the Firebase initialization file, likely one of:
+src/firebase.js
+src/firebaseConfig.js
+src/lib/firebase.js
+src/config/firebase.js
+
+2. Update Firestore initialization to use:
+
+getFirestore(app, import.meta.env.VITE_FIRESTORE_DATABASE_ID || "smart-study")
+
+So development uses smart-study and production uses smart-study-prd.
+
+3. Update Storage initialization to use the environment bucket:
+
+getStorage(app, `gs://${import.meta.env.VITE_FIREBASE_STORAGE_BUCKET}`)
+
+4. Add or update environment files:
+
+.env.development:
+VITE_FIRESTORE_DATABASE_ID=smart-study
+VITE_FIREBASE_STORAGE_BUCKET=<PASTE_DEV_BUCKET_NAME_HERE>
+
+.env.production:
+VITE_FIRESTORE_DATABASE_ID=smart-study-prd
+VITE_FIREBASE_STORAGE_BUCKET=<PASTE_PROD_BUCKET_NAME_HERE>
+
+Keep the existing Firebase config variables if they already exist, such as:
+VITE_FIREBASE_API_KEY
+VITE_FIREBASE_AUTH_DOMAIN
+VITE_FIREBASE_PROJECT_ID
+VITE_FIREBASE_MESSAGING_SENDER_ID
+VITE_FIREBASE_APP_ID
+
+5. Add a temporary development-only console log that prints:
+Current Firestore database: smart-study or smart-study-prd
+Current Storage bucket: dev bucket or prod bucket
+
+6. Update README with a short section explaining:
+- dev Firestore database = smart-study
+- prod Firestore database = smart-study-prd
+- dev and prod Storage buckets are separate
+- Firebase Auth is still shared because both are inside the same Firebase project
+- local npm run dev should use .env.development
+- production build should use .env.production
+
+7. After finishing, give me:
+- list of changed files
+- exact env variables I need
+- how to test dev
+- how to test production build
