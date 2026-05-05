@@ -1734,6 +1734,27 @@ function App() {
           <button className="logout-btn" onClick={handleLogout}>Sign out</button>
         </div>
 
+        {/* TEMP env badge — remove once dev/prod routing is confirmed */}
+        {(() => {
+          const dbId = import.meta.env.VITE_FIRESTORE_DATABASE_ID || "smart-study";
+          const isProd = import.meta.env.PROD;
+          return (
+            <div style={{
+              margin: "6px 0 2px",
+              padding: "3px 8px",
+              borderRadius: "4px",
+              fontSize: "11px",
+              fontFamily: "monospace",
+              background: isProd ? "#7c2d12" : "#1e3a5f",
+              color: isProd ? "#fed7aa" : "#bfdbfe",
+              border: `1px solid ${isProd ? "#b45309" : "#3b82f6"}`,
+              userSelect: "none",
+            }}>
+              DB: {dbId}
+            </div>
+          );
+        })()}
+
         {organizationName && (
           <div className="org-context">
             <p className="org-context-label">Organization</p>

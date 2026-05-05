@@ -1,0 +1,67 @@
+Production preview is still showing dev tasks, and new tasks are not appearing in the smart-study-prd Firestore database.
+
+This means the production build is still reading from the dev database smart-study, or the app is using cached/localStorage data.
+
+Please debug this fully.
+
+Current expected setup:
+
+Development:
+VITE_FIRESTORE_DATABASE_ID=smart-study
+VITE_FIREBASE_STORAGE_BUCKET=dev-sarina.firebasestorage.app
+
+Production:
+VITE_FIRESTORE_DATABASE_ID=smart-study-prd
+VITE_FIREBASE_STORAGE_BUCKET=prd-sarina
+
+I ran:
+npm run build
+npm run preview
+
+Preview opened on port 4174, but the UI still shows tasks created in dev, and Firestore smart-study-prd is empty.
+
+Please do these steps:
+
+1. Temporarily log these values in production too:
+console.log("MODE:", import.meta.env.MODE);
+console.log("DEV:", import.meta.env.DEV);
+console.log("PROD:", import.meta.env.PROD);
+console.log("Firestore DB:", import.meta.env.VITE_FIRESTORE_DATABASE_ID);
+console.log("Storage bucket:", import.meta.env.VITE_FIREBASE_STORAGE_BUCKET);
+
+2. Make sure this log appears in production preview, not only dev.
+
+3. Check if any of these files exist and are overriding .env.production:
+.env
+.env.local
+.env.production.local
+
+4. Check Replit Secrets/environment variables for:
+VITE_FIRESTORE_DATABASE_ID
+VITE_FIREBASE_STORAGE_BUCKET
+
+If Replit Secrets contain VITE_FIRESTORE_DATABASE_ID=smart-study, remove it or stop it from overriding .env.production.
+
+5. Check src/firebase.js and confirm it uses:
+getFirestore(app, import.meta.env.VITE_FIRESTORE_DATABASE_ID || "smart-study")
+
+6. Check if the app uses localStorage or cached state for tasks.
+If tasks are being loaded from localStorage, disable that for Firestore tasks or clear localStorage when switching environments.
+
+7. Add a visible temporary environment badge in the UI, for example:
+Database: smart-study
+or
+Database: smart-study-prd
+
+So I can immediately tell which database the app is connected to.
+
+Expected result:
+npm run dev should show:
+Database: smart-study
+
+npm run build && npm run preview should show:
+Database: smart-study-prd
+
+Do not change collection paths.
+Do not use /dev/app or /prod/app.
+The issue is environment selection or cached data.

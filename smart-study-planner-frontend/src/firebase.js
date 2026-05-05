@@ -18,10 +18,14 @@ const firestoreDatabaseId =
   import.meta.env.VITE_FIRESTORE_DATABASE_ID || "smart-study";
 const storageBucket = import.meta.env.VITE_FIREBASE_STORAGE_BUCKET;
 
-if (import.meta.env.DEV) {
-  console.log(`Current Firestore database: ${firestoreDatabaseId}`);
-  console.log(`Current Storage bucket: ${storageBucket}`);
-}
+// TEMP: unconditional — confirm env in both dev and prod, then restore DEV-only guard
+console.log("MODE:", import.meta.env.MODE);
+console.log("DEV:", import.meta.env.DEV);
+console.log("PROD:", import.meta.env.PROD);
+console.log("Firestore DB:", import.meta.env.VITE_FIRESTORE_DATABASE_ID);
+console.log("Storage bucket:", import.meta.env.VITE_FIREBASE_STORAGE_BUCKET);
+console.log(`[firebase] → using Firestore database: ${firestoreDatabaseId}`);
+console.log(`[firebase] → using Storage bucket: ${storageBucket}`);
 
 export const auth = getAuth(app);
 export const db = getFirestore(app, firestoreDatabaseId);
