@@ -10,5 +10,15 @@
       "rules": "firestore.rules",
       "indexes": "firestore.indexes.json"
     }
+  ],
+  "storage": [
+    {
+      "bucket": "dev-sarina.firebasestorage.app",
+      "rules": "storage.rules"
+    },
+    {
+      "bucket": "prd-sarina",
+      "rules": "storage.rules"
+    }
   ]
 }

@@ -1,0 +1,29 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Task attachments
+    // Path: tasks/{taskId}/attachments/{fileId}
+    // Upload metadata must include userId = uploader's UID.
+    // Only the file owner (userId in custom metadata) may update or delete.
+    match /tasks/{taskId}/attachments/{fileId} {
+
+      // Any signed-in user can read (download URLs are also public by nature,
+      // but this keeps the bucket from being accessed without auth).
+      allow read: if request.auth != null;
+
+      // Upload: authenticated; metadata must carry the uploader's UID.
+      allow create: if request.auth != null
+        && request.resource.metadata.userId == request.auth.uid;
+
+      // Replace / metadata edit: owner only.
+      allow update: if request.auth != null
+        && resource.metadata.userId == request.auth.uid;
+
+      // Delete: owner only.
+      allow delete: if request.auth != null
+        && resource.metadata.userId == request.auth.uid;
+    }
+  }
+}

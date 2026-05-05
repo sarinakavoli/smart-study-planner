@@ -1,0 +1,44 @@
+Production Firestore is now working. The app badge shows DB: smart-study-prd and new tasks are appearing in the smart-study-prd Firestore database.
+
+Now I found two bugs:
+
+Bug 1 — File upload fails in production
+When I add/edit a task with an attachment, the task is saved to Firestore, but the file upload fails.
+The UI shows:
+"The task was saved, but one or more files could not be uploaded. Files marked 'Upload failed' are shown below."
+
+Expected behavior:
+- The file should upload to the correct production Storage bucket: prd-sarina
+- The file should appear in Firebase Console → Storage → prd-sarina
+- The task should store the attachment metadata/path correctly after upload
+
+Please debug:
+1. Check src/firebase.js and confirm Storage is initialized with:
+   getStorage(app, `gs://${import.meta.env.VITE_FIREBASE_STORAGE_BUCKET}`)
+2. Confirm production is using:
+   VITE_FIREBASE_STORAGE_BUCKET=prd-sarina
+3. Inspect the exact upload error in the browser console.
+4. Check whether Firebase Storage rules are blocking writes to prd-sarina.
+5. Check the upload path being used, for example tasks/{taskId}/...
+6. Fix the upload flow so Firestore and Storage stay consistent.
+
+Important:
+Do not change the Firestore database setup. Firestore prod is working.
+
+Bug 2 — Cancel/Edit form state bug
+When I edit a task, then click Cancel, then go back to Add/Save, I get validation errors or broken state. In the screenshot, after canceling edit, the Add Task form still shows required field errors for title and due date.
+
+Expected behavior:
+- Clicking Cancel while editing should fully reset edit mode.
+- It should clear selected task state.
+- It should clear validation errors.
+- It should clear temporary attachments/upload failed state.
+- It should return to a clean Add Task form.
+
+Please fix the form state so Cancel resets everything cleanly.
+
+After fixing, show me:
+1. What caused the Storage upload failure
+2. What caused the Cancel/Edit state bug
+3. Files changed
+4. How to test both bugs in dev and production

@@ -664,6 +664,8 @@ function App() {
     setAttachmentFiles([]);
     setPendingConfirmFile(null);
     setFileUploadStatuses({});
+    setFieldErrors({});
+    setError("");
   };
 
   const sanitizeFileName = (fileName) => {
