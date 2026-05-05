@@ -63,12 +63,15 @@ service cloud.firestore {
 
       // Profile refresh: display name, email, updatedAt only.
       // Structural fields must not change.
+      // Email may be updated, but only to the value the Firebase Auth token carries —
+      // so users can keep their doc in sync when they change their Auth email,
+      // but cannot set it to someone else's address.
       allow update: if isSelf(userId)
         && request.resource.data.organizationId == resource.data.organizationId
         && request.resource.data.role == resource.data.role
         && request.resource.data.departmentId == resource.data.departmentId
         && request.resource.data.membershipStatus == resource.data.membershipStatus
-        && request.resource.data.email == resource.data.email
+        && request.resource.data.email == request.auth.token.email
         && request.resource.data.createdAt == resource.data.createdAt;
 
       // Migration: write flat membershipStatus / role for users created under the
