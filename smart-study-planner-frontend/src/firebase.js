@@ -14,7 +14,16 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
+const firestoreDatabaseId =
+  import.meta.env.VITE_FIRESTORE_DATABASE_ID || "smart-study";
+const storageBucket = import.meta.env.VITE_FIREBASE_STORAGE_BUCKET;
+
+if (import.meta.env.DEV) {
+  console.log(`Current Firestore database: ${firestoreDatabaseId}`);
+  console.log(`Current Storage bucket: ${storageBucket}`);
+}
+
 export const auth = getAuth(app);
-export const db = getFirestore(app, "smart-study");
-export const storage = getStorage(app);
+export const db = getFirestore(app, firestoreDatabaseId);
+export const storage = getStorage(app, `gs://${storageBucket}`);
 export default app;
