@@ -24,13 +24,16 @@ public class DatabaseConnectionValidator implements InitializingBean {
     @Override
     public void afterPropertiesSet() {
         log.info("Verifying database connectivity before accepting traffic...");
-        try (Connection connection = dataSource.getConnection();
-             Statement statement = connection.createStatement();
-             ResultSet rs = statement.executeQuery("SELECT 1")) {
-            if (rs.next()) {
-                log.info("Database connection verified successfully. Application is ready to accept traffic.");
-            } else {
-                throw new IllegalStateException("Database connectivity check returned no results from 'SELECT 1'.");
+        try (Connection connection = dataSource.getConnection()) {
+            String jdbcUrl = connection.getMetaData().getURL();
+            log.info("[DB] Connected via JDBC URL: {}", jdbcUrl);
+            try (Statement statement = connection.createStatement();
+                 ResultSet rs = statement.executeQuery("SELECT 1")) {
+                if (rs.next()) {
+                    log.info("Database connection verified successfully. Application is ready to accept traffic.");
+                } else {
+                    throw new IllegalStateException("Database connectivity check returned no results from 'SELECT 1'.");
+                }
             }
         } catch (Exception e) {
             String message = "FATAL: Cannot connect to the database. The application will not start. Cause: " + e.getMessage();
