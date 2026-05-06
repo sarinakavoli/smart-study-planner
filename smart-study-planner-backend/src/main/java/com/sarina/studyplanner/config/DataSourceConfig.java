@@ -67,6 +67,10 @@ public class DataSourceConfig {
         cfg.setKeepaliveTime(60_000);
         cfg.setConnectionTimeout(30_000);
         cfg.setMinimumIdle(2);
+        // -1: do not fail pool initialization if the DB is unreachable at startup.
+        // Connections are retried at request time. This ensures the app can start
+        // and pass the health check even when the DB endpoint is not yet reachable.
+        cfg.setInitializationFailTimeout(-1);
         return cfg;
     }
 

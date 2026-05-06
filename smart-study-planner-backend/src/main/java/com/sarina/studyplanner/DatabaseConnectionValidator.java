@@ -36,9 +36,11 @@ public class DatabaseConnectionValidator implements InitializingBean {
                 }
             }
         } catch (Exception e) {
-            String message = "FATAL: Cannot connect to the database. The application will not start. Cause: " + e.getMessage();
-            log.error(message, e);
-            throw new IllegalStateException(message, e);
+            // Log a warning but do NOT throw — allows the app to start and pass the
+            // health check so [DB-ENV] diagnostic logs reach the production log stream.
+            // If DATABASE_URL is correct, connections will succeed at request time.
+            log.warn("WARNING: Database connectivity check failed at startup. " +
+                     "The app will continue — check [DB-ENV] logs for the active DATABASE_URL. Cause: {}", e.getMessage());
         }
     }
 }
