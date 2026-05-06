@@ -78,7 +78,7 @@ externalPort = 3002
 
 [deployment]
 deploymentTarget = "vm"
-run = ["java", "-jar", "smart-study-planner-backend/target/smart-study-planner-0.0.1-SNAPSHOT.jar", "--server.port=5000", "--spring.profiles.active=prod"]
+run = ["java", "-Dspring.profiles.active=prod", "-jar", "smart-study-planner-backend/target/smart-study-planner-0.0.1-SNAPSHOT.jar", "--server.port=5000"]
 build = ["bash", "scripts/build-production.sh"]
 
 [postMerge]
@@ -94,3 +94,6 @@ VITE_FIREBASE_PROJECT_ID = "dev-sarina"
 VITE_FIREBASE_MESSAGING_SENDER_ID = "957894061134"
 VITE_FIREBASE_APP_ID = "1:957894061134:web:384afd6eb88a91ce12a71f"
 GCP_PROJECT_ID = "dev-sarina"
+
+[userenv.production]
+SPRING_PROFILES_ACTIVE = "prod"
