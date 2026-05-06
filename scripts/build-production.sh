@@ -3,7 +3,7 @@ set -euo pipefail
 
 echo "==> [1/3] Building React frontend (production — uses .env.production)"
 cd smart-study-planner-frontend
-npm ci --prefer-offline
+npm ci
 npm run build
 cd ..
 

@@ -39,7 +39,8 @@ A full-stack study planner application that helps users organize their studies w
 - **Human-Readable Document IDs**: New tasks and categories use human-readable, prefixed document IDs generated client-side, improving debuggability and data traceability.
 - **Server-Side AI Key Management**: Gemini API key is securely fetched from Google Secret Manager on the backend, ensuring the key is never exposed to the frontend.
 - **Role-Based Access Control**: Implemented distinct roles (admin, teacher, student) with specific permissions for creating organizations, inviting users, and managing departments.
-- **Database Schema Management**: Flyway is used for database migrations, ensuring schema evolution is controlled and applied before JPA initialization.
+- **Database Schema Management**: Flyway is disabled (`spring.flyway.enabled=false`) in production; migrations run only in dev via FlywayConfig which respects the property via `@ConditionalOnProperty`.
+- **Hibernate No-Connection Startup**: `allow_jdbc_metadata_access=false` + `jakarta.persistence.database-product-name/major-version` JPA properties give Hibernate the dialect/version it needs without any DB connection at startup. Combined with `lazy-initialization=true` and `bootstrap-mode=lazy`, the app starts and passes the health check even if the production DB endpoint is disabled.
 
 ## Product
 
@@ -59,7 +60,8 @@ A full-stack study planner application that helps users organize their studies w
 
 - **GCP Setup Required for AI**: The `/api/generate` endpoint will not function until Google Cloud Platform Secret Manager is properly configured with the `GEMINI_API_KEY` and the backend has access via a service account.
 - **Invitee Must Register First**: Users must have a registered account before an admin can invite them to an organization.
-- **Flyway Baseline**: `baselineOnMigrate=true` allows Flyway to run on an existing database, but new migrations should be carefully managed.
+- **Production DB endpoint**: Replit's production VM injects a separate (Neon) PostgreSQL endpoint that may differ from the dev `helium` DB. The app is hardened to start without a connection; check `[DB]` logs in production deployment to confirm which host is used.
+- **Build script uses `npm ci`** (no `--prefer-offline`): the production VM has no npm cache, so `--prefer-offline` caused silent build failures and rollback to the April stale JAR.
 - **CORS Configuration**: The backend currently allows all origins for CORS, which might need to be restricted for production environments.
 
 ## Pointers
