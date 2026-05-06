@@ -1,4 +1,4 @@
-modules = ["nodejs-20", "java-graalvm22.3", "web", "postgresql-16"]
+modules = ["java-graalvm22.3", "nodejs-20", "postgresql-16", "python-3.11", "web"]
 [agent]
 expertMode = true
 
@@ -77,7 +77,7 @@ localPort = 9005
 externalPort = 3002
 
 [deployment]
-deploymentTarget = "vm"
+deploymentTarget = "cloudrun"
 run = ["java", "-jar", "smart-study-planner-backend/target/smart-study-planner-0.0.1-SNAPSHOT.jar", "--server.port=5000"]
 build = ["bash", "scripts/build-production.sh"]
 
