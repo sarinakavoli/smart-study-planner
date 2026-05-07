@@ -22,3 +22,5 @@ smart-study-planner-frontend/.seed-test-cache
 # Google Cloud service account key — never commit this
 scripts/serviceAccountKey.json
 smart-study-planner-backend/service-account.json
+
+# Allow production JAR for VM deployment
