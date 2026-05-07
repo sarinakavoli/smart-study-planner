@@ -77,7 +77,7 @@ localPort = 9005
 externalPort = 3002
 
 [deployment]
-deploymentTarget = "cloudrun"
+deploymentTarget = "vm"
 run = ["java", "-jar", "smart-study-planner-backend/target/smart-study-planner-0.0.1-SNAPSHOT.jar", "--server.port=5000"]
 build = ["bash", "scripts/build-production.sh"]
 
